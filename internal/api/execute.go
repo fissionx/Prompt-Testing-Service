@@ -24,13 +24,16 @@ import (
 type geoJSONResponse struct {
 	SearchAnswer string `json:"search_answer"`
 	GEOAnalysis  struct {
-		VisibilityScore int      `json:"visibility_score"`
-		BrandMentioned  bool     `json:"brand_mentioned"`
-		MentionStatus   string   `json:"mention_status"`
-		Reason          string   `json:"reason"`
-		Insights        []string `json:"insights"`
-		Actions         []string `json:"actions"`
-		CompetitorInfo  string   `json:"competitor_info"`
+		VisibilityScore    int      `json:"visibility_score"`
+		BrandMentioned     bool     `json:"brand_mentioned"`
+		InGroundingSources bool     `json:"in_grounding_sources"`
+		MentionStatus      string   `json:"mention_status"`
+		Reason             string   `json:"reason"`
+		Insights           []string `json:"insights"`
+		Actions            []string `json:"actions"`
+		CompetitorInfo     string   `json:"competitor_info"`
+		Competitors        []string `json:"competitors"`
+		Sentiment          string   `json:"sentiment"`
 	} `json:"geo_analysis"`
 }
 
@@ -169,22 +172,27 @@ func (s *Server) execute(c *gin.Context) {
 			log.Printf("✅ Successfully parsed GEO JSON response")
 			responseText = geoResponse.SearchAnswer
 			geoAnalysis = &models.GEOAnalysis{
-				VisibilityScore: geoResponse.GEOAnalysis.VisibilityScore,
-				BrandMentioned:  geoResponse.GEOAnalysis.BrandMentioned,
-				MentionStatus:   geoResponse.GEOAnalysis.MentionStatus,
-				Reason:          geoResponse.GEOAnalysis.Reason,
-				Insights:        geoResponse.GEOAnalysis.Insights,
-				Actions:         geoResponse.GEOAnalysis.Actions,
-				CompetitorInfo:  geoResponse.GEOAnalysis.CompetitorInfo,
+				VisibilityScore:    geoResponse.GEOAnalysis.VisibilityScore,
+				BrandMentioned:     geoResponse.GEOAnalysis.BrandMentioned,
+				InGroundingSources: geoResponse.GEOAnalysis.InGroundingSources,
+				MentionStatus:      geoResponse.GEOAnalysis.MentionStatus,
+				Reason:             geoResponse.GEOAnalysis.Reason,
+				Insights:           geoResponse.GEOAnalysis.Insights,
+				Actions:            geoResponse.GEOAnalysis.Actions,
+				CompetitorInfo:     geoResponse.GEOAnalysis.CompetitorInfo,
+				Competitors:        geoResponse.GEOAnalysis.Competitors,
+				Sentiment:          geoResponse.GEOAnalysis.Sentiment,
 			}
-			log.Printf("GEO Analysis: Score=%d, Mentioned=%v", geoAnalysis.VisibilityScore, geoAnalysis.BrandMentioned)
+			log.Printf("GEO Analysis: Score=%d, Mentioned=%v, Grounded=%v, Sentiment=%s", 
+				geoAnalysis.VisibilityScore, geoAnalysis.BrandMentioned, 
+				geoAnalysis.InGroundingSources, geoAnalysis.Sentiment)
 		} else {
 			log.Printf("❌ Failed to parse GEO JSON: %v", err)
 			log.Printf("Raw response kept as-is")
 		}
 	}
 
-	// Save the response
+	// Save the response with GEO metrics
 	responseModel := &models.Response{
 		ID:           uuid.New().String(),
 		PromptID:     promptID,
@@ -194,10 +202,20 @@ func (s *Server) execute(c *gin.Context) {
 		LLMName:      llmConfig.Name,
 		LLMProvider:  llmConfig.Provider,
 		LLMModel:     llmConfig.Model,
+		Brand:        req.Brand,
 		Temperature:  temperature,
 		TokensUsed:   llmResponse.TokensUsed,
 		LatencyMs:    llmResponse.LatencyMs,
 		CreatedAt:    time.Now(),
+	}
+
+	// Add GEO metrics if available
+	if geoAnalysis != nil {
+		responseModel.VisibilityScore = geoAnalysis.VisibilityScore
+		responseModel.BrandMentioned = geoAnalysis.BrandMentioned
+		responseModel.InGroundingSources = geoAnalysis.InGroundingSources
+		responseModel.Sentiment = geoAnalysis.Sentiment
+		responseModel.CompetitorsMention = geoAnalysis.Competitors
 	}
 
 	if err := s.db.CreateResponse(c.Request.Context(), responseModel); err != nil {

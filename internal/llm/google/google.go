@@ -186,7 +186,7 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 		}
 	}
 
-	geoPrompt := fmt.Sprintf(`Analyze the following search response for brand visibility.
+	geoPrompt := fmt.Sprintf(`Analyze the following search response for brand visibility, sentiment, and competitors.
 
 BRAND TO ANALYZE: %s
 
@@ -199,23 +199,28 @@ SEARCH RESPONSE:
 
 CRITICAL ANALYSIS INSTRUCTIONS:
 1. Check if "%s" is mentioned in the search response text
-2. Check if the brand's domain appears in the GROUNDING SOURCES (cited URLs)
-3. If brand appears in grounding sources but NOT in the text, the brand has LOW visibility (score 1-3) - their content was found but not prominently featured
-4. If brand appears in both text AND sources, they have HIGH visibility (score 7-10)
-5. If brand appears in neither, they have NO visibility (score 0)
+2. Check if the brand's domain appears in the GROUNDING SOURCES (cited URLs)  
+3. Identify ALL competitor brands/products mentioned in the response
+4. If brand is mentioned, analyze the sentiment (positive/neutral/negative)
+5. Scoring: 
+   - Score 0: Not in text, not in sources
+   - Score 1-3: In sources but not in text (low visibility)
+   - Score 4-6: Mentioned in text with context
+   - Score 7-10: Prominently featured in text AND sources
 
-You MUST respond with ONLY a valid JSON object in this exact format (no markdown, no code blocks, no extra text):
+You MUST respond with ONLY a valid JSON object (no markdown, no code blocks):
 
-{"search_answer":"%s","geo_analysis":{"visibility_score":0,"brand_mentioned":false,"mention_status":"Description of where and how the brand was or wasn't mentioned, including grounding source analysis","reason":"Detailed explanation of why the brand is or isn't being cited by AI, considering both text mentions and grounding sources","insights":["Insight 1 about visibility","Insight 2 about grounding","Insight 3 about content gaps"],"actions":["Action 1: Write blog post about X","Action 2: Publish on LinkedIn about Y","Action 3: Get featured on Z","Action 4: Target keywords W","Action 5: Improve technical SEO"],"competitor_info":"What competitors are doing to get cited in both text and sources"}}
+{"search_answer":"%s","geo_analysis":{"visibility_score":0,"brand_mentioned":false,"in_grounding_sources":false,"mention_status":"Where/how brand appeared or why absent","reason":"Why brand is/isn't cited, considering text and sources","sentiment":"positive|neutral|negative (only if brand mentioned)","competitors":["Competitor1","Competitor2"],"insights":["Insight 1","Insight 2","Insight 3"],"actions":["Action 1: Blog topic","Action 2: LinkedIn content","Action 3: Get featured on X","Action 4: Target keyword Y","Action 5: Technical SEO tip"],"competitor_info":"What competitors are doing to get cited"}}
 
 Rules:
-- visibility_score: integer 0-10 considering BOTH text mentions AND grounding sources
-- brand_mentioned: true if brand appears in text OR grounding sources
-- mention_status: MUST mention if brand appears in grounding sources even if not in text
-- reason: explain visibility in context of both text prominence and source citations
-- insights: include insights about grounding/source visibility
-- actions: provide 5 specific GEO recommendations
-- competitor_info: analyze competitors' strategies
+- visibility_score: integer 0-10
+- brand_mentioned: true if in text OR sources
+- in_grounding_sources: true if brand domain in cited URLs
+- sentiment: "positive" (recommended/praised), "neutral" (just mentioned), "negative" (criticized), or empty string if not mentioned
+- competitors: array of competitor names mentioned (empty array if none)
+- insights: 3-5 insights about visibility
+- actions: 5 specific actionable recommendations
+- competitor_info: what competitors do well
 
 RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, searchAnswer, sourcesInfo, config.Brand, escapeJSONString(searchAnswer))
 

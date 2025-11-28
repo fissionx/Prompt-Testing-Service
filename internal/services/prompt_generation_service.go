@@ -4,167 +4,230 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/AI2HU/gego/internal/db"
 	"github.com/AI2HU/gego/internal/llm"
 	"github.com/AI2HU/gego/internal/models"
 )
 
-// PromptGenerationService provides business logic for LLM-based prompt generation
+// PromptGenerationService handles intelligent prompt generation and reuse
 type PromptGenerationService struct {
+	db          db.Database
 	llmRegistry *llm.Registry
 }
 
 // NewPromptGenerationService creates a new prompt generation service
-func NewPromptGenerationService(registry *llm.Registry) *PromptGenerationService {
+func NewPromptGenerationService(database db.Database, registry *llm.Registry) *PromptGenerationService {
 	return &PromptGenerationService{
+		db:          database,
 		llmRegistry: registry,
 	}
 }
 
-// GenerationConfig represents configuration for prompt generation
-type GenerationConfig struct {
-	LanguageCode    string   `json:"language_code"`
-	UserInput       string   `json:"user_input"`
-	PromptCount     int      `json:"prompt_count"`
-	ExistingPrompts []string `json:"existing_prompts"`
+// GeneratePromptsForBrand generates prompts for a brand, reusing existing ones where possible
+func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, category, domain, description string, count int) ([]models.Prompt, int, int, error) {
+	if count <= 0 {
+		count = 20
+	}
+	if count > 100 {
+		count = 100
+	}
+
+	// Step 1: Check for existing prompts in the same category/domain
+	existingPrompts, err := s.findReusablePrompts(ctx, category, domain, count)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to find reusable prompts: %w", err)
+	}
+
+	existingCount := len(existingPrompts)
+	needToGenerate := count - existingCount
+
+	// If we have enough existing prompts, return them
+	if needToGenerate <= 0 {
+		return existingPrompts[:count], count, 0, nil
+	}
+
+	// Step 2: Generate new prompts using LLM
+	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, needToGenerate, existingPrompts)
+	if err != nil {
+		// If generation fails but we have some existing prompts, return those
+		if existingCount > 0 {
+			return existingPrompts, existingCount, 0, nil
+		}
+		return nil, 0, 0, fmt.Errorf("failed to generate prompts: %w", err)
+	}
+
+	// Step 3: Save new prompts to database
+	savedPrompts, err := s.savePrompts(ctx, newPrompts, brand, category, domain)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to save prompts: %w", err)
+	}
+
+	// Combine existing and new prompts
+	allPrompts := append(existingPrompts, savedPrompts...)
+	
+	return allPrompts, existingCount, len(savedPrompts), nil
 }
 
-// ValidateGenerationConfig validates generation configuration
-func (s *PromptGenerationService) ValidateGenerationConfig(config *GenerationConfig) error {
-	if config.LanguageCode == "" {
-		return fmt.Errorf("language code is required")
-	}
-	if len(config.LanguageCode) < 2 || len(config.LanguageCode) > 3 {
-		return fmt.Errorf("language code should be 2-3 characters (e.g., FR, EN, IT)")
-	}
-	if config.UserInput == "" {
-		return fmt.Errorf("user input is required")
-	}
-	if config.PromptCount < 1 {
-		return fmt.Errorf("prompt count must be at least 1")
-	}
-	if config.PromptCount > 100 {
-		return fmt.Errorf("prompt count cannot exceed 100")
-	}
-	return nil
-}
-
-// GeneratePrompts generates prompts using an LLM
-func (s *PromptGenerationService) GeneratePrompts(ctx context.Context, llmConfig *models.LLMConfig, config *GenerationConfig) ([]string, error) {
-	if err := s.ValidateGenerationConfig(config); err != nil {
+// findReusablePrompts finds existing prompts that can be reused
+func (s *PromptGenerationService) findReusablePrompts(ctx context.Context, category, domain string, limit int) ([]models.Prompt, error) {
+	// Get all enabled prompts
+	allPrompts, err := s.db.ListPrompts(ctx, nil)
+	if err != nil {
 		return nil, err
 	}
 
-	provider, ok := s.llmRegistry.Get(llmConfig.Provider)
-	if !ok {
-		return nil, fmt.Errorf("LLM provider %s not found", llmConfig.Provider)
-	}
-
-	prePrompt := llm.GenerateGEOPromptTemplate(
-		config.UserInput,
-		config.ExistingPrompts,
-		config.LanguageCode,
-		config.PromptCount,
-	)
-
-	response, err := provider.Generate(ctx, prePrompt, llm.Config{
-		Model:     llmConfig.Model,
-		MaxTokens: 1000,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate prompts: %w", err)
-	}
-
-	if response.Error != "" {
-		return nil, fmt.Errorf("LLM error: %s", response.Error)
-	}
-
-	promptLines := strings.Split(strings.TrimSpace(response.Text), "\n")
-	var generatedPrompts []string
-
-	for _, line := range promptLines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	var matchingPrompts []models.Prompt
+	for _, prompt := range allPrompts {
+		if !prompt.Enabled {
+			continue
+		}
+		
+		// Match by category (exact match)
+		if category != "" && prompt.Category == category {
+			matchingPrompts = append(matchingPrompts, *prompt)
+			if len(matchingPrompts) >= limit {
+				break
+			}
 			continue
 		}
 
-		if len(line) > 2 && (line[1] == '.' || line[1] == ')') && (line[0] >= '0' && line[0] <= '9') {
-			line = strings.TrimSpace(line[2:])
+		// Match by domain (if no category match)
+		if domain != "" && prompt.Domain == domain && category == "" {
+			matchingPrompts = append(matchingPrompts, *prompt)
+			if len(matchingPrompts) >= limit {
+				break
+			}
+		}
+	}
+
+	return matchingPrompts, nil
+}
+
+// generateNewPrompts generates new prompts using an LLM
+func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, count int, existingPrompts []models.Prompt) ([]string, error) {
+	// Get a capable LLM for generation (prefer Google for latest info)
+	provider, ok := s.llmRegistry.Get("google")
+	if !ok {
+		// Fallback to any available provider
+		providers := s.llmRegistry.List()
+		if len(providers) == 0 {
+			return nil, fmt.Errorf("no LLM providers available")
+		}
+		provider, _ = s.llmRegistry.Get(providers[0])
+	}
+
+	// Build the generation prompt
+	existingText := ""
+	if len(existingPrompts) > 0 {
+		var templates []string
+		for _, p := range existingPrompts {
+			templates = append(templates, p.Template)
+		}
+		existingText = fmt.Sprintf("\n\nEXISTING PROMPTS (avoid duplication):\n%s", strings.Join(templates, "\n"))
+	}
+
+	brandInfo := fmt.Sprintf("Brand: %s", brand)
+	if category != "" {
+		brandInfo += fmt.Sprintf("\nCategory: %s", category)
+	}
+	if domain != "" {
+		brandInfo += fmt.Sprintf("\nDomain/Industry: %s", domain)
+	}
+	if description != "" {
+		brandInfo += fmt.Sprintf("\nDescription: %s", description)
+	}
+
+	generationPrompt := fmt.Sprintf(`Generate %d unique, natural questions that people would ask when searching for products/services in this space.
+
+%s%s
+
+REQUIREMENTS:
+1. Questions should be diverse and natural (how people actually search)
+2. Mix different query types: comparisons, recommendations, how-to, best practices, reviews
+3. Questions should be likely to generate responses mentioning brands in this space
+4. Avoid duplicating existing prompts
+5. Each question should be on a new line
+6. DO NOT include numbers, bullets, or any formatting - just the questions
+
+Examples of good formats:
+- "What are the best tools for..."
+- "How do I choose between..."
+- "Which platform is better for..."
+- "Can you recommend..."
+- "What's the difference between..."
+- "How does X compare to Y..."
+
+Generate exactly %d questions, one per line:`, count, brandInfo, existingText, count)
+
+	response, err := provider.Generate(ctx, generationPrompt, llm.Config{
+		Model:       "",
+		Temperature: 0.9, // High creativity for diverse prompts
+		MaxTokens:   4096,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the response - split by newlines
+	lines := strings.Split(response.Text, "\n")
+	var prompts []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+		// Remove any numbering or bullet points
+		line = strings.TrimPrefix(line, "-")
+		line = strings.TrimPrefix(line, "*")
+		line = strings.TrimPrefix(line, "•")
+		// Remove leading numbers like "1. " or "1) "
+		for i := 0; i < 10; i++ {
+			line = strings.TrimPrefix(line, fmt.Sprintf("%d. ", i))
+			line = strings.TrimPrefix(line, fmt.Sprintf("%d) ", i))
+		}
+		line = strings.TrimSpace(line)
+		
+		if line != "" && len(line) > 10 {
+			prompts = append(prompts, line)
+		}
+	}
+
+	if len(prompts) == 0 {
+		return nil, fmt.Errorf("failed to parse generated prompts from LLM response")
+	}
+
+	return prompts, nil
+}
+
+// savePrompts saves generated prompts to the database
+func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts []string, brand, category, domain string) ([]models.Prompt, error) {
+	var savedPrompts []models.Prompt
+	
+	for _, text := range promptTexts {
+		prompt := &models.Prompt{
+			ID:        uuid.New().String(),
+			Template:  text,
+			Category:  category,
+			Domain:    domain,
+			Brand:     brand,
+			Generated: true,
+			Enabled:   true,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 
-		if line != "" {
-			generatedPrompts = append(generatedPrompts, line)
+		if err := s.db.CreatePrompt(ctx, prompt); err != nil {
+			// Log error but continue with other prompts
+			continue
 		}
+
+		savedPrompts = append(savedPrompts, *prompt)
 	}
 
-	if len(generatedPrompts) == 0 {
-		return nil, fmt.Errorf("no valid prompts were generated")
-	}
-
-	return generatedPrompts, nil
-}
-
-// GetLanguageName returns the display name for a language code
-func GetLanguageName(languageCode string) string {
-	languageNames := map[string]string{
-		"EN": "English", "FR": "Français", "IT": "Italiano", "ES": "Español", "DE": "Deutsch",
-		"PT": "Português", "RU": "Русский", "JA": "日本語", "KO": "한국어", "ZH": "中文",
-		"AR": "العربية", "NL": "Nederlands", "SV": "Svenska", "NO": "Norsk", "DA": "Dansk",
-		"FI": "Suomi", "PL": "Polski", "CS": "Čeština", "HU": "Magyar", "RO": "Română",
-		"BG": "Български", "HR": "Hrvatski", "SK": "Slovenčina", "SL": "Slovenščina",
-		"ET": "Eesti", "LV": "Latviešu", "LT": "Lietuvių", "EL": "Ελληνικά", "TR": "Türkçe",
-		"HE": "עברית", "HI": "हिन्दी", "TH": "ไทย", "VI": "Tiếng Việt", "ID": "Bahasa Indonesia",
-		"MS": "Bahasa Melayu", "TL": "Filipino",
-	}
-
-	languageName := languageNames[strings.ToUpper(languageCode)]
-	if languageName == "" {
-		return languageCode
-	}
-	return languageName
-}
-
-// ValidateLanguageCode validates a language code
-func ValidateLanguageCode(languageCode string) error {
-	languageCode = strings.ToUpper(strings.TrimSpace(languageCode))
-	if languageCode == "" {
-		return fmt.Errorf("language code is required")
-	}
-	if len(languageCode) < 2 || len(languageCode) > 3 {
-		return fmt.Errorf("language code should be 2-3 characters (e.g., FR, EN, IT)")
-	}
-	return nil
-}
-
-// GetSupportedLanguages returns a list of supported language codes
-func GetSupportedLanguages() []string {
-	return []string{
-		"EN", "FR", "IT", "ES", "DE", "PT", "RU", "JA", "KO", "ZH",
-		"AR", "NL", "SV", "NO", "DA", "FI", "PL", "CS", "HU", "RO",
-		"BG", "HR", "SK", "SL", "ET", "LV", "LT", "EL", "TR", "HE",
-		"HI", "TH", "VI", "ID", "MS", "TL",
-	}
-}
-
-// CreatePromptFromGenerated creates a prompt model from generated text
-func CreatePromptFromGenerated(template string, languageCode string) *models.Prompt {
-	return &models.Prompt{
-		Template: template,
-		Tags:     []string{"generated", "llm-created", fmt.Sprintf("lang-%s", languageCode)},
-		Enabled:  true,
-	}
-}
-
-// ValidateGeneratedPrompt validates a generated prompt
-func ValidateGeneratedPrompt(template string) error {
-	if template == "" {
-		return fmt.Errorf("prompt template cannot be empty")
-	}
-	if len(strings.TrimSpace(template)) == 0 {
-		return fmt.Errorf("prompt template cannot be empty")
-	}
-	if len(template) > 10000 {
-		return fmt.Errorf("prompt template too long (max 10000 characters)")
-	}
-	return nil
+	return savedPrompts, nil
 }

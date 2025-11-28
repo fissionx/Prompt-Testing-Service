@@ -185,11 +185,114 @@ type ExecuteResponse struct {
 
 // GEOAnalysis represents the GEO (Generative Engine Optimization) analysis results
 type GEOAnalysis struct {
-	VisibilityScore int      `json:"visibility_score"`
-	BrandMentioned  bool     `json:"brand_mentioned"`
-	MentionStatus   string   `json:"mention_status"`
-	Reason          string   `json:"reason"`
-	Insights        []string `json:"insights"`
-	Actions         []string `json:"actions"`
-	CompetitorInfo  string   `json:"competitor_info,omitempty"`
+	VisibilityScore    int      `json:"visibility_score"`
+	BrandMentioned     bool     `json:"brand_mentioned"`
+	InGroundingSources bool     `json:"in_grounding_sources"`
+	MentionStatus      string   `json:"mention_status"`
+	Reason             string   `json:"reason"`
+	Insights           []string `json:"insights"`
+	Actions            []string `json:"actions"`
+	CompetitorInfo     string   `json:"competitor_info,omitempty"`
+	Competitors        []string `json:"competitors,omitempty"`
+	Sentiment          string   `json:"sentiment,omitempty"`
+}
+
+// GeneratePromptsRequest represents the request to generate prompts for a brand
+type GeneratePromptsRequest struct {
+	Brand       string `json:"brand" binding:"required"`
+	Category    string `json:"category,omitempty"`
+	Domain      string `json:"domain,omitempty"`
+	Description string `json:"description,omitempty"`
+	Count       int    `json:"count,omitempty"` // Number of prompts to generate (default: 20)
+}
+
+// GeneratePromptsResponse represents the response with generated prompts
+type GeneratePromptsResponse struct {
+	Brand     string          `json:"brand"`
+	Category  string          `json:"category"`
+	Domain    string          `json:"domain"`
+	Prompts   []PromptPreview `json:"prompts"`
+	Existing  int             `json:"existing_prompts"` // How many were reused from DB
+	Generated int             `json:"generated_prompts"`// How many were newly generated
+}
+
+// PromptPreview represents a preview of a prompt
+type PromptPreview struct {
+	ID       string `json:"id"`
+	Template string `json:"template"`
+	Category string `json:"category,omitempty"`
+	Reused   bool   `json:"reused"` // True if reused from database
+}
+
+// BulkExecuteRequest represents the request to execute multiple prompts across multiple LLMs
+type BulkExecuteRequest struct {
+	CampaignName string   `json:"campaign_name" binding:"required"`
+	Brand        string   `json:"brand" binding:"required"`
+	PromptIDs    []string `json:"prompt_ids" binding:"required"`
+	LLMIDs       []string `json:"llm_ids" binding:"required"`
+	Temperature  float64  `json:"temperature,omitempty"`
+}
+
+// BulkExecuteResponse represents the response from bulk execution
+type BulkExecuteResponse struct {
+	CampaignID    string    `json:"campaign_id"`
+	CampaignName  string    `json:"campaign_name"`
+	Brand         string    `json:"brand"`
+	TotalRuns     int       `json:"total_runs"`
+	Status        string    `json:"status"`
+	StartedAt     time.Time `json:"started_at"`
+	Message       string    `json:"message"`
+}
+
+// GEOInsightsRequest represents the request for GEO insights/analytics
+type GEOInsightsRequest struct {
+	Brand      string     `json:"brand,omitempty"`
+	CampaignID string     `json:"campaign_id,omitempty"`
+	StartTime  *time.Time `json:"start_time,omitempty"`
+	EndTime    *time.Time `json:"end_time,omitempty"`
+}
+
+// GEOInsightsResponse represents comprehensive GEO analytics
+type GEOInsightsResponse struct {
+	Brand                string                  `json:"brand"`
+	AverageVisibility    float64                 `json:"average_visibility"`
+	MentionRate          float64                 `json:"mention_rate"`          // % of responses mentioning brand
+	GroundingRate        float64                 `json:"grounding_rate"`        // % of responses citing brand sources
+	SentimentBreakdown   map[string]int          `json:"sentiment_breakdown"`   // positive/neutral/negative counts
+	TopCompetitors       []CompetitorInsight     `json:"top_competitors"`
+	PerformanceByLLM     []LLMPerformance        `json:"performance_by_llm"`
+	PerformanceByCategory []CategoryPerformance  `json:"performance_by_category"`
+	Trends               []TrendPoint            `json:"trends,omitempty"`
+	TotalResponses       int                     `json:"total_responses"`
+}
+
+// CompetitorInsight represents competitor visibility data
+type CompetitorInsight struct {
+	Name          string  `json:"name"`
+	MentionCount  int     `json:"mention_count"`
+	VisibilityAvg float64 `json:"visibility_avg"`
+}
+
+// LLMPerformance represents brand performance per LLM
+type LLMPerformance struct {
+	LLMName      string  `json:"llm_name"`
+	LLMProvider  string  `json:"llm_provider"`
+	Visibility   float64 `json:"visibility"`
+	MentionRate  float64 `json:"mention_rate"`
+	ResponseCount int    `json:"response_count"`
+}
+
+// CategoryPerformance represents brand performance per category
+type CategoryPerformance struct {
+	Category      string  `json:"category"`
+	Visibility    float64 `json:"visibility"`
+	MentionRate   float64 `json:"mention_rate"`
+	ResponseCount int     `json:"response_count"`
+}
+
+// TrendPoint represents a time-series data point
+type TrendPoint struct {
+	Date       string  `json:"date"`
+	Visibility float64 `json:"visibility"`
+	Mentions   int     `json:"mentions"`
 }

@@ -100,6 +100,14 @@ func (s *Server) setupRoutes() {
 
 	api.POST("/execute", s.execute)
 
+	// GEO (Generative Engine Optimization) endpoints
+	geo := api.Group("/geo")
+	{
+		geo.POST("/prompts/generate", s.generatePrompts)
+		geo.POST("/execute/bulk", s.bulkExecute)
+		geo.POST("/insights", s.getGEOInsights)
+	}
+
 	api.GET("/health", s.healthCheck)
 }
 
