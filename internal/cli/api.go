@@ -13,6 +13,12 @@ import (
 	"github.com/AI2HU/gego/internal/api"
 	"github.com/AI2HU/gego/internal/config"
 	"github.com/AI2HU/gego/internal/db"
+	"github.com/AI2HU/gego/internal/llm"
+	"github.com/AI2HU/gego/internal/llm/anthropic"
+	"github.com/AI2HU/gego/internal/llm/google"
+	"github.com/AI2HU/gego/internal/llm/ollama"
+	"github.com/AI2HU/gego/internal/llm/openai"
+	"github.com/AI2HU/gego/internal/llm/perplexity"
 	"github.com/AI2HU/gego/internal/models"
 	"github.com/AI2HU/gego/internal/shared"
 )
@@ -125,7 +131,37 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("✅ Database migrations completed successfully!")
 
-	server := api.NewServer(database, selectedCORSOrigin)
+	// Initialize LLM registry with all providers
+	apiLLMRegistry := llm.NewRegistry()
+	apiLLMRegistry.Register(openai.New("", ""))
+	apiLLMRegistry.Register(anthropic.New("", ""))
+	apiLLMRegistry.Register(ollama.New(""))
+	apiLLMRegistry.Register(google.New("", ""))
+	apiLLMRegistry.Register(perplexity.New("", ""))
+
+	// Initialize providers with API keys from database
+	llms, err := database.ListLLMs(ctx, nil)
+	if err == nil {
+		for _, llmConfig := range llms {
+			if llmConfig.APIKey != "" {
+				switch llmConfig.Provider {
+				case "openai":
+					apiLLMRegistry.Register(openai.New(llmConfig.APIKey, llmConfig.BaseURL))
+				case "anthropic":
+					apiLLMRegistry.Register(anthropic.New(llmConfig.APIKey, llmConfig.BaseURL))
+				case "ollama":
+					apiLLMRegistry.Register(ollama.New(llmConfig.BaseURL))
+				case "google":
+					apiLLMRegistry.Register(google.New(llmConfig.APIKey, llmConfig.BaseURL))
+				case "perplexity":
+					apiLLMRegistry.Register(perplexity.New(llmConfig.APIKey, llmConfig.BaseURL))
+				}
+			}
+		}
+	}
+	fmt.Println("✅ LLM providers initialized!")
+
+	server := api.NewServer(database, apiLLMRegistry, selectedCORSOrigin)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
@@ -165,6 +201,9 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	fmt.Println("    GET    /api/v1/stats             - Get statistics")
 	fmt.Println("    POST   /api/v1/search            - Search keywords")
 	fmt.Println("    GET    /api/v1/health            - Health check")
+	fmt.Println()
+	fmt.Println("  Execute:")
+	fmt.Println("    POST   /api/v1/execute           - Execute prompt with LLM")
 	fmt.Println()
 	fmt.Println("Press Ctrl+C to stop the server")
 

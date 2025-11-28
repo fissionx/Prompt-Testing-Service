@@ -155,3 +155,41 @@ type SearchResponse struct {
 	LastSeen      time.Time      `json:"last_seen"`
 	Responses     []*Response    `json:"responses,omitempty"`
 }
+
+// ExecuteRequest represents the request to execute a prompt against an LLM
+type ExecuteRequest struct {
+	Prompt      string   `json:"prompt" binding:"required"`
+	LLMID       string   `json:"llm_id" binding:"required"`
+	Brand       string   `json:"brand,omitempty"`
+	Temperature float64  `json:"temperature,omitempty"`
+	SavePrompt  bool     `json:"save_prompt,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+}
+
+// ExecuteResponse represents the response from executing a prompt
+type ExecuteResponse struct {
+	ResponseID   string       `json:"response_id"`
+	PromptID     string       `json:"prompt_id,omitempty"`
+	Prompt       string       `json:"prompt"`
+	Brand        string       `json:"brand,omitempty"`
+	Response     string       `json:"response"`
+	GEOAnalysis  *GEOAnalysis `json:"geo_analysis,omitempty"`
+	LLMName      string       `json:"llm_name"`
+	LLMProvider  string       `json:"llm_provider"`
+	LLMModel     string       `json:"llm_model"`
+	Temperature  float64      `json:"temperature"`
+	TokensUsed   int          `json:"tokens_used"`
+	LatencyMs    int64        `json:"latency_ms"`
+	CreatedAt    time.Time    `json:"created_at"`
+}
+
+// GEOAnalysis represents the GEO (Generative Engine Optimization) analysis results
+type GEOAnalysis struct {
+	VisibilityScore int      `json:"visibility_score"`
+	BrandMentioned  bool     `json:"brand_mentioned"`
+	MentionStatus   string   `json:"mention_status"`
+	Reason          string   `json:"reason"`
+	Insights        []string `json:"insights"`
+	Actions         []string `json:"actions"`
+	CompetitorInfo  string   `json:"competitor_info,omitempty"`
+}

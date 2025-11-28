@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -63,4 +64,53 @@ func (s *Server) search(c *gin.Context) {
 	}
 
 	s.successResponse(c, response)
+}
+
+// listResponses handles GET /api/v1/responses
+// Query params: prompt_id, llm_id, schedule_id, limit, offset
+func (s *Server) listResponses(c *gin.Context) {
+	promptID := c.Query("prompt_id")
+	llmID := c.Query("llm_id")
+	scheduleID := c.Query("schedule_id")
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	filter := shared.ResponseFilter{
+		PromptID:   promptID,
+		LLMID:      llmID,
+		ScheduleID: scheduleID,
+		Limit:      limit,
+		Offset:     offset,
+	}
+
+	responses, err := s.searchService.ListResponses(c.Request.Context(), filter)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to list responses: "+err.Error())
+		return
+	}
+
+	// Get total count for pagination
+	total, err := s.db.CountResponses(c.Request.Context(), filter)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to count responses: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"responses": responses,
+			"total":     total,
+			"limit":     limit,
+			"offset":    offset,
+		},
+	})
 }

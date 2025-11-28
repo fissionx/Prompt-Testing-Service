@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AI2HU/gego/internal/llm"
+	"github.com/AI2HU/gego/internal/logger"
 	"github.com/AI2HU/gego/internal/models"
 )
 
@@ -29,7 +30,7 @@ func New(baseURL string) *Provider {
 	return &Provider{
 		baseURL: baseURL,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 10 * time.Minute, // DeepSeek R1 and other thinking models need longer timeouts
 		},
 	}
 }
@@ -56,6 +57,8 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 
 	temperature := config.Temperature
 
+	logger.Info("[Ollama] 📤 Sending request to %s with model=%s", p.baseURL, model)
+
 	requestBody := map[string]interface{}{
 		"model":  model,
 		"prompt": prompt,
@@ -77,11 +80,16 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 
 	req.Header.Set("Content-Type", "application/json")
 
+	logger.Info("[Ollama] ⏳ Waiting for response (this may take a while for thinking models)...")
+
 	resp, err := p.client.Do(req)
 	if err != nil {
+		logger.Error("[Ollama] ❌ Request failed: %v", err)
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	logger.Info("[Ollama] 📥 Received response after %v, reading body...", time.Since(startTime))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -89,6 +97,7 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		logger.Error("[Ollama] ❌ API error (HTTP %d): %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -105,11 +114,14 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 	}
 
 	tokensUsed := len(ollamaResp.Context)
+	duration := time.Since(startTime)
+
+	logger.Info("[Ollama] ✅ Response received in %v, tokens=%d, response_length=%d chars", duration, tokensUsed, len(ollamaResp.Response))
 
 	return &llm.Response{
 		Text:       ollamaResp.Response,
 		TokensUsed: tokensUsed,
-		LatencyMs:  time.Since(startTime).Milliseconds(),
+		LatencyMs:  duration.Milliseconds(),
 		Model:      ollamaResp.Model,
 		Provider:   "ollama",
 	}, nil

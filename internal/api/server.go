@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/AI2HU/gego/internal/db"
+	"github.com/AI2HU/gego/internal/llm"
 	"github.com/AI2HU/gego/internal/models"
 	"github.com/AI2HU/gego/internal/services"
 )
@@ -20,12 +21,13 @@ type Server struct {
 	scheduleService *services.ScheduleService
 	statsService    *services.StatsService
 	searchService   *services.SearchService
+	llmRegistry     *llm.Registry
 	router          *gin.Engine
 	corsOrigin      string
 }
 
 // NewServer creates a new API server
-func NewServer(database db.Database, corsOrigin string) *Server {
+func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin string) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
@@ -59,6 +61,7 @@ func NewServer(database db.Database, corsOrigin string) *Server {
 		scheduleService: services.NewScheduleService(database),
 		statsService:    services.NewStatsService(database),
 		searchService:   services.NewSearchService(database),
+		llmRegistry:     llmRegistry,
 		router:          router,
 		corsOrigin:      corsOrigin,
 	}
@@ -73,25 +76,29 @@ func (s *Server) setupRoutes() {
 
 	api.GET("/llms", s.listLLMs)
 	api.GET("/llms/:id", s.getLLM)
-	// api.POST("/llms", s.createLLM)
-	// api.PUT("/llms/:id", s.updateLLM)
-	// api.DELETE("/llms/:id", s.deleteLLM)
+	api.POST("/llms", s.createLLM)
+	api.PUT("/llms/:id", s.updateLLM)
+	api.DELETE("/llms/:id", s.deleteLLM)
 
 	api.GET("/prompts", s.listPrompts)
 	api.GET("/prompts/:id", s.getPrompt)
-	// api.POST("/prompts", s.createPrompt)
-	// api.PUT("/prompts/:id", s.updatePrompt)
-	// api.DELETE("/prompts/:id", s.deletePrompt)
+	api.POST("/prompts", s.createPrompt)
+	api.PUT("/prompts/:id", s.updatePrompt)
+	api.DELETE("/prompts/:id", s.deletePrompt)
 
 	api.GET("/schedules", s.listSchedules)
 	api.GET("/schedules/:id", s.getSchedule)
-	// api.POST("/schedules", s.createSchedule)
-	// api.PUT("/schedules/:id", s.updateSchedule)
-	// api.DELETE("/schedules/:id", s.deleteSchedule)
+	api.POST("/schedules", s.createSchedule)
+	api.PUT("/schedules/:id", s.updateSchedule)
+	api.DELETE("/schedules/:id", s.deleteSchedule)
 
 	api.GET("/stats", s.getStats)
 
 	api.POST("/search", s.search)
+
+	api.GET("/responses", s.listResponses)
+
+	api.POST("/execute", s.execute)
 
 	api.GET("/health", s.healthCheck)
 }

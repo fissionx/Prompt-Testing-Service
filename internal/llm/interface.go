@@ -17,6 +17,7 @@ type Config struct {
 	TopP        float64 `json:"top_p"`
 	TopK        int     `json:"top_k"`
 	Stream      bool    `json:"stream"`
+	Brand       string  `json:"brand"` // Brand/company name for GEO analysis
 }
 
 // DefaultConfig returns a config with sensible defaults
