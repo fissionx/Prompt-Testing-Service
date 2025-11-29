@@ -77,20 +77,29 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		return nil, 0, 0, fmt.Errorf("failed to check prompt library: %w", err)
 	}
 
-	// If library exists, return those prompts
+	// If library exists, return those prompts (after validation)
 	if library != nil && len(library.PromptIDs) > 0 {
-		fmt.Printf("♻️  Reusing existing prompt library for domain=%s, category=%s (created for: %s)\n", domain, category, library.Brand)
-
-		prompts, err := s.getPromptsFromLibrary(ctx, library, count)
+		fmt.Printf("♻️  Checking existing prompt library for domain=%s, category=%s (created for: %s)\n", domain, category, library.Brand)
+		
+		prompts, err := s.getPromptsFromLibrary(ctx, library, count, brand)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to get prompts from library: %w", err)
 		}
 
-		// Increment library usage count
-		library.UsageCount++
-		_ = s.db.UpdatePromptLibrary(ctx, library)
+		// Only reuse if we got enough generic prompts (at least 70% of requested)
+		minRequired := int(float64(count) * 0.7)
+		if len(prompts) >= minRequired {
+			fmt.Printf("✅ Reusing %d generic prompts from library\n", len(prompts))
+			
+			// Increment library usage count
+			library.UsageCount++
+			_ = s.db.UpdatePromptLibrary(ctx, library)
 
-		return prompts, len(prompts), 0, nil
+			return prompts, len(prompts), 0, nil
+		} else {
+			fmt.Printf("⚠️  Library has too many brand-specific prompts (%d generic out of %d needed). Generating new prompts instead.\n", len(prompts), minRequired)
+			// Fall through to generate new prompts
+		}
 	}
 
 	// Step 4: No library exists, generate new prompts with enriched context
@@ -294,75 +303,132 @@ Choose the BROADEST category that accurately describes what this organization do
 // normalizeCategory standardizes common category variations for consistent reuse
 func normalizeCategory(cat string) string {
 	cat = strings.TrimSpace(strings.ToLower(cat))
-	
+
 	// Normalize common education variations
 	educationPatterns := map[string]string{
-		"engineering college":             "engineering college",
-		"technical university":            "engineering college",
-		"institute of technology":         "engineering college",
-		"higher education institution":    "higher education",
-		"university":                      "higher education",
-		"college":                         "higher education",
-		"business school":                 "business school",
-		"management institute":            "business school",
-		
+		"engineering college":          "engineering college",
+		"technical university":         "engineering college",
+		"institute of technology":      "engineering college",
+		"higher education institution": "higher education",
+		"university":                   "higher education",
+		"college":                      "higher education",
+		"business school":              "business school",
+		"management institute":         "business school",
+
 		// Technology variations
-		"ai tool":                         "ai tools",
-		"ai tools":                        "ai tools",
-		"ai platform":                     "ai tools",
-		"seo tool":                        "seo tools",
-		"seo tools":                       "seo tools",
-		"seo platform":                    "seo tools",
-		"crm":                             "crm software",
-		"crm software":                    "crm software",
-		"crm platform":                    "crm software",
-		
+		"ai tool":      "ai tools",
+		"ai tools":     "ai tools",
+		"ai platform":  "ai tools",
+		"seo tool":     "seo tools",
+		"seo tools":    "seo tools",
+		"seo platform": "seo tools",
+		"crm":          "crm software",
+		"crm software": "crm software",
+		"crm platform": "crm software",
+
 		// Healthcare variations
-		"hospital":                        "hospital",
-		"medical center":                  "hospital",
-		"healthcare facility":             "hospital",
-		"clinic":                          "clinic",
-		
+		"hospital":            "hospital",
+		"medical center":      "hospital",
+		"healthcare facility": "hospital",
+		"clinic":              "clinic",
+
 		// Finance variations
-		"payment gateway":                 "payment platform",
-		"payment processor":               "payment platform",
-		"payment platform":                "payment platform",
+		"payment gateway":   "payment platform",
+		"payment processor": "payment platform",
+		"payment platform":  "payment platform",
 	}
-	
+
 	// Check for exact matches first
 	if normalized, ok := educationPatterns[cat]; ok {
 		return normalized
 	}
-	
+
 	// Check for partial matches
 	for pattern, normalized := range educationPatterns {
 		if strings.Contains(cat, pattern) {
 			return normalized
 		}
 	}
-	
+
 	return cat
 }
 
-// getPromptsFromLibrary retrieves prompts from a library
-func (s *PromptGenerationService) getPromptsFromLibrary(ctx context.Context, library *models.PromptLibrary, count int) ([]models.Prompt, error) {
+// getPromptsFromLibrary retrieves prompts from a library and validates they are generic
+func (s *PromptGenerationService) getPromptsFromLibrary(ctx context.Context, library *models.PromptLibrary, count int, currentBrand string) ([]models.Prompt, error) {
 	var prompts []models.Prompt
 
-	// Get up to 'count' prompts from the library
-	limit := count
-	if limit > len(library.PromptIDs) {
-		limit = len(library.PromptIDs)
-	}
+	// Get all prompts from the library and filter out brand-specific ones
+	for _, promptID := range library.PromptIDs {
+		if len(prompts) >= count {
+			break // Got enough prompts
+		}
 
-	for i := 0; i < limit; i++ {
-		prompt, err := s.db.GetPrompt(ctx, library.PromptIDs[i])
+		prompt, err := s.db.GetPrompt(ctx, promptID)
 		if err != nil {
 			continue // Skip if prompt not found
 		}
-		prompts = append(prompts, *prompt)
+
+		// Validate that prompt is generic (doesn't mention specific brands)
+		if isGenericPrompt(prompt.Template, library.Brand, currentBrand) {
+			prompts = append(prompts, *prompt)
+		} else {
+			fmt.Printf("⚠️  Skipping brand-specific prompt: %s\n", prompt.Template)
+		}
+	}
+
+	// If we don't have enough generic prompts, return what we have
+	if len(prompts) < count {
+		fmt.Printf("⚠️  Only found %d generic prompts out of %d requested. Library needs regeneration.\n", len(prompts), count)
 	}
 
 	return prompts, nil
+}
+
+// isGenericPrompt checks if a prompt is generic (doesn't mention specific brand names)
+func isGenericPrompt(promptText, originalBrand, currentBrand string) bool {
+	lowerPrompt := strings.ToLower(promptText)
+	
+	// Check if prompt mentions the original brand that created it
+	if originalBrand != "" {
+		// Split brand name into words to check each part
+		brandWords := strings.Fields(strings.ToLower(originalBrand))
+		for _, word := range brandWords {
+			// Skip common words that might appear in generic questions
+			if len(word) <= 3 || isCommonWord(word) {
+				continue
+			}
+			if strings.Contains(lowerPrompt, word) {
+				return false // Found brand-specific mention
+			}
+		}
+	}
+	
+	// Check if prompt mentions the current brand
+	if currentBrand != "" {
+		brandWords := strings.Fields(strings.ToLower(currentBrand))
+		for _, word := range brandWords {
+			if len(word) <= 3 || isCommonWord(word) {
+				continue
+			}
+			if strings.Contains(lowerPrompt, word) {
+				return false
+			}
+		}
+	}
+	
+	return true
+}
+
+// isCommonWord checks if a word is too common to be considered brand-specific
+func isCommonWord(word string) bool {
+	commonWords := map[string]bool{
+		"the": true, "and": true, "for": true, "are": true, "with": true,
+		"from": true, "that": true, "this": true, "what": true, "which": true,
+		"best": true, "good": true, "top": true, "how": true, "can": true,
+		"college": true, "university": true, "institute": true, "school": true,
+		"engineering": true, "technology": true, "software": true, "platform": true,
+	}
+	return commonWords[word]
 }
 
 // generateNewPrompts generates new prompts using an LLM
@@ -425,23 +491,29 @@ func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand,
 
 %s%s
 
-REQUIREMENTS:
-1. Questions should be diverse and natural (how people actually search)
-2. Mix different query types: comparisons, recommendations, how-to, best practices, reviews
-3. Questions should be likely to generate responses mentioning brands in this space
-4. Avoid duplicating existing prompts
-5. Each question should be on a new line
-6. DO NOT include numbers, bullets, or any formatting - just the questions
+CRITICAL REQUIREMENTS:
+1. Questions MUST BE GENERIC - DO NOT mention the specific brand name "%s"
+2. Questions should apply to ANY brand in this category (e.g., "engineering college" not "MIT")
+3. Questions should be diverse and natural (how people actually search)
+4. Mix different query types: comparisons, recommendations, how-to, best practices, reviews
+5. Questions should be likely to generate responses mentioning brands in this space
+6. Avoid duplicating existing prompts
+7. Each question should be on a new line
+8. DO NOT include numbers, bullets, or any formatting - just the questions
 
-Examples of good formats:
-- "What are the best tools for..."
-- "How do I choose between..."
-- "Which platform is better for..."
-- "Can you recommend..."
-- "What's the difference between..."
-- "How does X compare to Y..."
+Examples of GOOD (generic) questions:
+- "What are the best engineering colleges in India?"
+- "How to choose a good engineering college?"
+- "Which engineering college has the best placement record?"
+- "What are the admission requirements for engineering colleges?"
+- "How do top engineering colleges compare in terms of faculty?"
 
-Generate exactly %d questions, one per line:`, count, brandInfo, existingText, count)
+Examples of BAD (too specific) questions:
+- "What are the facilities at MIT?" ❌ (mentions specific brand)
+- "How is the campus life at Stanford?" ❌ (mentions specific brand)
+- "What courses does Harvard offer?" ❌ (mentions specific brand)
+
+Generate exactly %d GENERIC questions that apply to the entire category, one per line:`, count, brandInfo, existingText, brand, count)
 
 	response, err := provider.Generate(ctx, generationPrompt, llm.Config{
 		Model:       "",

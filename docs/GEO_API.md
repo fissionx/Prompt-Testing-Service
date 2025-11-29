@@ -447,6 +447,22 @@ curl -X GET http://localhost:8080/api/v1/geo/profiles/FissionX.ai
 
 ## Prompt Library System
 
+### Important: Generic Prompts Only
+
+**Critical Requirement:** All prompts in the library must be **GENERIC** and applicable to any brand in the category.
+
+❌ **Bad (Brand-Specific):**
+- "What are the scholarship opportunities at Thiagarajar College of Engineering?"
+- "How is the placement record at MIT?"
+- "What courses does Stanford offer?"
+
+✅ **Good (Generic):**
+- "What are the scholarship opportunities for engineering students?"
+- "How to evaluate placement records when choosing an engineering college?"
+- "What are the most popular courses in engineering colleges?"
+
+**Why?** Generic prompts can be safely reused across all brands in the same category.
+
 ### How It Works
 
 The prompt library system automatically organizes and reuses prompts to optimize costs and maintain consistency:
@@ -742,4 +758,131 @@ curl POST /api/v1/geo/prompts/generate \
 ```
 
 If categories don't match in logs, provide category manually!
+
+
+---
+
+## Prompt Validation & Quality Control
+
+### The Problem: Brand-Specific Prompts
+
+If prompts contain specific brand names, they cannot be reused:
+
+**Example of the Bug:**
+```
+1. TCE generates prompts → "What scholarships does Thiagarajar College offer?"
+2. SRM tries to reuse → Gets TCE's prompt ❌ (mentions wrong brand!)
+```
+
+This is a **critical bug** that we've fixed.
+
+### The Solution: Multi-Layer Validation
+
+#### 1. Generation-Time Prevention
+
+When generating prompts, AI is explicitly instructed:
+- ✅ Generate GENERIC questions only
+- ❌ DO NOT mention the specific brand name
+- ✅ Make questions applicable to entire category
+
+**AI Prompt Example:**
+```
+Generate questions for "engineering college" category.
+CRITICAL: Do NOT mention "Thiagarajar College of Engineering"
+Make questions generic like:
+- "What are the best engineering colleges?" ✅
+- "What does Thiagarajar College offer?" ❌
+```
+
+#### 2. Reuse-Time Validation
+
+Before reusing prompts from library, system validates each prompt:
+```go
+1. Check if prompt contains original brand name
+2. Check if prompt contains current brand name  
+3. Filter out any brand-specific prompts
+4. Only reuse truly generic prompts
+```
+
+**Example Validation:**
+```
+Library created by: "Thiagarajar College of Engineering"
+Current request from: "SRM University"
+
+Prompt 1: "What are scholarship opportunities for engineering students?"
+→ ✅ Generic (no brand names) → REUSE
+
+Prompt 2: "What scholarships does Thiagarajar College offer?"
+→ ❌ Contains "Thiagarajar" → SKIP
+
+Prompt 3: "How is campus life at TCE?"
+→ ❌ Contains original brand → SKIP
+```
+
+#### 3. Quality Threshold
+
+System only reuses library if:
+- At least **70%** of prompts are generic
+- If too many brand-specific prompts → Regenerate entire library
+
+**Logs:**
+```
+✅ Reusing 8 generic prompts from library (out of 10)
+⚠️  Skipping brand-specific prompt: "What are facilities at TCE?"
+✅ Library quality acceptable, reusing prompts
+
+(OR)
+
+⚠️  Library has too many brand-specific prompts (3 generic out of 7 needed)
+📚 Generating new generic prompts instead
+```
+
+### Common Words Ignored
+
+System ignores common words when checking for brand mentions:
+- "college", "university", "institute", "engineering"
+- "the", "and", "for", "best", "top", "good"
+
+**Why?** These appear in generic questions too:
+- "What are the best engineering colleges?" ✅ (contains "engineering" but it's generic)
+- "Which college has best placement?" ✅ (contains "college" but it's generic)
+
+### Manual Verification
+
+You can verify prompt quality by listing the library:
+
+```bash
+curl -X GET http://localhost:8080/api/v1/geo/libraries
+```
+
+Check the `prompt_ids` and verify they're generic.
+
+### Regenerating Bad Libraries
+
+If you find a library has brand-specific prompts:
+1. System automatically detects it during reuse
+2. Skips brand-specific prompts
+3. If <70% generic → Generates new library
+4. New library created with 100% generic prompts
+
+**No manual intervention needed!** 🎉
+
+### Best Practice
+
+When generating prompts, verify they're generic:
+```bash
+# Generate prompts
+curl POST /api/v1/geo/prompts/generate -d '{"brand": "XYZ College", ...}'
+
+# Check response
+{
+  "prompts": [
+    {"template": "What are best engineering colleges?"}, ✅
+    {"template": "How to choose engineering college?"}, ✅
+    {"template": "What courses does XYZ offer?"} ❌ BAD!
+  ]
+}
+```
+
+If you see brand names in prompts → Report as bug!
 
