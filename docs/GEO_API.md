@@ -624,3 +624,122 @@ If website scraping fails:
 
 **Recommendation:** Always provide website URL for best results! 🚀
 
+
+---
+
+## Category Consistency & Normalization
+
+### The Challenge
+
+When using AI to derive categories, slight variations can prevent prompt reuse:
+
+**Problem Example:**
+- IITM → AI derives "higher education institution"
+- IITB → AI derives "technical university"
+- ❌ Different categories = separate libraries (no reuse!)
+
+### The Solution
+
+The system now uses **two-layer consistency**:
+
+#### 1. Better AI Prompting
+The AI is now instructed to use **BROAD, GENERIC** categories:
+- ✅ "engineering college" (GOOD - broad)
+- ❌ "premier technical university in south asia" (BAD - too specific)
+
+#### 2. Automatic Normalization
+After AI derivation, categories are normalized to standard forms:
+
+```
+Input Category              → Normalized Category
+--------------------------- → ---------------------
+"technical university"      → "engineering college"
+"institute of technology"   → "engineering college"
+"higher education institution" → "higher education"
+"ai tool"                   → "ai tools"
+"ai platform"               → "ai tools"
+"seo tool"                  → "seo tools"
+"payment gateway"           → "payment platform"
+"crm"                       → "crm software"
+"medical center"            → "hospital"
+```
+
+### Best Practice: Provide Category Manually
+
+For maximum consistency, **provide the category manually**:
+
+```bash
+# Option 1: Let AI derive (may vary)
+curl POST /api/v1/geo/prompts/generate \
+  -d '{
+    "brand": "IITM",
+    "website": "https://iitm.ac.in/",
+    "count": 10
+  }'
+# AI might derive: "higher education institution" or "technical university"
+
+# Option 2: Specify category (guaranteed consistency) ✅
+curl POST /api/v1/geo/prompts/generate \
+  -d '{
+    "brand": "IITM",
+    "website": "https://iitm.ac.in/",
+    "domain": "education",
+    "category": "engineering college",
+    "count": 10
+  }'
+# Category is exactly "engineering college" - guaranteed reuse!
+```
+
+### Common Standardized Categories
+
+| Domain | Standardized Categories |
+|--------|------------------------|
+| **Education** | `engineering college`, `business school`, `higher education` |
+| **Technology** | `ai tools`, `seo tools`, `crm software`, `cloud storage` |
+| **Healthcare** | `hospital`, `clinic`, `telemedicine` |
+| **Finance** | `payment platform`, `banking`, `insurance` |
+| **Retail** | `ecommerce`, `marketplace` |
+
+### Ensuring Reuse for Similar Brands
+
+#### Method 1: Manual Category (Recommended)
+```bash
+# First IIT
+curl POST /api/v1/geo/prompts/generate \
+  -d '{"brand": "IITM", "category": "engineering college", "domain": "education", "count": 10}'
+# Creates library: domain=education, category=engineering college
+
+# Second IIT
+curl POST /api/v1/geo/prompts/generate \
+  -d '{"brand": "IITB", "category": "engineering college", "domain": "education", "count": 10}'
+# Reuses! Same domain + category ✅
+```
+
+#### Method 2: Let AI Derive + Trust Normalization
+```bash
+# First IIT
+curl POST /api/v1/geo/prompts/generate \
+  -d '{"brand": "IITM", "website": "https://iitm.ac.in/", "count": 10}'
+# AI derives: "technical university" → normalized to "engineering college"
+
+# Second IIT
+curl POST /api/v1/geo/prompts/generate \
+  -d '{"brand": "IITB", "website": "https://iitb.ac.in/", "count": 10}'
+# AI derives: "higher education institution" → normalized to "engineering college"
+# Reuses! Both normalized to same category ✅
+```
+
+### Logs to Watch For
+
+```
+🤖 AI derived metadata for 'IITM': domain=education, category=engineering college
+📚 Creating new prompt library: domain=education, category=engineering college
+
+(Later...)
+
+🤖 AI derived metadata for 'IITB': domain=education, category=engineering college
+♻️  Reusing existing prompt library for domain=education, category=engineering college (created for: IITM)
+```
+
+If categories don't match in logs, provide category manually!
+

@@ -80,7 +80,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	// If library exists, return those prompts
 	if library != nil && len(library.PromptIDs) > 0 {
 		fmt.Printf("♻️  Reusing existing prompt library for domain=%s, category=%s (created for: %s)\n", domain, category, library.Brand)
-		
+
 		prompts, err := s.getPromptsFromLibrary(ctx, library, count)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to get prompts from library: %w", err)
@@ -235,17 +235,30 @@ func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand
 
 	brandContext := strings.Join(contextParts, "\n")
 
-	derivationPrompt := fmt.Sprintf(`Analyze this brand based on the provided information and determine its industry domain and specific category.
+	derivationPrompt := fmt.Sprintf(`Analyze this brand based on the provided information and determine its industry domain and BROAD category.
+
+IMPORTANT: Use BROAD, GENERIC categories that apply to many similar organizations. DO NOT be too specific.
 
 %s
 
 Respond in EXACTLY this format (one line for domain, one for category):
-Domain: <industry domain like "technology", "healthcare", "finance", "retail", etc>
-Category: <specific category like "AI SEO Tools", "CRM Software", "Cloud Storage", etc>
+Domain: <industry domain like "technology", "healthcare", "finance", "retail", "education", etc>
+Category: <BROAD category that would apply to similar organizations>
 
-Example:
-Domain: technology
-Category: AI SEO Tools`, brandContext)
+Examples of GOOD (broad) categories:
+- Domain: technology, Category: ai tools
+- Domain: technology, Category: crm software
+- Domain: education, Category: engineering college
+- Domain: education, Category: business school
+- Domain: healthcare, Category: hospital
+- Domain: finance, Category: payment platform
+
+Examples of BAD (too specific) categories:
+- "premier higher education institution" ❌ (too specific, use "engineering college")
+- "technical university in south asia" ❌ (too specific, use "engineering college")
+- "AI-powered content optimization platform" ❌ (too specific, use "ai tools")
+
+Choose the BROADEST category that accurately describes what this organization does.`, brandContext)
 
 	response, err := provider.Generate(ctx, derivationPrompt, llm.Config{
 		Temperature: 0.3, // Low temperature for consistent categorization
@@ -269,9 +282,66 @@ Category: AI SEO Tools`, brandContext)
 		}
 	}
 
+	// Normalize categories for consistency
+	domain = normalizeCategory(domain)
+	category = normalizeCategory(category)
+
 	fmt.Printf("🤖 AI derived metadata for '%s': domain=%s, category=%s\n", brand, domain, category)
 
 	return domain, category, nil
+}
+
+// normalizeCategory standardizes common category variations for consistent reuse
+func normalizeCategory(cat string) string {
+	cat = strings.TrimSpace(strings.ToLower(cat))
+	
+	// Normalize common education variations
+	educationPatterns := map[string]string{
+		"engineering college":             "engineering college",
+		"technical university":            "engineering college",
+		"institute of technology":         "engineering college",
+		"higher education institution":    "higher education",
+		"university":                      "higher education",
+		"college":                         "higher education",
+		"business school":                 "business school",
+		"management institute":            "business school",
+		
+		// Technology variations
+		"ai tool":                         "ai tools",
+		"ai tools":                        "ai tools",
+		"ai platform":                     "ai tools",
+		"seo tool":                        "seo tools",
+		"seo tools":                       "seo tools",
+		"seo platform":                    "seo tools",
+		"crm":                             "crm software",
+		"crm software":                    "crm software",
+		"crm platform":                    "crm software",
+		
+		// Healthcare variations
+		"hospital":                        "hospital",
+		"medical center":                  "hospital",
+		"healthcare facility":             "hospital",
+		"clinic":                          "clinic",
+		
+		// Finance variations
+		"payment gateway":                 "payment platform",
+		"payment processor":               "payment platform",
+		"payment platform":                "payment platform",
+	}
+	
+	// Check for exact matches first
+	if normalized, ok := educationPatterns[cat]; ok {
+		return normalized
+	}
+	
+	// Check for partial matches
+	for pattern, normalized := range educationPatterns {
+		if strings.Contains(cat, pattern) {
+			return normalized
+		}
+	}
+	
+	return cat
 }
 
 // getPromptsFromLibrary retrieves prompts from a library

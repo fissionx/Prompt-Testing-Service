@@ -114,7 +114,6 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 	var groundingSources []string
 	if len(result.Candidates) > 0 && result.Candidates[0].GroundingMetadata != nil {
 		metadata := result.Candidates[0].GroundingMetadata
-		log.Printf("========== GROUNDING METADATA FOUND ==========")
 
 		if metadata.WebSearchQueries != nil && len(metadata.WebSearchQueries) > 0 {
 			log.Printf("Web Search Queries: %v", metadata.WebSearchQueries)
