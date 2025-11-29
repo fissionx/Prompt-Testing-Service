@@ -29,10 +29,11 @@ func (s *Server) generatePrompts(c *gin.Context) {
 	// Create prompt generation service
 	promptGenService := services.NewPromptGenerationService(s.db, s.llmRegistry)
 
-	// Generate prompts
+	// Generate prompts with optional website scraping
 	prompts, existingCount, generatedCount, err := promptGenService.GeneratePromptsForBrand(
 		c.Request.Context(),
 		req.Brand,
+		req.Website,
 		req.Category,
 		req.Domain,
 		req.Description,

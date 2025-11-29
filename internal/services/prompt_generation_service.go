@@ -17,6 +17,7 @@ import (
 type PromptGenerationService struct {
 	db          db.Database
 	llmRegistry *llm.Registry
+	scraper     *WebScraperService
 }
 
 // NewPromptGenerationService creates a new prompt generation service
@@ -24,11 +25,12 @@ func NewPromptGenerationService(database db.Database, registry *llm.Registry) *P
 	return &PromptGenerationService{
 		db:          database,
 		llmRegistry: registry,
+		scraper:     NewWebScraperService(),
 	}
 }
 
 // GeneratePromptsForBrand generates prompts for a brand, reusing existing ones where possible
-func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, category, domain, description string, count int) ([]models.Prompt, int, int, error) {
+func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, website, category, domain, description string, count int) ([]models.Prompt, int, int, error) {
 	if count <= 0 {
 		count = 20
 	}
@@ -36,8 +38,24 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		count = 100
 	}
 
-	// Step 1: Get or derive brand profile (determines domain/category if not provided)
-	brandProfile, err := s.getOrCreateBrandProfile(ctx, brand, category, domain, description)
+	// Step 1: Scrape website if provided to enrich context
+	var websiteContent *WebsiteContent
+	if website != "" {
+		content, err := s.scraper.ScrapeWebsite(ctx, website)
+		if err != nil {
+			// Log but don't fail - continue with other info
+			fmt.Printf("Warning: failed to scrape website %s: %v\n", website, err)
+		} else {
+			websiteContent = content
+			// If description not provided, use scraped description
+			if description == "" && content.Description != "" {
+				description = content.Description
+			}
+		}
+	}
+
+	// Step 2: Get or derive brand profile (determines domain/category if not provided)
+	brandProfile, err := s.getOrCreateBrandProfile(ctx, brand, website, category, domain, description, websiteContent)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to get brand profile: %w", err)
 	}
@@ -50,7 +68,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		category = brandProfile.Category
 	}
 
-	// Step 2: Check if prompt library exists for this brand/domain/category
+	// Step 3: Check if prompt library exists for this brand/domain/category
 	library, err := s.db.GetPromptLibrary(ctx, brand, domain, category)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to check prompt library: %w", err)
@@ -70,8 +88,8 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		return prompts, len(prompts), 0, nil
 	}
 
-	// Step 3: No library exists, generate new prompts
-	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, count, nil)
+	// Step 4: No library exists, generate new prompts with enriched context
+	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, count, nil)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to generate prompts: %w", err)
 	}
@@ -106,7 +124,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 }
 
 // getOrCreateBrandProfile gets existing profile or derives one using LLM
-func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, brand, category, domain, description string) (*models.BrandProfile, error) {
+func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, brand, website, category, domain, description string, websiteContent *WebsiteContent) (*models.BrandProfile, error) {
 	// Check if profile already exists
 	profile, err := s.db.GetBrandProfile(ctx, brand)
 	if err != nil {
@@ -114,6 +132,11 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 	}
 
 	if profile != nil {
+		// Update website if provided and not set
+		if website != "" && profile.Website == "" {
+			profile.Website = website
+			_ = s.db.UpdateBrandProfile(ctx, profile)
+		}
 		return profile, nil
 	}
 
@@ -123,6 +146,7 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 		profile = &models.BrandProfile{
 			ID:          uuid.New().String(),
 			BrandName:   brand,
+			Website:     website,
 			Domain:      domain,
 			Category:    category,
 			Description: description,
@@ -135,8 +159,8 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 		return profile, nil
 	}
 
-	// Otherwise, derive domain/category using LLM
-	derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description)
+	// Otherwise, derive domain/category using LLM with enriched context
+	derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description, websiteContent)
 	if err != nil {
 		// Fallback to defaults if derivation fails
 		derivedDomain = "general"
@@ -146,6 +170,7 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 	profile = &models.BrandProfile{
 		ID:          uuid.New().String(),
 		BrandName:   brand,
+		Website:     website,
 		Domain:      derivedDomain,
 		Category:    derivedCategory,
 		Description: description,
@@ -159,7 +184,7 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 }
 
 // deriveBrandMetadata uses LLM to derive domain and category for a brand
-func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand, description string) (string, string, error) {
+func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand, description string, websiteContent *WebsiteContent) (string, string, error) {
 	// Get an LLM for metadata derivation
 	provider, ok := s.llmRegistry.Get("google")
 	if !ok {
@@ -170,14 +195,40 @@ func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand
 		provider, _ = s.llmRegistry.Get(providers[0])
 	}
 
-	descText := ""
+	// Build rich context from available sources
+	var contextParts []string
+	contextParts = append(contextParts, fmt.Sprintf("Brand: %s", brand))
+
 	if description != "" {
-		descText = fmt.Sprintf("\nDescription: %s", description)
+		contextParts = append(contextParts, fmt.Sprintf("Description: %s", description))
 	}
 
-	derivationPrompt := fmt.Sprintf(`Analyze this brand and provide its domain/industry and specific category.
+	// Add scraped website content for much richer context
+	if websiteContent != nil {
+		if websiteContent.Title != "" {
+			contextParts = append(contextParts, fmt.Sprintf("Website Title: %s", websiteContent.Title))
+		}
+		if websiteContent.Description != "" {
+			contextParts = append(contextParts, fmt.Sprintf("Website Meta: %s", websiteContent.Description))
+		}
+		if len(websiteContent.Keywords) > 0 {
+			contextParts = append(contextParts, fmt.Sprintf("Keywords: %s", strings.Join(websiteContent.Keywords, ", ")))
+		}
+		if websiteContent.MainContent != "" {
+			// Limit content length
+			content := websiteContent.MainContent
+			if len(content) > 800 {
+				content = content[:800] + "..."
+			}
+			contextParts = append(contextParts, fmt.Sprintf("Website Content: %s", content))
+		}
+	}
 
-Brand: %s%s
+	brandContext := strings.Join(contextParts, "\n")
+
+	derivationPrompt := fmt.Sprintf(`Analyze this brand based on the provided information and determine its industry domain and specific category.
+
+%s
 
 Respond in EXACTLY this format (one line for domain, one for category):
 Domain: <industry domain like "technology", "healthcare", "finance", "retail", etc>
@@ -185,7 +236,7 @@ Category: <specific category like "AI SEO Tools", "CRM Software", "Cloud Storage
 
 Example:
 Domain: technology
-Category: AI SEO Tools`, brand, descText)
+Category: AI SEO Tools`, brandContext)
 
 	response, err := provider.Generate(ctx, derivationPrompt, llm.Config{
 		Temperature: 0.3, // Low temperature for consistent categorization
@@ -234,7 +285,7 @@ func (s *PromptGenerationService) getPromptsFromLibrary(ctx context.Context, lib
 }
 
 // generateNewPrompts generates new prompts using an LLM
-func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, count int, existingPrompts []models.Prompt) ([]string, error) {
+func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, websiteContent *WebsiteContent, count int, existingPrompts []models.Prompt) ([]string, error) {
 	// Get a capable LLM for generation (prefer Google for latest info)
 	provider, ok := s.llmRegistry.Get("google")
 	if !ok {
@@ -256,6 +307,7 @@ func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand,
 		existingText = fmt.Sprintf("\n\nEXISTING PROMPTS (avoid duplication):\n%s", strings.Join(templates, "\n"))
 	}
 
+	// Build rich brand context
 	brandInfo := fmt.Sprintf("Brand: %s", brand)
 	if category != "" {
 		brandInfo += fmt.Sprintf("\nCategory: %s", category)
@@ -265,6 +317,27 @@ func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand,
 	}
 	if description != "" {
 		brandInfo += fmt.Sprintf("\nDescription: %s", description)
+	}
+
+	// Add scraped website content for hyper-realistic prompts
+	if websiteContent != nil {
+		brandInfo += "\n\n=== WEBSITE CONTENT (use this to understand what they actually do) ==="
+		if websiteContent.Title != "" {
+			brandInfo += fmt.Sprintf("\nWebsite: %s", websiteContent.Title)
+		}
+		if websiteContent.Description != "" {
+			brandInfo += fmt.Sprintf("\nTagline: %s", websiteContent.Description)
+		}
+		if len(websiteContent.Keywords) > 0 {
+			brandInfo += fmt.Sprintf("\nKeywords: %s", strings.Join(websiteContent.Keywords, ", "))
+		}
+		if websiteContent.MainContent != "" {
+			content := websiteContent.MainContent
+			if len(content) > 1000 {
+				content = content[:1000] + "..."
+			}
+			brandInfo += fmt.Sprintf("\nMain Content: %s", content)
+		}
 	}
 
 	generationPrompt := fmt.Sprintf(`Generate %d unique, natural questions that people would ask when searching for products/services in this space.

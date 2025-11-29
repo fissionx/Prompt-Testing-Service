@@ -200,10 +200,11 @@ type GEOAnalysis struct {
 // GeneratePromptsRequest represents the request to generate prompts for a brand
 type GeneratePromptsRequest struct {
 	Brand       string `json:"brand" binding:"required"`
+	Website     string `json:"website,omitempty"`     // Website URL for content scraping
 	Category    string `json:"category,omitempty"`
 	Domain      string `json:"domain,omitempty"`
-	Description string `json:"description,omitempty"`
-	Count       int    `json:"count,omitempty"` // Number of prompts to generate (default: 20)
+	Description string `json:"description,omitempty"` // Optional if website provided
+	Count       int    `json:"count,omitempty"`       // Number of prompts to generate (default: 20)
 }
 
 // GeneratePromptsResponse represents the response with generated prompts

@@ -46,11 +46,32 @@ curl -X POST http://localhost:8080/api/v1/llms \
 ### 1. Generate AI-Powered Prompts
 
 Generate natural search queries tailored to your brand and industry. The system:
+- **Scrapes your website** for real content understanding
 - Generates 10-50 unique questions using AI
 - Reuses existing prompts from the same category/domain
 - Stores all prompts for future reuse
 
 **Endpoint:** `POST /api/v1/geo/prompts/generate`
+
+#### Option A: With Website Scraping (Recommended for Best Results)
+
+```bash
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brand": "FissionX.ai",
+    "website": "https://fissionx.ai",
+    "count": 30
+  }'
+```
+
+**Benefits:**
+- 🎯 System scrapes your website to understand what you actually do
+- 🤖 AI uses real content to generate hyper-realistic prompts
+- 📊 Auto-derives domain/category from your website
+- ⚡ No need to manually write descriptions
+
+#### Option B: Manual Context (Traditional Way)
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
@@ -472,4 +493,99 @@ curl -X GET http://localhost:8080/api/v1/geo/libraries
 # Check brand profiles
 curl -X GET http://localhost:8080/api/v1/geo/profiles
 ```
+
+
+---
+
+## Website Scraping for Context-Aware Prompts
+
+### How It Works
+
+When you provide a website URL, the system:
+1. **Scrapes the homepage** to extract:
+   - Page title
+   - Meta description
+   - Keywords
+   - Main content (headings, paragraphs)
+2. **Analyzes the content** using AI to understand:
+   - What the brand actually does
+   - Industry domain
+   - Specific category
+   - Key features and benefits
+3. **Generates prompts** that are:
+   - Hyper-realistic (based on real content)
+   - Contextually relevant
+   - More likely to trigger brand mentions
+
+### What Gets Scraped
+
+```
+✅ Homepage title
+✅ Meta description & keywords
+✅ H1, H2, H3 headings
+✅ Paragraph content
+✅ First ~2000 characters of main content
+
+❌ Images, videos
+❌ Scripts, styles
+❌ Navigation, footer content
+```
+
+### Example: Compare Results
+
+#### Without Website Scraping (Generic)
+```bash
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -d '{"brand": "Acme Software", "description": "Project management tool", "count": 5}'
+```
+
+Generated prompts might be:
+- "What are the best project management tools?"
+- "How to choose a project management software?"
+- "Top project management platforms for teams"
+
+#### With Website Scraping (Specific)
+```bash
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -d '{"brand": "Acme Software", "website": "https://acme.com", "count": 5}'
+```
+
+If website mentions "Agile teams", "sprint planning", "Kanban boards":
+- "What are the best Agile project management tools?"
+- "How to manage sprint planning for remote teams?"
+- "Which project management software has the best Kanban boards?"
+- "Agile workflow tools for software development teams"
+- "Project management with built-in sprint tracking"
+
+**See the difference?** Scraped prompts are hyper-specific to what you actually offer! 🎯
+
+### Privacy & Ethics
+
+- ✅ Only scrapes **public content** from your provided URL
+- ✅ Respects HTTP status codes (404, 403, etc.)
+- ✅ 15-second timeout to avoid hanging
+- ✅ Follows up to 5 redirects
+- ✅ Identifies as "GeoBot" in User-Agent
+- ❌ Does NOT bypass paywalls or authentication
+- ❌ Does NOT crawl multiple pages
+- ❌ Does NOT store scraped HTML (only extracted text)
+
+### Error Handling
+
+If website scraping fails:
+- System logs warning but continues
+- Falls back to manual description (if provided)
+- Falls back to brand name only (if no description)
+- You still get prompts generated!
+
+### Best Practices
+
+| Scenario | Website URL | Description | Result |
+|----------|-------------|-------------|--------|
+| **Best** | ✅ Provided | Optional | Hyper-specific prompts from real content |
+| **Good** | ✅ Provided | ✅ Provided | Combines both sources |
+| **OK** | ❌ Not provided | ✅ Provided | Generic prompts from description |
+| **Minimal** | ❌ Not provided | ❌ Not provided | Basic prompts from brand name only |
+
+**Recommendation:** Always provide website URL for best results! 🚀
 
