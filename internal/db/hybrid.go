@@ -214,3 +214,37 @@ func (h *HybridDB) GetSQLiteDatabase() *sqlite.SQLite {
 	}
 	return nil
 }
+
+// Prompt Library operations - Use NoSQL
+func (h *HybridDB) CreatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error {
+	return h.nosqlDB.CreatePromptLibrary(ctx, library)
+}
+
+func (h *HybridDB) GetPromptLibrary(ctx context.Context, brand, domain, category string) (*models.PromptLibrary, error) {
+	return h.nosqlDB.GetPromptLibrary(ctx, brand, domain, category)
+}
+
+func (h *HybridDB) UpdatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error {
+	return h.nosqlDB.UpdatePromptLibrary(ctx, library)
+}
+
+func (h *HybridDB) ListPromptLibraries(ctx context.Context) ([]*models.PromptLibrary, error) {
+	return h.nosqlDB.ListPromptLibraries(ctx)
+}
+
+// Brand Profile operations - Use NoSQL
+func (h *HybridDB) CreateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
+	return h.nosqlDB.CreateBrandProfile(ctx, profile)
+}
+
+func (h *HybridDB) GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error) {
+	return h.nosqlDB.GetBrandProfile(ctx, brandName)
+}
+
+func (h *HybridDB) UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
+	return h.nosqlDB.UpdateBrandProfile(ctx, profile)
+}
+
+func (h *HybridDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error) {
+	return h.nosqlDB.ListBrandProfiles(ctx)
+}

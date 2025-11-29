@@ -96,16 +96,29 @@ type Brand struct {
 	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
 }
 
-// PromptCategory represents a category of prompts with reusable templates
-type PromptCategory struct {
-	ID              string    `json:"id" bson:"_id"`
-	Name            string    `json:"name" bson:"name"`                         // e.g., "AI SEO Tools"
-	Domain          string    `json:"domain" bson:"domain"`                     // e.g., "technology"
-	Description     string    `json:"description,omitempty" bson:"description,omitempty"`
-	PromptTemplates []string  `json:"prompt_templates" bson:"prompt_templates"` // Reusable prompt patterns
-	UsageCount      int       `json:"usage_count" bson:"usage_count"`           // How many times used
-	CreatedAt       time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" bson:"updated_at"`
+// PromptLibrary represents a collection of reusable prompts organized by brand, domain, and category
+type PromptLibrary struct {
+	ID          string    `json:"id" bson:"_id"`
+	Brand       string    `json:"brand" bson:"brand"`             // Brand name (can be generic for reuse)
+	Domain      string    `json:"domain" bson:"domain"`           // e.g., "technology", "healthcare"
+	Category    string    `json:"category" bson:"category"`       // e.g., "AI SEO Tools", "CRM Software"
+	PromptIDs   []string  `json:"prompt_ids" bson:"prompt_ids"`   // References to Prompt documents
+	UsageCount  int       `json:"usage_count" bson:"usage_count"` // How many times this library was used
+	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
+}
+
+// BrandProfile represents metadata about a brand for better categorization
+type BrandProfile struct {
+	ID          string    `json:"id" bson:"_id"`
+	BrandName   string    `json:"brand_name" bson:"brand_name"`
+	Domain      string    `json:"domain" bson:"domain"`           // Derived domain/industry
+	Category    string    `json:"category" bson:"category"`       // Derived category
+	Website     string    `json:"website,omitempty" bson:"website,omitempty"`
+	Description string    `json:"description,omitempty" bson:"description,omitempty"`
+	Competitors []string  `json:"competitors,omitempty" bson:"competitors,omitempty"`
+	CreatedAt   time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 // GEOCampaign represents a GEO analysis campaign for a brand

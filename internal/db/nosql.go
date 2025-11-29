@@ -37,4 +37,16 @@ type NoSQLDatabase interface {
 	// Statistics operations
 	GetPromptStats(ctx context.Context, promptID string) (*models.PromptStats, error)
 	GetLLMStats(ctx context.Context, llmID string) (*models.LLMStats, error)
+
+	// Prompt Library operations (for organized prompt reuse)
+	CreatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error
+	GetPromptLibrary(ctx context.Context, brand, domain, category string) (*models.PromptLibrary, error)
+	UpdatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error
+	ListPromptLibraries(ctx context.Context) ([]*models.PromptLibrary, error)
+
+	// Brand Profile operations (for metadata and categorization)
+	CreateBrandProfile(ctx context.Context, profile *models.BrandProfile) error
+	GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error)
+	UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error
+	ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error)
 }

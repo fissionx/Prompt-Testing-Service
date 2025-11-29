@@ -156,3 +156,59 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 		Message: "GEO insights retrieved successfully",
 	})
 }
+
+// listPromptLibraries handles GET /api/v1/geo/libraries
+func (s *Server) listPromptLibraries(c *gin.Context) {
+	libraries, err := s.db.ListPromptLibraries(c.Request.Context())
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to list libraries: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    libraries,
+		Message: "Prompt libraries retrieved successfully",
+	})
+}
+
+// listBrandProfiles handles GET /api/v1/geo/profiles
+func (s *Server) listBrandProfiles(c *gin.Context) {
+	profiles, err := s.db.ListBrandProfiles(c.Request.Context())
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to list profiles: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    profiles,
+		Message: "Brand profiles retrieved successfully",
+	})
+}
+
+// getBrandProfile handles GET /api/v1/geo/profiles/:brand
+func (s *Server) getBrandProfile(c *gin.Context) {
+	brandName := c.Param("brand")
+	if brandName == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand name is required")
+		return
+	}
+
+	profile, err := s.db.GetBrandProfile(c.Request.Context(), brandName)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get profile: "+err.Error())
+		return
+	}
+
+	if profile == nil {
+		s.errorResponse(c, http.StatusNotFound, "Brand profile not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    profile,
+		Message: "Brand profile retrieved successfully",
+	})
+}

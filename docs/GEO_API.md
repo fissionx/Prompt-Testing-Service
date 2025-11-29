@@ -330,3 +330,146 @@ When your brand is mentioned, the sentiment can be:
 
 For more information, see the main [README.md](../README.md) and [EXAMPLES.md](./EXAMPLES.md).
 
+
+---
+
+## Library Management API
+
+### List All Prompt Libraries
+
+Get all prompt libraries organized by brand, domain, and category.
+
+**Endpoint:** `GET /api/v1/geo/libraries`
+
+```bash
+curl -X GET http://localhost:8080/api/v1/geo/libraries
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "lib-1",
+      "brand": "FissionX.ai",
+      "domain": "technology",
+      "category": "AI SEO Tools",
+      "prompt_ids": ["prompt-1", "prompt-2", "prompt-3"],
+      "usage_count": 5,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-02T00:00:00Z"
+    }
+  ]
+}
+```
+
+### List All Brand Profiles
+
+Get all brand profiles with their derived metadata.
+
+**Endpoint:** `GET /api/v1/geo/profiles`
+
+```bash
+curl -X GET http://localhost:8080/api/v1/geo/profiles
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "profile-1",
+      "brand_name": "FissionX.ai",
+      "domain": "technology",
+      "category": "AI SEO Tools",
+      "website": "https://fissionx.ai",
+      "description": "AI-powered SEO platform",
+      "competitors": ["Competitor A", "Competitor B"],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Get Specific Brand Profile
+
+Get detailed profile for a specific brand.
+
+**Endpoint:** `GET /api/v1/geo/profiles/:brand`
+
+```bash
+curl -X GET http://localhost:8080/api/v1/geo/profiles/FissionX.ai
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "profile-1",
+    "brand_name": "FissionX.ai",
+    "domain": "technology",
+    "category": "AI SEO Tools",
+    "website": "https://fissionx.ai",
+    "description": "AI-powered SEO platform",
+    "competitors": ["Competitor A", "Competitor B"],
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+---
+
+## Prompt Library System
+
+### How It Works
+
+The prompt library system automatically organizes and reuses prompts to optimize costs and maintain consistency:
+
+1. **First-time brand**: When you generate prompts for a new brand/domain/category combination, the system:
+   - Derives domain and category using AI (if not provided)
+   - Creates a brand profile
+   - Generates new prompts using AI
+   - Stores prompts in a library linked to brand/domain/category
+
+2. **Returning brand**: When you request prompts for an existing brand/domain/category:
+   - System checks if a library exists
+   - Returns existing prompts instantly (no AI call needed)
+   - Increments library usage count
+
+3. **Smart categorization**: 
+   - Domain: Industry (e.g., "technology", "healthcare", "finance")
+   - Category: Specific niche (e.g., "AI SEO Tools", "CRM Software")
+   - Brands in the same category share prompts
+
+### Benefits
+
+- **Cost Savings**: Reuse prompts instead of regenerating
+- **Consistency**: Same prompts across time for fair comparison
+- **Speed**: Instant prompt retrieval for existing categories
+- **Organization**: Clear structure by domain and category
+
+### Example Workflow
+
+```bash
+# First time - generates and stores prompts
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -d '{"brand": "BrandA", "category": "CRM Software", "count": 30}'
+# Response: generated_prompts: 30, existing_prompts: 0
+
+# Another brand in same category - reuses prompts
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -d '{"brand": "BrandB", "category": "CRM Software", "count": 30}'
+# Response: generated_prompts: 0, existing_prompts: 30 (instant!)
+
+# Check what libraries exist
+curl -X GET http://localhost:8080/api/v1/geo/libraries
+
+# Check brand profiles
+curl -X GET http://localhost:8080/api/v1/geo/profiles
+```
+

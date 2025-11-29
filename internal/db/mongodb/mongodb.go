@@ -22,8 +22,10 @@ type MongoDB struct {
 }
 
 const (
-	collPrompts   = "prompts"
-	collResponses = "responses"
+	collPrompts        = "prompts"
+	collResponses      = "responses"
+	collPromptLibrary  = "prompt_library"
+	collBrandProfiles  = "brand_profiles"
 )
 
 // New creates a new MongoDB database instance
@@ -634,4 +636,176 @@ func (m *MongoDB) getPromptCountsForLLM(ctx context.Context, llmID string) (map[
 	}
 
 	return counts, nil
+}
+
+// CreatePromptLibrary creates a new prompt library entry
+func (m *MongoDB) CreatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error {
+	library.CreatedAt = time.Now()
+	library.UpdatedAt = time.Now()
+
+	doc := bson.M{
+		"_id":         library.ID,
+		"brand":       library.Brand,
+		"domain":      library.Domain,
+		"category":    library.Category,
+		"prompt_ids":  library.PromptIDs,
+		"usage_count": library.UsageCount,
+		"created_at":  library.CreatedAt,
+		"updated_at":  library.UpdatedAt,
+	}
+
+	_, err := m.database.Collection(collPromptLibrary).InsertOne(ctx, doc)
+	return err
+}
+
+// GetPromptLibrary retrieves a prompt library by brand, domain, and category
+func (m *MongoDB) GetPromptLibrary(ctx context.Context, brand, domain, category string) (*models.PromptLibrary, error) {
+	filter := bson.M{
+		"brand":    brand,
+		"domain":   domain,
+		"category": category,
+	}
+
+	var library models.PromptLibrary
+	err := m.database.Collection(collPromptLibrary).FindOne(ctx, filter).Decode(&library)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // Return nil if not found (not an error)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find prompt library: %w", err)
+	}
+
+	return &library, nil
+}
+
+// UpdatePromptLibrary updates an existing prompt library
+func (m *MongoDB) UpdatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error {
+	library.UpdatedAt = time.Now()
+
+	doc := bson.M{
+		"_id":         library.ID,
+		"brand":       library.Brand,
+		"domain":      library.Domain,
+		"category":    library.Category,
+		"prompt_ids":  library.PromptIDs,
+		"usage_count": library.UsageCount,
+		"created_at":  library.CreatedAt,
+		"updated_at":  library.UpdatedAt,
+	}
+
+	result, err := m.database.Collection(collPromptLibrary).ReplaceOne(
+		ctx,
+		bson.M{"_id": library.ID},
+		doc,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update prompt library: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("prompt library not found: %s", library.ID)
+	}
+
+	return nil
+}
+
+// ListPromptLibraries lists all prompt libraries
+func (m *MongoDB) ListPromptLibraries(ctx context.Context) ([]*models.PromptLibrary, error) {
+	cursor, err := m.database.Collection(collPromptLibrary).Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var libraries []*models.PromptLibrary
+	if err := cursor.All(ctx, &libraries); err != nil {
+		return nil, err
+	}
+
+	return libraries, nil
+}
+
+// CreateBrandProfile creates a new brand profile
+func (m *MongoDB) CreateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
+	profile.CreatedAt = time.Now()
+	profile.UpdatedAt = time.Now()
+
+	doc := bson.M{
+		"_id":         profile.ID,
+		"brand_name":  profile.BrandName,
+		"domain":      profile.Domain,
+		"category":    profile.Category,
+		"website":     profile.Website,
+		"description": profile.Description,
+		"competitors": profile.Competitors,
+		"created_at":  profile.CreatedAt,
+		"updated_at":  profile.UpdatedAt,
+	}
+
+	_, err := m.database.Collection(collBrandProfiles).InsertOne(ctx, doc)
+	return err
+}
+
+// GetBrandProfile retrieves a brand profile by brand name
+func (m *MongoDB) GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error) {
+	var profile models.BrandProfile
+	err := m.database.Collection(collBrandProfiles).FindOne(ctx, bson.M{"brand_name": brandName}).Decode(&profile)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // Return nil if not found (not an error)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find brand profile: %w", err)
+	}
+
+	return &profile, nil
+}
+
+// UpdateBrandProfile updates an existing brand profile
+func (m *MongoDB) UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
+	profile.UpdatedAt = time.Now()
+
+	doc := bson.M{
+		"_id":         profile.ID,
+		"brand_name":  profile.BrandName,
+		"domain":      profile.Domain,
+		"category":    profile.Category,
+		"website":     profile.Website,
+		"description": profile.Description,
+		"competitors": profile.Competitors,
+		"created_at":  profile.CreatedAt,
+		"updated_at":  profile.UpdatedAt,
+	}
+
+	result, err := m.database.Collection(collBrandProfiles).ReplaceOne(
+		ctx,
+		bson.M{"_id": profile.ID},
+		doc,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update brand profile: %w", err)
+	}
+
+	if result.MatchedCount == 0 {
+		return fmt.Errorf("brand profile not found: %s", profile.ID)
+	}
+
+	return nil
+}
+
+// ListBrandProfiles lists all brand profiles
+func (m *MongoDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error) {
+	cursor, err := m.database.Collection(collBrandProfiles).Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var profiles []*models.BrandProfile
+	if err := cursor.All(ctx, &profiles); err != nil {
+		return nil, err
+	}
+
+	return profiles, nil
 }
