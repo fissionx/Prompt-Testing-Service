@@ -819,22 +819,46 @@ Prompt 3: "How is campus life at TCE?"
 → ❌ Contains original brand → SKIP
 ```
 
-#### 3. Quality Threshold
+#### 3. Smart Gap-Filling
 
-System only reuses library if:
-- At least **70%** of prompts are generic
-- If too many brand-specific prompts → Regenerate entire library
+System intelligently handles partial libraries:
+- Has **all** prompts needed → Reuse all ✅
+- Has **some** generic prompts → Reuse + generate missing ones ✅
+- Has **no** generic prompts → Generate all new ✅
+
+**Example Scenarios:**
+
+**Scenario A: Complete Library**
+```
+Request: 10 prompts
+Library: 12 generic prompts
+→ ✅ Reuse 10 prompts (pick from 12)
+```
+
+**Scenario B: Partial Library (Smart!)**
+```
+Request: 10 prompts
+Library: 6 generic + 4 brand-specific
+→ ✅ Reuse 6 generic prompts
+→ 🆕 Generate 4 NEW prompts to fill gap
+→ 💾 Add 4 new prompts to library
+→ 🎉 Return all 10 prompts (6 existing + 4 new)
+```
+
+**Scenario C: Bad Library**
+```
+Request: 10 prompts
+Library: 0 generic + 10 brand-specific
+→ 🆕 Generate all 10 new prompts
+→ 💾 Replace library with new prompts
+```
 
 **Logs:**
 ```
-✅ Reusing 8 generic prompts from library (out of 10)
-⚠️  Skipping brand-specific prompt: "What are facilities at TCE?"
-✅ Library quality acceptable, reusing prompts
-
-(OR)
-
-⚠️  Library has too many brand-specific prompts (3 generic out of 7 needed)
-📚 Generating new generic prompts instead
+♻️  Found 6 generic prompts, generating 4 more to reach 10 total
+🤖 Generating 4 new prompts...
+✅ Using 6 existing + 4 newly generated = 10 total prompts
+💾 Updated library: now has 10 generic prompts
 ```
 
 ### Common Words Ignored
@@ -857,13 +881,34 @@ curl -X GET http://localhost:8080/api/v1/geo/libraries
 
 Check the `prompt_ids` and verify they're generic.
 
-### Regenerating Bad Libraries
+### Smart Library Management
 
-If you find a library has brand-specific prompts:
-1. System automatically detects it during reuse
-2. Skips brand-specific prompts
-3. If <70% generic → Generates new library
-4. New library created with 100% generic prompts
+System automatically handles imperfect libraries:
+
+**Step 1: Validation**
+- Check each prompt for brand-specific content
+- Filter out any prompts mentioning brand names
+
+**Step 2: Gap Analysis**
+- Count how many generic prompts remain
+- Calculate how many more needed
+
+**Step 3: Smart Action**
+- If **enough** prompts → Use them ✅
+- If **some** prompts → Use + generate missing ones 🔄
+- If **no** good prompts → Generate all new 🆕
+
+**Step 4: Library Update**
+- Add newly generated prompts to library
+- Library grows over time with more generic prompts
+- Future requests benefit from larger library
+
+**Example:**
+```
+Request 1 (TCE): Generates 10 prompts, 8 generic + 2 brand-specific
+Request 2 (SRM): Uses 8 generic, generates 2 new → Library now has 10 generic!
+Request 3 (VIT): Uses all 10 generic → No generation needed! ⚡
+```
 
 **No manual intervention needed!** 🎉
 
