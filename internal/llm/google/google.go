@@ -55,7 +55,7 @@ func (p *Provider) Validate(config map[string]string) error {
 func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Config) (*llm.Response, error) {
 	startTime := time.Now()
 
-	model := "gemini-1.5-flash"
+	model := "gemini-2.5-flash"
 	if config.Model != "" {
 		model = config.Model
 	}

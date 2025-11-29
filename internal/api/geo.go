@@ -156,4 +156,3 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 		Message: "GEO insights retrieved successfully",
 	})
 }
-

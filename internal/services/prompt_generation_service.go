@@ -68,7 +68,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 
 	// Combine existing and new prompts
 	allPrompts := append(existingPrompts, savedPrompts...)
-	
+
 	return allPrompts, existingCount, len(savedPrompts), nil
 }
 
@@ -85,7 +85,7 @@ func (s *PromptGenerationService) findReusablePrompts(ctx context.Context, categ
 		if !prompt.Enabled {
 			continue
 		}
-		
+
 		// Match by category (exact match)
 		if category != "" && prompt.Category == category {
 			matchingPrompts = append(matchingPrompts, *prompt)
@@ -191,7 +191,7 @@ Generate exactly %d questions, one per line:`, count, brandInfo, existingText, c
 			line = strings.TrimPrefix(line, fmt.Sprintf("%d) ", i))
 		}
 		line = strings.TrimSpace(line)
-		
+
 		if line != "" && len(line) > 10 {
 			prompts = append(prompts, line)
 		}
@@ -207,7 +207,7 @@ Generate exactly %d questions, one per line:`, count, brandInfo, existingText, c
 // savePrompts saves generated prompts to the database
 func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts []string, brand, category, domain string) ([]models.Prompt, error) {
 	var savedPrompts []models.Prompt
-	
+
 	for _, text := range promptTexts {
 		prompt := &models.Prompt{
 			ID:        uuid.New().String(),
