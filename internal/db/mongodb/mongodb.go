@@ -95,6 +95,35 @@ func (m *MongoDB) createIndexes(ctx context.Context) error {
 		return fmt.Errorf("failed to create response indexes: %w", err)
 	}
 
+	// Create index for prompt library (domain + category lookup for cross-brand reuse)
+	libraryIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "domain", Value: 1},
+				{Key: "category", Value: 1},
+			},
+		},
+	}
+
+	_, err = m.database.Collection(collPromptLibrary).Indexes().CreateMany(ctx, libraryIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to create prompt library indexes: %w", err)
+	}
+
+	// Create index for brand profiles (brand_name lookup)
+	profileIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand_name", Value: 1},
+			},
+		},
+	}
+
+	_, err = m.database.Collection(collBrandProfiles).Indexes().CreateMany(ctx, profileIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to create brand profile indexes: %w", err)
+	}
+
 	return nil
 }
 
@@ -659,11 +688,16 @@ func (m *MongoDB) CreatePromptLibrary(ctx context.Context, library *models.Promp
 }
 
 // GetPromptLibrary retrieves a prompt library by brand, domain, and category
+// If brand is empty, it searches by domain/category only (for cross-brand reuse)
 func (m *MongoDB) GetPromptLibrary(ctx context.Context, brand, domain, category string) (*models.PromptLibrary, error) {
 	filter := bson.M{
-		"brand":    brand,
 		"domain":   domain,
 		"category": category,
+	}
+
+	// If brand is specified, include it in the filter (exact match)
+	if brand != "" {
+		filter["brand"] = brand
 	}
 
 	var library models.PromptLibrary

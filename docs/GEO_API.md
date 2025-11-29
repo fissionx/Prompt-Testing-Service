@@ -451,21 +451,22 @@ curl -X GET http://localhost:8080/api/v1/geo/profiles/FissionX.ai
 
 The prompt library system automatically organizes and reuses prompts to optimize costs and maintain consistency:
 
-1. **First-time brand**: When you generate prompts for a new brand/domain/category combination, the system:
+1. **First brand in a category**: When you generate prompts for a new domain/category combination, the system:
    - Derives domain and category using AI (if not provided)
    - Creates a brand profile
    - Generates new prompts using AI
-   - Stores prompts in a library linked to brand/domain/category
+   - Stores prompts in a library indexed by **domain + category** (NOT brand-specific)
 
-2. **Returning brand**: When you request prompts for an existing brand/domain/category:
-   - System checks if a library exists
-   - Returns existing prompts instantly (no AI call needed)
+2. **Similar brands (Same domain/category)**: When you request prompts for another brand with the same domain/category:
+   - System checks if a library exists for that domain/category combination
+   - Returns existing prompts instantly (no AI call needed) ⚡
    - Increments library usage count
+   - **Example**: All engineering colleges share the same prompts!
 
 3. **Smart categorization**: 
-   - Domain: Industry (e.g., "technology", "healthcare", "finance")
-   - Category: Specific niche (e.g., "AI SEO Tools", "CRM Software")
-   - Brands in the same category share prompts
+   - Domain: Industry (e.g., "education", "technology", "healthcare")
+   - Category: Specific niche (e.g., "Engineering College", "AI SEO Tools", "CRM Software")
+   - **All brands with same domain/category share the same prompt library**
 
 ### Benefits
 
@@ -476,21 +477,55 @@ The prompt library system automatically organizes and reuses prompts to optimize
 
 ### Example Workflow
 
+#### Example 1: Engineering Colleges (Auto-Categorization)
+
 ```bash
-# First time - generates and stores prompts
+# First college - VIT
 curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
-  -d '{"brand": "BrandA", "category": "CRM Software", "count": 30}'
+  -H "Content-Type: application/json" \
+  -d '{
+    "brand": "VIT",
+    "website": "https://vit.ac.in/",
+    "count": 10
+  }'
+# System derives: domain="education", category="engineering college"
+# Response: generated_prompts: 10, existing_prompts: 0
+# Logs: "📚 Creating new prompt library: domain=education, category=engineering college"
+
+# Second college - TCE (Same domain/category!)
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brand": "Thiagarajar College of Engineering",
+    "website": "https://tce.edu/",
+    "count": 10
+  }'
+# System derives: domain="education", category="engineering college" (SAME!)
+# Response: generated_prompts: 0, existing_prompts: 10 ⚡ INSTANT REUSE!
+# Logs: "♻️  Reusing existing prompt library for domain=education, category=engineering college (created for: VIT)"
+```
+
+#### Example 2: CRM Software (Manual Category)
+
+```bash
+# First CRM - Brand A
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -d '{"brand": "Salesforce", "category": "CRM Software", "domain": "technology", "count": 30}'
 # Response: generated_prompts: 30, existing_prompts: 0
 
-# Another brand in same category - reuses prompts
+# Second CRM - Brand B (Same category!)
 curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
-  -d '{"brand": "BrandB", "category": "CRM Software", "count": 30}'
-# Response: generated_prompts: 0, existing_prompts: 30 (instant!)
+  -d '{"brand": "HubSpot", "category": "CRM Software", "domain": "technology", "count": 30}'
+# Response: generated_prompts: 0, existing_prompts: 30 ⚡ INSTANT REUSE!
+```
 
+#### Verify Libraries
+
+```bash
 # Check what libraries exist
 curl -X GET http://localhost:8080/api/v1/geo/libraries
 
-# Check brand profiles
+# Check brand profiles  
 curl -X GET http://localhost:8080/api/v1/geo/profiles
 ```
 

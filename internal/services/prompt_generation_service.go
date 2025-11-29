@@ -68,14 +68,19 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		category = brandProfile.Category
 	}
 
-	// Step 3: Check if prompt library exists for this brand/domain/category
-	library, err := s.db.GetPromptLibrary(ctx, brand, domain, category)
+	fmt.Printf("🔍 Looking for prompts: brand=%s, domain=%s, category=%s\n", brand, domain, category)
+
+	// Step 3: Check if prompt library exists for this domain/category (NOT brand-specific)
+	// This allows reuse across similar brands (e.g., all engineering colleges)
+	library, err := s.db.GetPromptLibrary(ctx, "", domain, category)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to check prompt library: %w", err)
 	}
 
 	// If library exists, return those prompts
 	if library != nil && len(library.PromptIDs) > 0 {
+		fmt.Printf("♻️  Reusing existing prompt library for domain=%s, category=%s (created for: %s)\n", domain, category, library.Brand)
+		
 		prompts, err := s.getPromptsFromLibrary(ctx, library, count)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to get prompts from library: %w", err)
@@ -100,7 +105,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		return nil, 0, 0, fmt.Errorf("failed to save prompts: %w", err)
 	}
 
-	// Step 5: Create prompt library entry
+	// Step 5: Create prompt library entry (brand is for reference only, library is shared by domain/category)
 	promptIDs := make([]string, len(savedPrompts))
 	for i, p := range savedPrompts {
 		promptIDs[i] = p.ID
@@ -108,16 +113,20 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 
 	newLibrary := &models.PromptLibrary{
 		ID:         uuid.New().String(),
-		Brand:      brand,
+		Brand:      brand, // Track which brand first created this library
 		Domain:     domain,
 		Category:   category,
 		PromptIDs:  promptIDs,
 		UsageCount: 1,
 	}
 
+	fmt.Printf("📚 Creating new prompt library: domain=%s, category=%s, created_by=%s\n", domain, category, brand)
+
 	if err := s.db.CreatePromptLibrary(ctx, newLibrary); err != nil {
 		// Log but don't fail - prompts are already saved
-		fmt.Printf("Warning: failed to create prompt library: %v\n", err)
+		fmt.Printf("❌ Warning: failed to create prompt library: %v\n", err)
+	} else {
+		fmt.Printf("✅ Prompt library created successfully! Future requests for domain=%s + category=%s will reuse these prompts.\n", domain, category)
 	}
 
 	return savedPrompts, 0, len(savedPrompts), nil
@@ -259,6 +268,8 @@ Category: AI SEO Tools`, brandContext)
 			category = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(line), "category:"))
 		}
 	}
+
+	fmt.Printf("🤖 AI derived metadata for '%s': domain=%s, category=%s\n", brand, domain, category)
 
 	return domain, category, nil
 }
