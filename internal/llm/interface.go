@@ -50,12 +50,13 @@ type Provider interface {
 
 // Response represents an LLM response
 type Response struct {
-	Text       string
-	TokensUsed int
-	LatencyMs  int64
-	Model      string
-	Provider   string
-	Error      string
+	Text             string
+	TokensUsed       int
+	LatencyMs        int64
+	Model            string
+	Provider         string
+	Error            string
+	GroundingSources []string // NEW: Citation sources (URLs) from models that support grounding
 }
 
 // Registry manages LLM providers

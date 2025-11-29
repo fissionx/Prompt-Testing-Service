@@ -468,23 +468,23 @@ func isCommonWord(word string) bool {
 // calculatePromptTypeDistribution calculates how many prompts of each type to generate
 func calculatePromptTypeDistribution(total int) map[string]int {
 	distribution := make(map[string]int)
-	
+
 	// Base distribution (proportional)
 	distribution["what"] = total / 5       // 20%
 	distribution["how"] = total / 5        // 20%
 	distribution["comparison"] = total / 5 // 20%
 	distribution["top_best"] = total / 5   // 20%
 	distribution["brand"] = total / 5      // 20%
-	
+
 	// Distribute remainder
 	remainder := total - (distribution["what"] + distribution["how"] + distribution["comparison"] + distribution["top_best"] + distribution["brand"])
-	
+
 	// Add remainder to most useful types
 	types := []string{"top_best", "how", "what", "comparison", "brand"}
 	for i := 0; i < remainder; i++ {
-		distribution[types[i % len(types)]]++
+		distribution[types[i%len(types)]]++
 	}
-	
+
 	return distribution
 }
 

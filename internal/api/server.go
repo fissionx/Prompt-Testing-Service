@@ -15,15 +15,18 @@ import (
 
 // Server represents the API server
 type Server struct {
-	db              db.Database
-	llmService      *services.LLMService
-	promptService   *services.PromptManagementService
-	scheduleService *services.ScheduleService
-	statsService    *services.StatsService
-	searchService   *services.SearchService
-	llmRegistry     *llm.Registry
-	router          *gin.Engine
-	corsOrigin      string
+	db                          db.Database
+	llmService                  *services.LLMService
+	promptService               *services.PromptManagementService
+	scheduleService             *services.ScheduleService
+	statsService                *services.StatsService
+	searchService               *services.SearchService
+	sourceAnalyticsService      *services.SourceAnalyticsService
+	competitiveBenchmarkService *services.CompetitiveBenchmarkService
+	promptPerformanceService    *services.PromptPerformanceService
+	llmRegistry                 *llm.Registry
+	router                      *gin.Engine
+	corsOrigin                  string
 }
 
 // NewServer creates a new API server
@@ -55,15 +58,18 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 	})
 
 	server := &Server{
-		db:              database,
-		llmService:      services.NewLLMService(database),
-		promptService:   services.NewPromptManagementService(database),
-		scheduleService: services.NewScheduleService(database),
-		statsService:    services.NewStatsService(database),
-		searchService:   services.NewSearchService(database),
-		llmRegistry:     llmRegistry,
-		router:          router,
-		corsOrigin:      corsOrigin,
+		db:                          database,
+		llmService:                  services.NewLLMService(database),
+		promptService:               services.NewPromptManagementService(database),
+		scheduleService:             services.NewScheduleService(database),
+		statsService:                services.NewStatsService(database),
+		searchService:               services.NewSearchService(database),
+		sourceAnalyticsService:      services.NewSourceAnalyticsService(database),
+		competitiveBenchmarkService: services.NewCompetitiveBenchmarkService(database),
+		promptPerformanceService:    services.NewPromptPerformanceService(database),
+		llmRegistry:                 llmRegistry,
+		router:                      router,
+		corsOrigin:                  corsOrigin,
 	}
 
 	server.setupRoutes()
@@ -116,6 +122,12 @@ func (s *Server) setupRoutes() {
 
 		// Analytics & Insights
 		geo.POST("/insights", s.getGEOInsights)
+
+		// NEW: Advanced Analytics
+		geo.POST("/analytics/sources", s.getSourceAnalytics)
+		geo.POST("/analytics/competitive", s.getCompetitiveBenchmark)
+		geo.POST("/analytics/position", s.getPositionAnalytics)
+		geo.POST("/analytics/prompt-performance", s.getPromptPerformance)
 	}
 
 	api.GET("/health", s.healthCheck)

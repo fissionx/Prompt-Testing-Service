@@ -240,11 +240,12 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 	if err != nil {
 		log.Printf("GEO analysis failed: %v, returning search answer only", err)
 		return &llm.Response{
-			Text:       searchAnswer,
-			TokensUsed: totalTokens,
-			LatencyMs:  time.Since(startTime).Milliseconds(),
-			Model:      model,
-			Provider:   "google",
+			Text:             searchAnswer,
+			TokensUsed:       totalTokens,
+			LatencyMs:        time.Since(startTime).Milliseconds(),
+			Model:            model,
+			Provider:         "google",
+			GroundingSources: groundingSources,
 		}, nil
 	}
 
@@ -266,11 +267,12 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 
 	// Return the GEO JSON response
 	return &llm.Response{
-		Text:       geoText,
-		TokensUsed: totalTokens,
-		LatencyMs:  time.Since(startTime).Milliseconds(),
-		Model:      model,
-		Provider:   "google",
+		Text:             geoText,
+		TokensUsed:       totalTokens,
+		LatencyMs:        time.Since(startTime).Milliseconds(),
+		Model:            model,
+		Provider:         "google",
+		GroundingSources: groundingSources,
 	}, nil
 }
 

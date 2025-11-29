@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -18,6 +19,7 @@ import (
 	"github.com/AI2HU/gego/internal/llm/openai"
 	"github.com/AI2HU/gego/internal/llm/perplexity"
 	"github.com/AI2HU/gego/internal/models"
+	"github.com/AI2HU/gego/internal/services"
 )
 
 // geoJSONResponse represents the JSON structure returned by the LLM for GEO analysis
@@ -216,7 +218,31 @@ func (s *Server) execute(c *gin.Context) {
 		responseModel.InGroundingSources = geoAnalysis.InGroundingSources
 		responseModel.Sentiment = geoAnalysis.Sentiment
 		responseModel.CompetitorsMention = geoAnalysis.Competitors
+		responseModel.GroundingSources = llmResponse.GroundingSources
+		
+		// NEW: Extract position/ranking from response
+		if req.Brand != "" && geoAnalysis.BrandMentioned {
+			position, totalBrands := services.ExtractBrandPosition(responseText, req.Brand)
+			responseModel.BrandPosition = position
+			responseModel.TotalBrandsListed = totalBrands
+		}
+		
+		// NEW: Extract domains from grounding sources
+		if len(llmResponse.GroundingSources) > 0 {
+			responseModel.GroundingDomains = services.ExtractDomainsFromSources(llmResponse.GroundingSources)
+		}
 	}
+	
+	// NEW: Add time-series fields
+	now := time.Now()
+	responseModel.Week = now.Format("2006-W02")
+	responseModel.Month = now.Format("2006-01")
+	quarter := (int(now.Month()) - 1) / 3 + 1
+	responseModel.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
+	
+	// NEW: Add region/language if provided
+	responseModel.Region = req.Region
+	responseModel.Language = req.Language
 
 	if err := s.db.CreateResponse(c.Request.Context(), responseModel); err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to save response: "+err.Error())

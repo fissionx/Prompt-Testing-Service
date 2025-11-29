@@ -2,8 +2,11 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,6 +173,45 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 		CreatedAt:    time.Now(),
 	}
 
+	// Parse GEO metrics if brand was provided
+	if brand != "" {
+		geoAnalysis := parseGEOAnalysis(response.Text)
+		if geoAnalysis != nil {
+			// Access nested GEOAnalysis struct
+			geo := geoAnalysis.GEOAnalysis
+			responseModel.VisibilityScore = geo.VisibilityScore
+			responseModel.BrandMentioned = geo.BrandMentioned
+			responseModel.InGroundingSources = geo.InGroundingSources
+			responseModel.Sentiment = geo.Sentiment
+			responseModel.CompetitorsMention = geo.Competitors
+			responseModel.GroundingSources = response.GroundingSources
+			
+			// Extract position/ranking from the search_answer text
+			searchAnswer := geoAnalysis.SearchAnswer
+			if searchAnswer == "" {
+				searchAnswer = response.Text
+			}
+			
+			if geo.BrandMentioned {
+				position, totalBrands := ExtractBrandPosition(searchAnswer, brand)
+				responseModel.BrandPosition = position
+				responseModel.TotalBrandsListed = totalBrands
+			}
+			
+			// Extract domains from grounding sources
+			if len(response.GroundingSources) > 0 {
+				responseModel.GroundingDomains = ExtractDomainsFromSources(response.GroundingSources)
+			}
+		}
+	}
+	
+	// Add time-series fields
+	now := time.Now()
+	responseModel.Week = now.Format("2006-W02")
+	responseModel.Month = now.Format("2006-01")
+	quarter := (int(now.Month()) - 1) / 3 + 1
+	responseModel.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
+
 	// Save response
 	return s.db.CreateResponse(ctx, responseModel)
 }
@@ -207,5 +249,72 @@ func (s *BulkExecutionService) getLLMs(ctx context.Context, llmIDs []string) ([]
 		return nil, fmt.Errorf("no valid enabled LLMs found")
 	}
 	return llms, nil
+}
+
+// GEOAnalysisResult represents the parsed GEO analysis from LLM
+type GEOAnalysisResult struct {
+	SearchAnswer string `json:"search_answer"`
+	GEOAnalysis  struct {
+		VisibilityScore    int      `json:"visibility_score"`
+		BrandMentioned     bool     `json:"brand_mentioned"`
+		InGroundingSources bool     `json:"in_grounding_sources"`
+		MentionStatus      string   `json:"mention_status"`
+		Reason             string   `json:"reason"`
+		Sentiment          string   `json:"sentiment"`
+		Competitors        []string `json:"competitors"`
+		Insights           []string `json:"insights"`
+		Actions            []string `json:"actions"`
+		CompetitorInfo     string   `json:"competitor_info"`
+	} `json:"geo_analysis"`
+}
+
+// parseGEOAnalysis extracts and parses JSON from the LLM response
+func parseGEOAnalysis(text string) *GEOAnalysisResult {
+	// Clean up the response - remove markdown code blocks if present
+	cleanedText := strings.TrimSpace(text)
+	
+	// Remove markdown code block wrappers (```json ... ``` or ``` ... ```)
+	jsonBlockRegex := regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")
+	if matches := jsonBlockRegex.FindStringSubmatch(cleanedText); len(matches) > 1 {
+		cleanedText = strings.TrimSpace(matches[1])
+	} else {
+		// Try simple prefix/suffix removal
+		cleanedText = strings.TrimPrefix(cleanedText, "```json")
+		cleanedText = strings.TrimPrefix(cleanedText, "```")
+		cleanedText = strings.TrimSuffix(cleanedText, "```")
+		cleanedText = strings.TrimSpace(cleanedText)
+	}
+
+	// Try to find JSON object in the text if it's mixed with other content
+	if !strings.HasPrefix(cleanedText, "{") {
+		jsonStartIdx := strings.Index(cleanedText, "{")
+		jsonEndIdx := strings.LastIndex(cleanedText, "}")
+		if jsonStartIdx != -1 && jsonEndIdx != -1 && jsonEndIdx > jsonStartIdx {
+			cleanedText = cleanedText[jsonStartIdx : jsonEndIdx+1]
+		}
+	}
+	
+	var result GEOAnalysisResult
+	if err := json.Unmarshal([]byte(cleanedText), &result); err != nil {
+		log.Printf("❌ Failed to parse GEO analysis JSON: %v", err)
+		log.Printf("Cleaned text (first 500 chars): %s", truncateForLog(cleanedText, 500))
+		return nil
+	}
+	
+	log.Printf("✅ Parsed GEO: Score=%d, Mentioned=%v, Sentiment=%s, Competitors=%v", 
+		result.GEOAnalysis.VisibilityScore, 
+		result.GEOAnalysis.BrandMentioned,
+		result.GEOAnalysis.Sentiment,
+		result.GEOAnalysis.Competitors)
+	
+	return &result
+}
+
+// truncateForLog truncates a string for logging
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 

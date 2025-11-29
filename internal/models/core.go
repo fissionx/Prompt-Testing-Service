@@ -85,6 +85,23 @@ type Response struct {
 	GroundingSources   []string `json:"grounding_sources,omitempty" bson:"grounding_sources,omitempty"`
 	Sentiment          string   `json:"sentiment,omitempty" bson:"sentiment,omitempty"` // positive, neutral, negative
 	CompetitorsMention []string `json:"competitors_mention,omitempty" bson:"competitors_mention,omitempty"`
+	
+	// NEW: Position/Ranking tracking
+	BrandPosition      int      `json:"brand_position,omitempty" bson:"brand_position,omitempty"`           // 1=first, 2=second, 0=not in list
+	TotalBrandsListed  int      `json:"total_brands_listed,omitempty" bson:"total_brands_listed,omitempty"` // Total brands mentioned in response
+	
+	// NEW: Enhanced source analytics
+	GroundingDomains   []string `json:"grounding_domains,omitempty" bson:"grounding_domains,omitempty"` // Extracted domains (e.g., "g2.com", "reddit.com")
+	
+	// NEW: Time-series support
+	Week               string   `json:"week,omitempty" bson:"week,omitempty"`       // "2025-W48"
+	Month              string   `json:"month,omitempty" bson:"month,omitempty"`     // "2025-11"
+	Quarter            string   `json:"quarter,omitempty" bson:"quarter,omitempty"` // "2025-Q4"
+	
+	// NEW: Regional/Language support
+	Region             string   `json:"region,omitempty" bson:"region,omitempty"`     // "US", "UK", "DE"
+	Language           string   `json:"language,omitempty" bson:"language,omitempty"` // "en", "es", "de"
+	
 	CreatedAt          time.Time              `json:"created_at" bson:"created_at"`
 }
 
