@@ -209,20 +209,23 @@ type GeneratePromptsRequest struct {
 
 // GeneratePromptsResponse represents the response with generated prompts
 type GeneratePromptsResponse struct {
-	Brand     string          `json:"brand"`
-	Category  string          `json:"category"`
-	Domain    string          `json:"domain"`
-	Prompts   []PromptPreview `json:"prompts"`
-	Existing  int             `json:"existing_prompts"` // How many were reused from DB
-	Generated int             `json:"generated_prompts"`// How many were newly generated
+	Brand         string                     `json:"brand"`
+	Category      string                     `json:"category"`
+	Domain        string                     `json:"domain"`
+	Prompts       []PromptPreview            `json:"prompts"`                  // All prompts (flat list)
+	PromptsByType map[string][]PromptPreview `json:"prompts_by_type"`          // Grouped by type
+	Existing      int                        `json:"existing_prompts"`         // How many were reused from DB
+	Generated     int                        `json:"generated_prompts"`        // How many were newly generated
+	TypeCounts    map[string]int             `json:"type_counts"`              // Count per type
 }
 
 // PromptPreview represents a preview of a prompt
 type PromptPreview struct {
-	ID       string `json:"id"`
-	Template string `json:"template"`
-	Category string `json:"category,omitempty"`
-	Reused   bool   `json:"reused"` // True if reused from database
+	ID         string     `json:"id"`
+	Template   string     `json:"template"`
+	PromptType PromptType `json:"prompt_type,omitempty"`
+	Category   string     `json:"category,omitempty"`
+	Reused     bool       `json:"reused"` // True if reused from database
 }
 
 // BulkExecuteRequest represents the request to execute multiple prompts across multiple LLMs

@@ -44,24 +44,39 @@ func (s *Server) generatePrompts(c *gin.Context) {
 		return
 	}
 
-	// Build response
+	// Build response with grouping by type
 	var promptPreviews []models.PromptPreview
+	promptsByType := make(map[string][]models.PromptPreview)
+	typeCounts := make(map[string]int)
+
 	for _, prompt := range prompts {
-		promptPreviews = append(promptPreviews, models.PromptPreview{
-			ID:       prompt.ID,
-			Template: prompt.Template,
-			Category: prompt.Category,
-			Reused:   !prompt.Generated || prompt.Brand != req.Brand,
-		})
+		preview := models.PromptPreview{
+			ID:         prompt.ID,
+			Template:   prompt.Template,
+			PromptType: prompt.PromptType,
+			Category:   prompt.Category,
+			Reused:     !prompt.Generated || prompt.Brand != req.Brand,
+		}
+		promptPreviews = append(promptPreviews, preview)
+
+		// Group by type
+		typeKey := string(prompt.PromptType)
+		if typeKey == "" {
+			typeKey = "unknown"
+		}
+		promptsByType[typeKey] = append(promptsByType[typeKey], preview)
+		typeCounts[typeKey]++
 	}
 
 	response := models.GeneratePromptsResponse{
-		Brand:     req.Brand,
-		Category:  req.Category,
-		Domain:    req.Domain,
-		Prompts:   promptPreviews,
-		Existing:  existingCount,
-		Generated: generatedCount,
+		Brand:         req.Brand,
+		Category:      req.Category,
+		Domain:        req.Domain,
+		Prompts:       promptPreviews,
+		PromptsByType: promptsByType,
+		Existing:      existingCount,
+		Generated:     generatedCount,
+		TypeCounts:    typeCounts,
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{

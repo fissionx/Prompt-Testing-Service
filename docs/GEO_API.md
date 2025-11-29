@@ -931,3 +931,160 @@ curl POST /api/v1/geo/prompts/generate -d '{"brand": "XYZ College", ...}'
 
 If you see brand names in prompts → Report as bug!
 
+
+---
+
+## Structured Prompt Types
+
+### Why Structure Matters
+
+Prompts are now categorized into **5 distinct types** for better diversity, realism, and coverage:
+
+1. **WHAT Questions** (Definitional)
+   - Exploratory, educational questions
+   - Examples: "What is GEO?", "What are the benefits of AI SEO?"
+
+2. **HOW Questions** (Instructional)
+   - Process-oriented, tutorial-style questions
+   - Examples: "How to optimize for AI search?", "How does semantic SEO work?"
+
+3. **COMPARISON Questions** (Competitive)
+   - Versus, comparative analysis questions
+   - Examples: "FissionX vs PEEC for GEO", "Which AI SEO tool is better?"
+
+4. **TOP/BEST Questions** (List-based)
+   - Recommendation, ranking questions
+   - Examples: "Best AI SEO tools 2024", "Top GEO platforms for startups"
+
+5. **BRAND Questions** (Direct)
+   - Brand-specific feature/capability questions
+   - Examples: "What does FissionX.ai GEO do?", "How does Brand X help with SEO?"
+
+### Balanced Distribution
+
+System automatically distributes prompts evenly:
+
+```
+Total: 10 prompts
+- WHAT: 2 prompts (20%)
+- HOW: 2 prompts (20%)
+- COMPARISON: 2 prompts (20%)
+- TOP/BEST: 2 prompts (20%)
+- BRAND: 2 prompts (20%)
+
+Total: 25 prompts
+- WHAT: 5 prompts (20%)
+- HOW: 5 prompts (20%)
+- COMPARISON: 5 prompts (20%)
+- TOP/BEST: 5 prompts (20%)
+- BRAND: 5 prompts (20%)
+```
+
+### API Response Structure
+
+Responses now include prompts grouped by type:
+
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "FissionX.ai",
+    "category": "ai tools",
+    "domain": "technology",
+    
+    "prompts": [
+      {
+        "id": "uuid-1",
+        "template": "What is GEO and why does it matter?",
+        "prompt_type": "what",
+        "reused": false
+      },
+      {
+        "id": "uuid-2",
+        "template": "How to optimize content for AI search engines?",
+        "prompt_type": "how",
+        "reused": false
+      }
+    ],
+    
+    "prompts_by_type": {
+      "what": [
+        {"id": "uuid-1", "template": "What is GEO...", "prompt_type": "what"},
+        {"id": "uuid-2", "template": "What are benefits...", "prompt_type": "what"}
+      ],
+      "how": [
+        {"id": "uuid-3", "template": "How to optimize...", "prompt_type": "how"},
+        {"id": "uuid-4", "template": "How does X work...", "prompt_type": "how"}
+      ],
+      "comparison": [
+        {"id": "uuid-5", "template": "X vs Y comparison", "prompt_type": "comparison"}
+      ],
+      "top_best": [
+        {"id": "uuid-6", "template": "Best AI SEO tools", "prompt_type": "top_best"}
+      ],
+      "brand": [
+        {"id": "uuid-7", "template": "What does Brand X offer?", "prompt_type": "brand"}
+      ]
+    },
+    
+    "type_counts": {
+      "what": 2,
+      "how": 2,
+      "comparison": 2,
+      "top_best": 2,
+      "brand": 2
+    },
+    
+    "existing_prompts": 0,
+    "generated_prompts": 10
+  }
+}
+```
+
+### Benefits
+
+✅ **Better Diversity** - Mix of question types ensures comprehensive coverage
+✅ **Realistic Search Patterns** - Matches how people actually search
+✅ **Brand Visibility Tracking** - Know which question types trigger brand mentions
+✅ **Competitive Analysis** - Comparison questions show you vs competitors
+✅ **Actionable Insights** - How questions reveal content gaps
+
+### Example Usage
+
+```bash
+curl -X POST http://localhost:8080/api/v1/geo/prompts/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brand": "FissionX.ai",
+    "website": "https://fissionx.ai",
+    "count": 20
+  }'
+```
+
+**You'll get:**
+- 4 WHAT questions (definitional)
+- 4 HOW questions (instructional)
+- 4 COMPARISON questions (competitive)
+- 4 TOP/BEST questions (list-based)
+- 4 BRAND questions (direct)
+
+### Analyzing Results by Type
+
+You can now analyze which question types generate most brand mentions:
+
+```javascript
+// From API response
+const results = response.data.prompts_by_type;
+
+// Run GEO analysis on each type
+for (const [type, prompts] of Object.entries(results)) {
+  console.log(`Type: ${type}, Count: ${prompts.length}`);
+  // Execute prompts and track brand mention rate per type
+}
+```
+
+**Insights you can get:**
+- "Brand mentions 80% in COMPARISON questions" → Focus on competitive content
+- "Brand mentions 20% in WHAT questions" → Need more educational content
+- "Brand appears in TOP/BEST 60% of the time" → Good market position
+

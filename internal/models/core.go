@@ -6,6 +6,17 @@ import (
 
 // Core domain models
 
+// PromptType represents different categories of questions
+type PromptType string
+
+const (
+	PromptTypeWhat       PromptType = "what"       // Definitional: "What is GEO?", "What are the benefits?"
+	PromptTypeHow        PromptType = "how"        // Instructional: "How to appear in AI search?"
+	PromptTypeComparison PromptType = "comparison" // Competitive: "X vs Y", "Which is better?"
+	PromptTypeTopBest    PromptType = "top_best"   // List-based: "Best AI tools", "Top platforms"
+	PromptTypeBrand      PromptType = "brand"      // Brand-specific: "What does Brand X do?"
+)
+
 // LLMConfig represents an LLM provider configuration
 type LLMConfig struct {
 	ID        string            `json:"id"`
@@ -22,16 +33,17 @@ type LLMConfig struct {
 
 // Prompt represents a prompt template
 type Prompt struct {
-	ID        string    `json:"id" bson:"_id"`
-	Template  string    `json:"template" bson:"template"`
-	Tags      []string  `json:"tags,omitempty" bson:"tags,omitempty"`
-	Category  string    `json:"category,omitempty" bson:"category,omitempty"`     // e.g., "SEO Tools", "CRM Software"
-	Domain    string    `json:"domain,omitempty" bson:"domain,omitempty"`         // e.g., "technology", "healthcare"
-	Brand     string    `json:"brand,omitempty" bson:"brand,omitempty"`           // Target brand for GEO analysis
-	Generated bool      `json:"generated" bson:"generated"`                       // AI-generated vs manual
-	Enabled   bool      `json:"enabled" bson:"enabled"`
-	CreatedAt time.Time `json:"created_at" bson:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
+	ID         string     `json:"id" bson:"_id"`
+	Template   string     `json:"template" bson:"template"`
+	PromptType PromptType `json:"prompt_type,omitempty" bson:"prompt_type,omitempty"` // Type of question
+	Tags       []string   `json:"tags,omitempty" bson:"tags,omitempty"`
+	Category   string     `json:"category,omitempty" bson:"category,omitempty"`     // e.g., "SEO Tools", "CRM Software"
+	Domain     string     `json:"domain,omitempty" bson:"domain,omitempty"`         // e.g., "technology", "healthcare"
+	Brand      string     `json:"brand,omitempty" bson:"brand,omitempty"`           // Target brand for GEO analysis
+	Generated  bool       `json:"generated" bson:"generated"`                       // AI-generated vs manual
+	Enabled    bool       `json:"enabled" bson:"enabled"`
+	CreatedAt  time.Time  `json:"created_at" bson:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at" bson:"updated_at"`
 }
 
 // Schedule represents a scheduler configuration
