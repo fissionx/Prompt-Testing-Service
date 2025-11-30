@@ -261,6 +261,8 @@ type GEOInsightsRequest struct {
 // GEOInsightsResponse represents comprehensive GEO analytics
 type GEOInsightsResponse struct {
 	Brand                 string                `json:"brand"`
+	LogoURL               string                `json:"logoUrl,omitempty"`
+	FallbackLogoURL       string                `json:"fallbackLogoUrl,omitempty"`
 	AverageVisibility     float64               `json:"averageVisibility"`
 	MentionRate           float64               `json:"mentionRate"`
 	GroundingRate         float64               `json:"groundingRate"`
@@ -274,9 +276,11 @@ type GEOInsightsResponse struct {
 
 // CompetitorInsight represents competitor visibility data
 type CompetitorInsight struct {
-	Name          string  `json:"name"`
-	MentionCount  int     `json:"mentionCount"`
-	VisibilityAvg float64 `json:"visibilityAvg"`
+	Name            string  `json:"name"`
+	LogoURL         string  `json:"logoUrl,omitempty"`
+	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
+	MentionCount    int     `json:"mentionCount"`
+	VisibilityAvg   float64 `json:"visibilityAvg"`
 }
 
 // LLMPerformance represents brand performance per LLM
@@ -325,6 +329,8 @@ type Recommendation struct {
 // SourceAnalyticsResponse represents source citation analytics
 type SourceAnalyticsResponse struct {
 	Brand           string           `json:"brand"`
+	LogoURL         string           `json:"logoUrl,omitempty"`
+	FallbackLogoURL string           `json:"fallbackLogoUrl,omitempty"`
 	Period          string           `json:"period,omitempty"`
 	TopSources      []SourceInsight  `json:"topSources"`
 	Recommendations []Recommendation `json:"recommendations"`
@@ -346,6 +352,8 @@ type CompetitiveBenchmarkRequest struct {
 // BrandPerformance represents comprehensive brand performance metrics
 type BrandPerformance struct {
 	Brand           string  `json:"brand"`
+	LogoURL         string  `json:"logoUrl,omitempty"`
+	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
 	Visibility      float64 `json:"visibility"`
 	MentionRate     float64 `json:"mentionRate"`
 	GroundingRate   float64 `json:"groundingRate"`
@@ -406,6 +414,8 @@ type SourceAnalyticsRequest struct {
 // PositionAnalyticsResponse represents position/ranking analytics
 type PositionAnalyticsResponse struct {
 	Brand             string             `json:"brand"`
+	LogoURL           string             `json:"logoUrl,omitempty"`
+	FallbackLogoURL   string             `json:"fallbackLogoUrl,omitempty"`
 	AveragePosition   float64            `json:"averagePosition"`
 	TopPositionRate   float64            `json:"topPositionRate"`
 	PositionBreakdown map[string]int     `json:"positionBreakdown"`
@@ -425,6 +435,8 @@ type PromptPerformanceRequest struct {
 // PromptPerformanceResponse represents prompt performance analysis results
 type PromptPerformanceResponse struct {
 	Brand                string              `json:"brand"`
+	LogoURL              string              `json:"logoUrl,omitempty"`
+	FallbackLogoURL      string              `json:"fallbackLogoUrl,omitempty"`
 	Period               string              `json:"period,omitempty"`
 	Prompts              []PromptPerformance `json:"prompts"`
 	TopPerformers        []string            `json:"topPerformers"`

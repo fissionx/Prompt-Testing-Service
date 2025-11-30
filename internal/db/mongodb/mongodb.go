@@ -26,6 +26,7 @@ const (
 	collResponses      = "responses"
 	collPromptLibrary  = "prompt_library"
 	collBrandProfiles  = "brand_profiles"
+	collBrandLogos     = "brand_logos"
 )
 
 // New creates a new MongoDB database instance
@@ -133,6 +134,21 @@ func (m *MongoDB) createIndexes(ctx context.Context) error {
 	_, err = m.database.Collection(collBrandProfiles).Indexes().CreateMany(ctx, profileIndexes)
 	if err != nil {
 		return fmt.Errorf("failed to create brand profile indexes: %w", err)
+	}
+
+	// Create index for brand logos (brand_name lookup)
+	logoIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand_name", Value: 1},
+			},
+			Options: options.Index().SetUnique(true),
+		},
+	}
+
+	_, err = m.database.Collection(collBrandLogos).Indexes().CreateMany(ctx, logoIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to create brand logo indexes: %w", err)
 	}
 
 	return nil
@@ -878,4 +894,46 @@ func (m *MongoDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile
 	}
 
 	return profiles, nil
+}
+
+// SaveBrandLogo saves or updates a brand logo in the cache
+func (m *MongoDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error {
+	logo.UpdatedAt = time.Now()
+	
+	doc := bson.M{
+		"_id":               logo.ID,
+		"brand_name":        logo.BrandName,
+		"domain":            logo.Domain,
+		"logo_url":          logo.LogoURL,
+		"fallback_logo_url": logo.FallbackLogoURL,
+		"source":            logo.Source,
+		"last_checked":      logo.LastChecked,
+		"created_at":        logo.CreatedAt,
+		"updated_at":        logo.UpdatedAt,
+	}
+
+	// Upsert - update if exists, insert if not
+	opts := options.Replace().SetUpsert(true)
+	_, err := m.database.Collection(collBrandLogos).ReplaceOne(
+		ctx,
+		bson.M{"brand_name": logo.BrandName},
+		doc,
+		opts,
+	)
+	
+	return err
+}
+
+// GetBrandLogo retrieves a cached brand logo by brand name
+func (m *MongoDB) GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error) {
+	var logo models.BrandLogoCache
+	err := m.database.Collection(collBrandLogos).FindOne(ctx, bson.M{"brand_name": brandName}).Decode(&logo)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // Not found - not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find brand logo: %w", err)
+	}
+
+	return &logo, nil
 }

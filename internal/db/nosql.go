@@ -49,4 +49,8 @@ type NoSQLDatabase interface {
 	GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error)
 	UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error
 	ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error)
+
+	// Brand Logo cache operations
+	SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error
+	GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error)
 }

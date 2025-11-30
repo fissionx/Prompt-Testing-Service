@@ -14,6 +14,7 @@ import (
 type SourceAnalyticsService struct {
 	db                    db.Database
 	recommendationsEngine *RecommendationsEngine
+	logoService           *LogoService
 }
 
 // NewSourceAnalyticsService creates a new source analytics service
@@ -21,6 +22,7 @@ func NewSourceAnalyticsService(database db.Database) *SourceAnalyticsService {
 	return &SourceAnalyticsService{
 		db:                    database,
 		recommendationsEngine: NewRecommendationsEngine(),
+		logoService:           NewLogoService(database),
 	}
 }
 
@@ -124,8 +126,13 @@ func (s *SourceAnalyticsService) GetSourceAnalytics(
 		period = startTime.Format("2006-01-02") + " to " + endTime.Format("2006-01-02")
 	}
 	
+	// Get brand logo
+	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	
 	return &models.SourceAnalyticsResponse{
 		Brand:           brand,
+		LogoURL:         brandLogo.LogoURL,
+		FallbackLogoURL: brandLogo.FallbackLogoURL,
 		Period:          period,
 		TopSources:      sourceInsights,
 		Recommendations: recommendations,

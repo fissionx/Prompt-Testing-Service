@@ -12,13 +12,15 @@ import (
 
 // GEOAnalyticsService provides GEO analytics and insights
 type GEOAnalyticsService struct {
-	db db.Database
+	db          db.Database
+	logoService *LogoService
 }
 
 // NewGEOAnalyticsService creates a new GEO analytics service
 func NewGEOAnalyticsService(database db.Database) *GEOAnalyticsService {
 	return &GEOAnalyticsService{
-		db: database,
+		db:          database,
+		logoService: NewLogoService(database),
 	}
 }
 
@@ -55,9 +57,14 @@ func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brand string, 
 		}, nil
 	}
 
+	// Get brand logo
+	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	
 	// Calculate metrics
 	insights := &models.GEOInsightsResponse{
 		Brand:              brand,
+		LogoURL:            brandLogo.LogoURL,
+		FallbackLogoURL:    brandLogo.FallbackLogoURL,
 		TotalResponses:     len(brandResponses),
 		SentimentBreakdown: make(map[string]int),
 	}
@@ -123,11 +130,27 @@ func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brand string, 
 	insights.MentionRate = float64(mentionedCount) / float64(len(brandResponses)) * 100
 	insights.GroundingRate = float64(groundedCount) / float64(len(brandResponses)) * 100
 
-	// Top competitors
+	// Top competitors (with logos)
+	competitorLogos := make([]BrandLogoRequest, 0, len(competitorCounts))
+	for comp := range competitorCounts {
+		competitorLogos = append(competitorLogos, BrandLogoRequest{
+			Name:    comp,
+			Website: "",
+		})
+	}
+	compLogos := s.logoService.GetMultipleLogos(ctx, competitorLogos)
+	compLogoMap := make(map[string]models.BrandWithLogo)
+	for _, logo := range compLogos {
+		compLogoMap[logo.Brand] = logo
+	}
+	
 	for comp, count := range competitorCounts {
+		logo := compLogoMap[comp]
 		insights.TopCompetitors = append(insights.TopCompetitors, models.CompetitorInsight{
-			Name:         comp,
-			MentionCount: count,
+			Name:            comp,
+			LogoURL:         logo.LogoURL,
+			FallbackLogoURL: logo.FallbackLogoURL,
+			MentionCount:    count,
 		})
 	}
 

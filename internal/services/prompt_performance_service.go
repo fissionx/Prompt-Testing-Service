@@ -12,13 +12,15 @@ import (
 
 // PromptPerformanceService analyzes prompt effectiveness for GEO
 type PromptPerformanceService struct {
-	db db.Database
+	db          db.Database
+	logoService *LogoService
 }
 
 // NewPromptPerformanceService creates a new prompt performance service
 func NewPromptPerformanceService(database db.Database) *PromptPerformanceService {
 	return &PromptPerformanceService{
-		db: database,
+		db:          database,
+		logoService: NewLogoService(database),
 	}
 }
 
@@ -113,13 +115,18 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		period = startTime.Format("2006-01-02") + " to " + endTime.Format("2006-01-02")
 	}
 
+	// Get brand logo
+	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+
 	return &models.PromptPerformanceResponse{
-		Brand:             brand,
-		Period:            period,
-		Prompts:           promptPerformances,
-		TopPerformers:     topPerformers,
-		LowPerformers:     lowPerformers,
-		AvgEffectiveness:  avgEffectiveness,
+		Brand:                brand,
+		LogoURL:              brandLogo.LogoURL,
+		FallbackLogoURL:      brandLogo.FallbackLogoURL,
+		Period:               period,
+		Prompts:              promptPerformances,
+		TopPerformers:        topPerformers,
+		LowPerformers:        lowPerformers,
+		AvgEffectiveness:     avgEffectiveness,
 		TotalPromptsAnalyzed: len(promptPerformances),
 	}, nil
 }

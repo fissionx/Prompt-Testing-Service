@@ -10,6 +10,7 @@ import (
 
 	"github.com/AI2HU/gego/internal/db"
 	"github.com/AI2HU/gego/internal/models"
+	"github.com/AI2HU/gego/internal/services"
 	"github.com/AI2HU/gego/internal/shared"
 )
 
@@ -131,6 +132,8 @@ func getPositionAnalyticsForBrand(
 	brand string,
 	startTime, endTime *time.Time,
 ) (*models.PositionAnalyticsResponse, error) {
+	// Get logo service
+	logoService := services.NewLogoService(database)
 	// Fetch responses
 	filter := shared.ResponseFilter{
 		StartTime: startTime,
@@ -194,8 +197,13 @@ func getPositionAnalyticsForBrand(
 		}
 	}
 
+	// Get brand logo
+	brandLogo := logoService.GetBrandLogo(ctx, brand, "")
+
 	response := &models.PositionAnalyticsResponse{
 		Brand:             brand,
+		LogoURL:           brandLogo.LogoURL,
+		FallbackLogoURL:   brandLogo.FallbackLogoURL,
 		TotalMentions:     len(brandResponses),
 		PositionBreakdown: positionBreakdown,
 		ByPromptType:      make(map[string]float64),

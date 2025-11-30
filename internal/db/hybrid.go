@@ -248,3 +248,11 @@ func (h *HybridDB) UpdateBrandProfile(ctx context.Context, profile *models.Brand
 func (h *HybridDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error) {
 	return h.nosqlDB.ListBrandProfiles(ctx)
 }
+
+func (h *HybridDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error {
+	return h.nosqlDB.SaveBrandLogo(ctx, logo)
+}
+
+func (h *HybridDB) GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error) {
+	return h.nosqlDB.GetBrandLogo(ctx, brandName)
+}
