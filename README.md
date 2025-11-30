@@ -99,6 +99,51 @@ docker-compose down
 docker-compose down -v
 ```
 
+### Fly.io Deployment
+
+Deploy Gego to Fly.io with MongoDB Atlas in minutes:
+
+> 📘 **For detailed Fly.io deployment instructions, see [FLYIO_DEPLOYMENT.md](FLYIO_DEPLOYMENT.md)**
+
+#### Quick Deploy
+
+```bash
+# 1. Verify your Fly.io account (if needed)
+# Visit: https://fly.io/high-risk-unlock
+
+# 2. Run automated deployment script
+./deploy-to-fly.sh
+```
+
+#### Manual Deploy
+
+```bash
+# 1. Create and deploy the app
+flyctl launch --no-deploy --copy-config --name gego
+
+# 2. Set MongoDB Atlas connection string
+flyctl secrets set MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/" -a gego
+
+# 3. Deploy
+flyctl deploy
+
+# 4. Test the deployment
+curl https://gego.fly.dev/api/v1/health
+```
+
+#### Fly.io Features
+
+- ✅ **Automatic HTTPS**: SSL certificates included
+- ✅ **Health Checks**: Built-in monitoring
+- ✅ **Persistent Storage**: 1GB volume for SQLite data
+- ✅ **MongoDB Atlas**: Pre-configured cloud database connection
+- ✅ **Zero-downtime Deploys**: Rolling updates
+- ✅ **Global CDN**: Fast worldwide access
+
+**Your deployed API**: `https://gego.fly.dev/api/v1`
+
+See [DEPLOY_COMMANDS.md](DEPLOY_COMMANDS.md) for quick reference commands.
+
 ## MongoDB Configuration
 
 Gego supports both local MongoDB and cloud MongoDB Atlas. You can easily switch between environments using environment variables.

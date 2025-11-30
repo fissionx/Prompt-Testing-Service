@@ -1,13 +1,16 @@
 # Production Dockerfile for Gego - GEO Tracker
 # Optimized for production deployment with minimal image size
 
-FROM golang:1.24-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata sqlite-dev gcc musl-dev
 
 # Set working directory
 WORKDIR /app
+
+# Set GOTOOLCHAIN to auto to allow downloading newer Go versions
+ENV GOTOOLCHAIN=auto
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -41,15 +44,23 @@ ENV GEGO_CONFIG_PATH=/app/config/config.yaml
 ENV GEGO_DATA_PATH=/app/data
 ENV GEGO_LOG_PATH=/app/logs
 
-# Create default configuration
-RUN echo 'sql_database:\n  provider: sqlite\n  uri: /app/data/gego.db\n  database: gego\n\nnosql_database:\n  provider: mongodb\n  uri: mongodb://mongodb:27017\n  database: gego' > /app/config/config.yaml
+# Create default configuration using cat heredoc for proper YAML formatting
+RUN cat > /app/config/config.yaml <<EOF
+sql_database:
+  provider: sqlite
+  uri: /app/data/gego.db
+  database: gego
+
+nosql_database:
+  provider: mongodb
+  uri: mongodb://mongodb:27017
+  database: gego
+EOF
 
 # Expose port
 EXPOSE 8989
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/usr/local/bin/gego", "api", "--help"] || exit 1
+# Health check removed - Fly.io handles this via fly.toml http_service.checks
 
 # Default command
 CMD ["/usr/local/bin/gego", "api", "--host", "0.0.0.0", "--port", "8989"]

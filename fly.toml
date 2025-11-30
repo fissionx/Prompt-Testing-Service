@@ -1,0 +1,43 @@
+# fly.toml app configuration file generated for gego on 2025-11-30T21:04:50+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'gego'
+primary_region = 'sjc'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  CORS_ORIGIN = '*'
+  GEGO_CONFIG_PATH = '/app/config/config.yaml'
+  GEGO_DATA_PATH = '/app/data'
+  GEGO_ENV = 'dev'
+  GEGO_LOG_PATH = '/app/logs'
+  MONGODB_DATABASE = 'gego'
+
+[[mounts]]
+  source = 'gego_data'
+  destination = '/app/data'
+  initial_size = '1gb'
+
+[http_service]
+  internal_port = 8989
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/api/v1/health'
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512
