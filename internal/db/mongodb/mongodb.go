@@ -77,6 +77,7 @@ func (m *MongoDB) Ping(ctx context.Context) error {
 
 // createIndexes creates necessary indexes for optimal query performance
 func (m *MongoDB) createIndexes(ctx context.Context) error {
+	// Optimize indexes for storage and performance
 	responseIndexes := []mongo.IndexModel{
 		{
 			Keys: bson.D{
@@ -99,6 +100,20 @@ func (m *MongoDB) createIndexes(ctx context.Context) error {
 				{Key: "brand", Value: 1},
 				{Key: "created_at", Value: -1},
 			},
+		},
+		// Add sparse index for schedule_id (only when present)
+		{
+			Keys: bson.D{
+				{Key: "schedule_id", Value: 1},
+			},
+			Options: options.Index().SetSparse(true),
+		},
+		// Add sparse index for llm_id
+		{
+			Keys: bson.D{
+				{Key: "llm_id", Value: 1},
+			},
+			Options: options.Index().SetSparse(true),
 		},
 	}
 
@@ -159,9 +174,17 @@ func (m *MongoDB) CreatePrompt(ctx context.Context, prompt *models.Prompt) error
 	prompt.CreatedAt = time.Now()
 	prompt.UpdatedAt = time.Now()
 
+	// Compress template if large
+	template := prompt.Template
+	if shared.ShouldCompress(template) {
+		if compressed, err := shared.CompressString(template); err == nil {
+			template = compressed
+		}
+	}
+
 	doc := bson.M{
 		"_id":        prompt.ID,
-		"template":   prompt.Template,
+		"template":   template,
 		"tags":       prompt.Tags,
 		"enabled":    prompt.Enabled,
 		"created_at": prompt.CreatedAt,
@@ -192,9 +215,15 @@ func (m *MongoDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, err
 		return nil, fmt.Errorf("invalid _id type in document")
 	}
 
+	// Decompress template if it was compressed
+	template := getString(doc, "template")
+	if decompressed, err := shared.DecompressString(template); err == nil {
+		template = decompressed
+	}
+
 	prompt := &models.Prompt{
 		ID:        promptID,
-		Template:  getString(doc, "template"),
+		Template:  template,
 		Enabled:   getBool(doc, "enabled"),
 		CreatedAt: getTime(doc, "created_at"),
 		UpdatedAt: getTime(doc, "updated_at"),
@@ -241,9 +270,15 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 			return nil, fmt.Errorf("invalid _id type in document")
 		}
 
+		// Decompress template if it was compressed
+		template := getString(doc, "template")
+		if decompressed, err := shared.DecompressString(template); err == nil {
+			template = decompressed
+		}
+
 		prompt := &models.Prompt{
 			ID:        promptID,
-			Template:  getString(doc, "template"),
+			Template:  template,
 			Enabled:   getBool(doc, "enabled"),
 			CreatedAt: getTime(doc, "created_at"),
 			UpdatedAt: getTime(doc, "updated_at"),
@@ -268,10 +303,18 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 func (m *MongoDB) UpdatePrompt(ctx context.Context, prompt *models.Prompt) error {
 	prompt.UpdatedAt = time.Now()
 
+	// Compress template if large
+	template := prompt.Template
+	if shared.ShouldCompress(template) {
+		if compressed, err := shared.CompressString(template); err == nil {
+			template = compressed
+		}
+	}
+
 	// Convert to BSON document with explicit _id field
 	doc := bson.M{
 		"_id":        prompt.ID,
-		"template":   prompt.Template,
+		"template":   template,
 		"tags":       prompt.Tags,
 		"enabled":    prompt.Enabled,
 		"created_at": prompt.CreatedAt,
@@ -329,15 +372,31 @@ func (m *MongoDB) DeleteAllPrompts(ctx context.Context) (int, error) {
 func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response) error {
 	response.CreatedAt = time.Now()
 
+	// Compress large text fields to save storage space
+	compressedResponseText := response.ResponseText
+	compressedPromptText := response.PromptText
+	
+	if shared.ShouldCompress(response.ResponseText) {
+		if compressed, err := shared.CompressString(response.ResponseText); err == nil {
+			compressedResponseText = compressed
+		}
+	}
+	
+	if shared.ShouldCompress(response.PromptText) {
+		if compressed, err := shared.CompressString(response.PromptText); err == nil {
+			compressedPromptText = compressed
+		}
+	}
+
 	doc := bson.M{
 		"_id":           response.ID,
 		"prompt_id":     response.PromptID,
-		"prompt_text":   response.PromptText,
+		"prompt_text":   compressedPromptText,
 		"llm_id":        response.LLMID,
 		"llm_name":      response.LLMName,
 		"llm_provider":  response.LLMProvider,
 		"llm_model":     response.LLMModel,
-		"response_text": response.ResponseText,
+		"response_text": compressedResponseText,
 		"schedule_id":   response.ScheduleID,
 		"tokens_used":   response.TokensUsed,
 		"temperature":   response.Temperature,
@@ -384,7 +443,19 @@ func (m *MongoDB) GetResponse(ctx context.Context, id string) (*models.Response,
 	if err == mongo.ErrNoDocuments {
 		return nil, fmt.Errorf("response not found: %s", id)
 	}
-	return &response, err
+	if err != nil {
+		return nil, err
+	}
+	
+	// Decompress text fields if they were compressed
+	if decompressed, err := shared.DecompressString(response.ResponseText); err == nil {
+		response.ResponseText = decompressed
+	}
+	if decompressed, err := shared.DecompressString(response.PromptText); err == nil {
+		response.PromptText = decompressed
+	}
+	
+	return &response, nil
 }
 
 // ListResponses lists responses with filtering
@@ -435,6 +506,16 @@ func (m *MongoDB) ListResponses(ctx context.Context, filter shared.ResponseFilte
 	var responses []*models.Response
 	if err := cursor.All(ctx, &responses); err != nil {
 		return nil, err
+	}
+
+	// Decompress text fields for all responses
+	for _, response := range responses {
+		if decompressed, err := shared.DecompressString(response.ResponseText); err == nil {
+			response.ResponseText = decompressed
+		}
+		if decompressed, err := shared.DecompressString(response.PromptText); err == nil {
+			response.PromptText = decompressed
+		}
 	}
 
 	return responses, nil

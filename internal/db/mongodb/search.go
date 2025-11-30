@@ -54,6 +54,11 @@ func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, 
 		}
 
 		responseText := getString(doc, "response_text")
+		// Decompress if needed
+		if decompressed, err := shared.DecompressString(responseText); err == nil {
+			responseText = decompressed
+		}
+		
 		promptID := getString(doc, "prompt_id")
 		llmID := getString(doc, "llm_id")
 		llmProvider := getString(doc, "llm_provider")
@@ -111,7 +116,13 @@ func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endT
 			continue
 		}
 
-		words := shared.ExtractCapitalizedWords(response.ResponseText)
+		// Decompress response text if needed
+		responseText := response.ResponseText
+		if decompressed, err := shared.DecompressString(responseText); err == nil {
+			responseText = decompressed
+		}
+
+		words := shared.ExtractCapitalizedWords(responseText)
 		for _, word := range words {
 			wordCounts[word]++
 		}
