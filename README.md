@@ -99,6 +99,43 @@ docker-compose down
 docker-compose down -v
 ```
 
+## MongoDB Configuration
+
+Gego supports both local MongoDB and cloud MongoDB Atlas. You can easily switch between environments using environment variables.
+
+### Quick Setup
+
+**Using Helper Scripts (Recommended):**
+```bash
+# Run with local MongoDB
+./scripts/run-local.sh api start
+
+# Run with MongoDB Atlas (cloud)
+./scripts/run-dev.sh api start
+```
+
+**Using Environment Variables:**
+```bash
+# Local MongoDB
+GEGO_ENV=local gego api start
+
+# MongoDB Atlas
+GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://user:pass@cluster.mongodb.net/" gego api start
+```
+
+### MongoDB Atlas Setup
+
+1. **Create MongoDB Atlas Account**: Sign up at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
+2. **Get Connection String**: Copy your connection string (e.g., `mongodb+srv://user:pass@cluster.mongodb.net/`)
+3. **Whitelist IP**: Add your IP address in Network Access settings
+4. **Set Environment Variables**:
+   ```bash
+   export GEGO_ENV=dev
+   export MONGODB_CLOUD_URI="your-connection-string"
+   ```
+
+📚 **For detailed MongoDB setup instructions, see [MONGODB_SETUP.md](MONGODB_SETUP.md)**
+
 ## Quick Start
 
 ### 1. Initialize Configuration

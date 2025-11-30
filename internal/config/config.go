@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,7 +45,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Load loads configuration from file
+// Load loads configuration from file and applies environment variable overrides
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -56,7 +57,53 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// Apply environment variable overrides
+	applyEnvironmentOverrides(&config)
+
 	return &config, nil
+}
+
+// applyEnvironmentOverrides applies environment variables to override configuration
+func applyEnvironmentOverrides(cfg *Config) {
+	// Check for GEGO_ENV to determine environment (local, dev, prod)
+	env := strings.ToLower(os.Getenv("GEGO_ENV"))
+
+	// MongoDB URI override based on environment or direct variable
+	if mongoURI := os.Getenv("MONGODB_URI"); mongoURI != "" {
+		// Direct override takes precedence
+		cfg.NoSQLDatabase.URI = mongoURI
+	} else if env != "" {
+		// Environment-based configuration
+		switch env {
+		case "local":
+			cfg.NoSQLDatabase.URI = "mongodb://localhost:27017"
+		case "dev", "development":
+			// Use Atlas cloud URI from environment or keep existing config
+			if cloudURI := os.Getenv("MONGODB_CLOUD_URI"); cloudURI != "" {
+				cfg.NoSQLDatabase.URI = cloudURI
+			}
+		case "prod", "production":
+			// Use production Atlas URI from environment
+			if prodURI := os.Getenv("MONGODB_PROD_URI"); prodURI != "" {
+				cfg.NoSQLDatabase.URI = prodURI
+			}
+		}
+	}
+
+	// MongoDB Database name override
+	if dbName := os.Getenv("MONGODB_DATABASE"); dbName != "" {
+		cfg.NoSQLDatabase.Database = dbName
+	}
+
+	// SQL Database URI override (for SQLite)
+	if sqlURI := os.Getenv("SQL_DATABASE_URI"); sqlURI != "" {
+		cfg.SQLDatabase.URI = sqlURI
+	}
+
+	// CORS origin override
+	if corsOrigin := os.Getenv("CORS_ORIGIN"); corsOrigin != "" {
+		cfg.CORSOrigin = corsOrigin
+	}
 }
 
 // Save saves configuration to file
