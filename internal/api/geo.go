@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/services"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/services"
 )
 
 // generatePrompts handles POST /api/v1/geo/prompts/generate

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/AI2HU/gego/internal/db/mongodb"
-	"github.com/AI2HU/gego/internal/db/sqlite"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/db/mongodb"
+	"github.com/fissionx/gego/internal/db/sqlite"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // HybridDB implements the Database interface using both SQLite and NoSQL

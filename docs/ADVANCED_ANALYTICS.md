@@ -492,7 +492,7 @@ Sources are automatically categorized:
 ## 📞 Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/AI2HU/gego/issues
+- GitHub Issues: https://github.com/fissionx/gego/issues
 - Email: jonathan@blocs.fr
 
 ---

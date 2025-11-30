@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/services"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/services"
 )
 
 var llmCmd = &cobra.Command{

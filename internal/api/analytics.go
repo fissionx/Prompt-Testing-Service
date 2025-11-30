@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/services"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/services"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // getSourceAnalytics handles POST /api/v1/geo/analytics/sources

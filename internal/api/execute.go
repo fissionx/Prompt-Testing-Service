@@ -12,14 +12,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/llm/anthropic"
-	"github.com/AI2HU/gego/internal/llm/google"
-	"github.com/AI2HU/gego/internal/llm/ollama"
-	"github.com/AI2HU/gego/internal/llm/openai"
-	"github.com/AI2HU/gego/internal/llm/perplexity"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/services"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/llm/anthropic"
+	"github.com/fissionx/gego/internal/llm/google"
+	"github.com/fissionx/gego/internal/llm/ollama"
+	"github.com/fissionx/gego/internal/llm/openai"
+	"github.com/fissionx/gego/internal/llm/perplexity"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/services"
 )
 
 // geoJSONResponse represents the JSON structure returned by the LLM for GEO analysis

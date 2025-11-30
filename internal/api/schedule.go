@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // listSchedules handles GET /api/v1/schedules

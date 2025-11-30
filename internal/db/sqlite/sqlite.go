@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // SQLite implements the Database interface for SQLite

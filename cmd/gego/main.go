@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/AI2HU/gego/internal/cli"
+	"github.com/fissionx/gego/internal/cli"
 )
 
 func main() {

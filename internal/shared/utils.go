@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AI2HU/gego/internal/config"
+	"github.com/fissionx/gego/internal/config"
 	"github.com/gin-gonic/gin"
 )
 

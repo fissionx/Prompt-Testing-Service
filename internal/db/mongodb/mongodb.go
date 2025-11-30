@@ -10,8 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // MongoDB implements the Database interface for MongoDB

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // RecommendationsEngine generates actionable insights from GEO data

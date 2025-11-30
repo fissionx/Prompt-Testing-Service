@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // CompetitiveBenchmarkService provides competitive analysis

@@ -10,17 +10,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/AI2HU/gego/internal/api"
-	"github.com/AI2HU/gego/internal/config"
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/llm/anthropic"
-	"github.com/AI2HU/gego/internal/llm/google"
-	"github.com/AI2HU/gego/internal/llm/ollama"
-	"github.com/AI2HU/gego/internal/llm/openai"
-	"github.com/AI2HU/gego/internal/llm/perplexity"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/api"
+	"github.com/fissionx/gego/internal/config"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/llm/anthropic"
+	"github.com/fissionx/gego/internal/llm/google"
+	"github.com/fissionx/gego/internal/llm/ollama"
+	"github.com/fissionx/gego/internal/llm/openai"
+	"github.com/fissionx/gego/internal/llm/perplexity"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 var (

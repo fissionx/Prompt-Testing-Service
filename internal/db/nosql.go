@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // NoSQLDatabase defines the interface for NoSQL database operations (Prompts and Responses)

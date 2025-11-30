@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // BulkExecutionService handles batch execution of prompts across multiple LLMs

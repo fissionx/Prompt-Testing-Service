@@ -12,12 +12,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/llm/anthropic"
-	"github.com/AI2HU/gego/internal/llm/google"
-	"github.com/AI2HU/gego/internal/llm/ollama"
-	"github.com/AI2HU/gego/internal/llm/openai"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/llm/anthropic"
+	"github.com/fissionx/gego/internal/llm/google"
+	"github.com/fissionx/gego/internal/llm/ollama"
+	"github.com/fissionx/gego/internal/llm/openai"
+	"github.com/fissionx/gego/internal/models"
 )
 
 var promptCmd = &cobra.Command{

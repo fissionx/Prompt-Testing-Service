@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // Config represents the common configuration for all LLM providers

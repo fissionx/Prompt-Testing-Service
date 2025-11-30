@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/AI2HU/gego/internal/config"
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/config"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/models"
 )
 
 var initCmd = &cobra.Command{

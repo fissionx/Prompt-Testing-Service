@@ -7,8 +7,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/shared"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // SearchKeyword searches for a keyword in all responses and calculates stats on-the-fly

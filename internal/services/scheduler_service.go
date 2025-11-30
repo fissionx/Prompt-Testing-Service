@@ -13,10 +13,10 @@ import (
 	"github.com/robfig/cron/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/logger"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/logger"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // Retry configuration constants

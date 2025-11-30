@@ -7,10 +7,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/models"
-	"github.com/AI2HU/gego/internal/services"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/services"
 )
 
 // Server represents the API server

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/models"
 	"github.com/google/uuid"
 )
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/AI2HU/gego/internal/db"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/db"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // PromptManagementService provides business logic for prompt management

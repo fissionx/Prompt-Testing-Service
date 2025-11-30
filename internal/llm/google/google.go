@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/AI2HU/gego/internal/llm"
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // Provider implements the LLM Provider interface for Google AI

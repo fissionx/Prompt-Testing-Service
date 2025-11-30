@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 
-	"github.com/AI2HU/gego/internal/models"
+	"github.com/fissionx/gego/internal/models"
 )
 
 // SQLDatabase defines the interface for SQL database operations (LLMs and Schedules)
