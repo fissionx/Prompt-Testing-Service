@@ -88,6 +88,17 @@ func (m *MongoDB) createIndexes(ctx context.Context) error {
 				{Key: "created_at", Value: -1},
 			},
 		},
+		{
+			Keys: bson.D{
+				{Key: "brand", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "brand", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+		},
 	}
 
 	_, err := m.database.Collection(collResponses).Indexes().CreateMany(ctx, responseIndexes)
@@ -314,7 +325,32 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 		"schedule_id":   response.ScheduleID,
 		"tokens_used":   response.TokensUsed,
 		"temperature":   response.Temperature,
+		"latency_ms":    response.LatencyMs,
+		"error":         response.Error,
 		"created_at":    response.CreatedAt,
+		
+		// GEO Analytics Fields
+		"brand":                response.Brand,
+		"visibility_score":     response.VisibilityScore,
+		"brand_mentioned":      response.BrandMentioned,
+		"in_grounding_sources": response.InGroundingSources,
+		"sentiment":            response.Sentiment,
+		"competitors_mention":  response.CompetitorsMention,
+		"grounding_sources":    response.GroundingSources,
+		"grounding_domains":    response.GroundingDomains,
+		
+		// Position/Ranking Fields
+		"brand_position":      response.BrandPosition,
+		"total_brands_listed": response.TotalBrandsListed,
+		
+		// Time-Series Fields
+		"week":    response.Week,
+		"month":   response.Month,
+		"quarter": response.Quarter,
+		
+		// Regional Fields
+		"region":   response.Region,
+		"language": response.Language,
 	}
 
 	if response.Metadata != nil {

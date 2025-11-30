@@ -115,16 +115,22 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 	if len(result.Candidates) > 0 && result.Candidates[0].GroundingMetadata != nil {
 		metadata := result.Candidates[0].GroundingMetadata
 
-		if metadata.WebSearchQueries != nil && len(metadata.WebSearchQueries) > 0 {
+		if len(metadata.WebSearchQueries) > 0 {
 			log.Printf("Web Search Queries: %v", metadata.WebSearchQueries)
 		}
 
-		if metadata.GroundingChunks != nil && len(metadata.GroundingChunks) > 0 {
+		if len(metadata.GroundingChunks) > 0 {
 			log.Printf("Found %d grounding chunks", len(metadata.GroundingChunks))
 			for i, chunk := range metadata.GroundingChunks {
-				if chunk.Web != nil && chunk.Web.URI != "" {
-					groundingSources = append(groundingSources, chunk.Web.URI)
-					log.Printf("  Chunk %d: %s (Title: %s)", i+1, chunk.Web.URI, chunk.Web.Title)
+				if chunk.Web != nil && chunk.Web.Title != "" {
+					// Use Title (actual source domain) - skip if not available
+					// Title contains the real source (e.g., "forbes.com", "reddit.com")
+					// URI contains redirect URLs (vertexaisearch.cloud.google.com/...)
+					source := chunk.Web.Title
+					groundingSources = append(groundingSources, source)
+					log.Printf("  Chunk %d: %s (Source: %s)", i+1, chunk.Web.URI, source)
+				} else if chunk.Web != nil {
+					log.Printf("  Chunk %d: %s (Source: SKIPPED - no title)", i+1, chunk.Web.URI)
 				}
 			}
 		}

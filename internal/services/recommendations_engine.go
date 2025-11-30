@@ -90,7 +90,7 @@ func (e *RecommendationsEngine) GenerateSourceRecommendations(
 			Priority:    "critical",
 			Title:       "Brand not appearing in cited sources",
 			Description: "Your brand is not appearing in the sources that AI models cite. This severely limits visibility.",
-			Action:      fmt.Sprintf("Focus on getting mentioned in these high-value sources: %s, %s, %s", getTopDomainNames(topSources, 3)),
+			Action:      fmt.Sprintf("Focus on getting mentioned in these high-value sources: %s", getTopDomainNames(topSources, 5)),
 			Impact:      "critical",
 		})
 	}
