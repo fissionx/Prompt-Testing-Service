@@ -1,9 +1,10 @@
-# Gego - GEO System for your brand, working with all LLMs
+# Gego - Enterprise GEO System by FissionX.ai
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org/)
+[![Company: FissionX.ai](https://img.shields.io/badge/Company-FissionX.ai-blue.svg)](https://fissionx.ai)
 
-Gego is an open-source GEO (Generative Engine Optimization) tracker that schedules prompts across multiple Large Language Models (LLMs) and automatically extracts keywords from their responses. It helps you understand which keywords (brands, products, concepts) appear most frequently, which prompts generate the most mentions.
+Gego is an enterprise-grade GEO (Generative Engine Optimization) tracker developed by FissionX.ai. It schedules prompts across multiple Large Language Models (LLMs) and automatically extracts keywords from their responses, helping you understand which keywords (brands, products, concepts) appear most frequently and which prompts generate the most mentions.
 
 ## Features
 
@@ -37,7 +38,8 @@ Gego is an open-source GEO (Generative Engine Optimization) tracker that schedul
 ### Build from Source
 
 ```bash
-git clone https://github.com/AI2HU/gego.git
+# Clone from FissionX.ai repository
+git clone https://github.com/fissionxai/gego.git
 cd gego
 go build -o gego cmd/gego/main.go
 ```
@@ -45,8 +47,8 @@ go build -o gego cmd/gego/main.go
 ### Install via Go
 
 ```bash
-# Install Gego directly from GitHub
-go install github.com/AI2HU/gego/cmd/gego@latest
+# Install Gego directly
+go install github.com/fissionxai/gego/cmd/gego@latest
 ```
 
 ### Docker Installation
@@ -583,16 +585,6 @@ Gego uses several strategies for optimal performance:
 4. **Concurrent Execution**: Prompts are executed in parallel across LLMs
 5. **Caching**: Keyword extraction patterns are compiled once and reused
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## Roadmap
 
 - [ ] Persona embedding to simulate Chat version of models
@@ -602,30 +594,30 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [ ] Prompts batches to optimize costs
 - [ ] Prompts threading per provider for speed
 - [ ] Additional NoSQL database support (Cassandra, etc.)
-- [ ] Web dashboard for visualizations (another repo)
+- [ ] Web dashboard for visualizations
 - [ ] Export statistics to CSV/JSON
 - [ ] Webhook notifications
 - [ ] Custom keyword extraction rules and patterns
 - [ ] Time-series trend analysis
-- [ ] Docker support
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is proprietary software owned by FissionX.ai Inc. All rights reserved.
 
-## Acknowledgments
-
-- Built with [Cobra](https://github.com/spf13/cobra) for CLI
-- [MongoDB Go Driver](https://github.com/mongodb/mongo-go-driver) for analytics database
-- [SQLite3](https://github.com/mattn/go-sqlite3) for configuration database
-- [Cron](https://github.com/robfig/cron) for scheduling
+Unauthorized copying, modification, distribution, or use of this software is strictly prohibited. See the LICENSE file for complete terms and conditions.
 
 ## Support
 
-- 📧 Email: jonathan@blocs.fr
-- 🐛 Issues: [GitHub Issues](https://github.com/AI2HU/gego/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/AI2HU/gego/discussions)
+For enterprise support and inquiries:
+
+- 🌐 Website: [https://fissionx.ai](https://fissionx.ai)
+- 📧 Email: support@fissionx.ai
+- 💼 Enterprise Sales: sales@fissionx.ai
+
+## About FissionX.ai
+
+FissionX.ai is a leading technology company specializing in AI-powered solutions for enterprise customers. Our mission is to help businesses harness the power of generative AI to optimize their digital presence and stay competitive in the AI-first world.
 
 ---
 
-Made with ❤️ for the open-source community
+© 2024-2025 FissionX.ai Inc. All Rights Reserved.
