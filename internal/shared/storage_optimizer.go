@@ -7,8 +7,8 @@ import (
 
 // StorageStats tracks storage optimization statistics
 type StorageStats struct {
-	OriginalSize   int64
-	CompressedSize int64
+	OriginalSize    int64
+	CompressedSize  int64
 	CompressionRate float64
 }
 
@@ -16,15 +16,15 @@ type StorageStats struct {
 func CalculateCompressionStats(original, compressed string) StorageStats {
 	originalSize := int64(len(original))
 	compressedSize := int64(len(compressed))
-	
+
 	var rate float64
 	if originalSize > 0 {
 		rate = (1.0 - float64(compressedSize)/float64(originalSize)) * 100
 	}
-	
+
 	return StorageStats{
-		OriginalSize:   originalSize,
-		CompressedSize: compressedSize,
+		OriginalSize:    originalSize,
+		CompressedSize:  compressedSize,
 		CompressionRate: rate,
 	}
 }
@@ -34,10 +34,10 @@ func OptimizeArrayField(arr []string) []string {
 	if len(arr) == 0 {
 		return arr
 	}
-	
+
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(arr))
-	
+
 	for _, item := range arr {
 		trimmed := strings.TrimSpace(item)
 		if trimmed != "" && !seen[trimmed] {
@@ -45,7 +45,7 @@ func OptimizeArrayField(arr []string) []string {
 			result = append(result, trimmed)
 		}
 	}
-	
+
 	return result
 }
 
@@ -54,26 +54,26 @@ func TruncateForStorage(text string, maxLength int) string {
 	if len(text) <= maxLength {
 		return text
 	}
-	
+
 	// Keep first 80% and last 10% to preserve context
 	keepStart := int(float64(maxLength) * 0.8)
 	keepEnd := int(float64(maxLength) * 0.1)
-	
-	if keepStart + keepEnd >= len(text) {
+
+	if keepStart+keepEnd >= len(text) {
 		return text[:maxLength]
 	}
-	
+
 	return text[:keepStart] + "..." + text[len(text)-keepEnd:]
 }
 
 // EstimateDocumentSize estimates the size of a document in bytes
 func EstimateDocumentSize(fields map[string]interface{}) int64 {
 	var size int64
-	
+
 	for key, value := range fields {
 		// Add key size
 		size += int64(len(key))
-		
+
 		// Add value size based on type
 		switch v := value.(type) {
 		case string:
@@ -92,7 +92,7 @@ func EstimateDocumentSize(fields map[string]interface{}) int64 {
 			size += 50 // Estimate for complex types
 		}
 	}
-	
+
 	return size
 }
 
@@ -103,7 +103,7 @@ func FormatStorageSize(bytes int64) string {
 		MB = KB * 1024
 		GB = MB * 1024
 	)
-	
+
 	switch {
 	case bytes >= GB:
 		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
@@ -115,4 +115,3 @@ func FormatStorageSize(bytes int64) string {
 		return fmt.Sprintf("%d bytes", bytes)
 	}
 }
-

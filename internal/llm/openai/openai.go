@@ -73,6 +73,9 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 		ctx,
 		openai.ChatCompletionNewParams{
 			Model: model,
+			Tools: []openai.ChatCompletionToolParam{
+				webSearchTool,
+			},
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				{
 					OfUser: &openai.ChatCompletionUserMessageParam{

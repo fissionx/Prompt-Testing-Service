@@ -15,12 +15,12 @@ func CompressString(data string) (string, error) {
 
 	var buf bytes.Buffer
 	gzWriter := gzip.NewWriter(&buf)
-	
+
 	_, err := gzWriter.Write([]byte(data))
 	if err != nil {
 		return "", err
 	}
-	
+
 	if err := gzWriter.Close(); err != nil {
 		return "", err
 	}
@@ -61,4 +61,3 @@ func DecompressString(compressed string) (string, error) {
 func ShouldCompress(data string) bool {
 	return len(data) > 100
 }
-
