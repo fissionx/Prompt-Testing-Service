@@ -32,9 +32,13 @@ func NewBulkExecutionService(database db.Database, registry *llm.Registry) *Bulk
 }
 
 // ExecuteCampaign executes all prompts across all LLMs for a GEO campaign
-func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brand string, promptIDs, llmIDs []string, temperature float64) (*models.GEOCampaign, error) {
+func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brand string, promptIDs, llmIDs []string, temperature float64, totalRuns int) (*models.GEOCampaign, error) {
 	if temperature == 0 {
 		temperature = 0.7
+	}
+
+	if totalRuns == 0 {
+		totalRuns = 1
 	}
 
 	// Create campaign
@@ -45,22 +49,22 @@ func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName
 		PromptIDs: promptIDs,
 		LLMIDs:    llmIDs,
 		Status:    "running",
-		TotalRuns: len(promptIDs) * len(llmIDs),
+		TotalRuns: len(promptIDs) * len(llmIDs) * totalRuns,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
 	// Start execution in background
-	go s.executeInBackground(context.Background(), campaign, temperature)
+	go s.executeInBackground(context.Background(), campaign, temperature, totalRuns)
 
 	return campaign, nil
 }
 
 // executeInBackground runs the campaign execution asynchronously
-func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign *models.GEOCampaign, temperature float64) {
+func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign *models.GEOCampaign, temperature float64, totalRuns int) {
 	log.Printf("========== STARTING CAMPAIGN: %s ==========", campaign.Name)
-	log.Printf("Brand: %s, Prompts: %d, LLMs: %d, Total Runs: %d", 
-		campaign.Brand, len(campaign.PromptIDs), len(campaign.LLMIDs), campaign.TotalRuns)
+	log.Printf("Brand: %s, Prompts: %d, LLMs: %d, Runs per prompt: %d, Total Runs: %d", 
+		campaign.Brand, len(campaign.PromptIDs), len(campaign.LLMIDs), totalRuns, campaign.TotalRuns)
 
 	// Fetch prompts and LLMs
 	prompts, err := s.getPrompts(ctx, campaign.PromptIDs)
@@ -83,31 +87,34 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 	completed := 0
 	mu := sync.Mutex{}
 
+	// Execute each prompt-LLM combination multiple times
 	for _, prompt := range prompts {
 		for _, llmConfig := range llms {
-			wg.Add(1)
-			
-			go func(p *models.Prompt, llm *models.LLMConfig) {
-				defer wg.Done()
+			for run := 0; run < totalRuns; run++ {
+				wg.Add(1)
 				
-				// Acquire semaphore
-				semaphore <- struct{}{}
-				defer func() { <-semaphore }()
+				go func(p *models.Prompt, llm *models.LLMConfig, runNum int) {
+					defer wg.Done()
+					
+					// Acquire semaphore
+					semaphore <- struct{}{}
+					defer func() { <-semaphore }()
 
-				// Execute single prompt-LLM pair
-				err := s.executeSingle(ctx, p, llm, campaign.Brand, temperature)
-				
-				mu.Lock()
-				completed++
-				if completed%10 == 0 || completed == campaign.TotalRuns {
-					log.Printf("Campaign %s: %d/%d completed", campaign.Name, completed, campaign.TotalRuns)
-				}
-				mu.Unlock()
+					// Execute single prompt-LLM pair
+					err := s.executeSingle(ctx, p, llm, campaign.Brand, temperature)
+					
+					mu.Lock()
+					completed++
+					if completed%10 == 0 || completed == campaign.TotalRuns {
+						log.Printf("Campaign %s: %d/%d completed", campaign.Name, completed, campaign.TotalRuns)
+					}
+					mu.Unlock()
 
-				if err != nil {
-					log.Printf("Execution failed for prompt %s with LLM %s: %v", p.ID, llm.ID, err)
-				}
-			}(prompt, llmConfig)
+					if err != nil {
+						log.Printf("Execution failed for prompt %s with LLM %s (run %d/%d): %v", p.ID, llm.ID, runNum+1, totalRuns, err)
+					}
+				}(prompt, llmConfig, run)
+			}
 		}
 	}
 

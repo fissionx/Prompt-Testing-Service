@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,6 +26,9 @@ type Server struct {
 	sourceAnalyticsService      *services.SourceAnalyticsService
 	competitiveBenchmarkService *services.CompetitiveBenchmarkService
 	promptPerformanceService    *services.PromptPerformanceService
+	scheduledCampaignManager    *services.ScheduledCampaignManager
+	dashboardService            *services.DashboardService
+	exportService               *services.ExportService
 	llmRegistry                 *llm.Registry
 	router                      *gin.Engine
 	corsOrigin                  string
@@ -57,6 +62,8 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		c.Next()
 	})
 
+	scheduledCampaignManager := services.NewScheduledCampaignManager(database, llmRegistry)
+
 	server := &Server{
 		db:                          database,
 		llmService:                  services.NewLLMService(database),
@@ -67,6 +74,9 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		sourceAnalyticsService:      services.NewSourceAnalyticsService(database),
 		competitiveBenchmarkService: services.NewCompetitiveBenchmarkService(database),
 		promptPerformanceService:    services.NewPromptPerformanceService(database),
+		scheduledCampaignManager:    scheduledCampaignManager,
+		dashboardService:            services.NewDashboardService(database),
+		exportService:               services.NewExportService(database),
 		llmRegistry:                 llmRegistry,
 		router:                      router,
 		corsOrigin:                  corsOrigin,
@@ -117,6 +127,9 @@ func (s *Server) setupRoutes() {
 		geo.GET("/profiles", s.listBrandProfiles)
 		geo.GET("/profiles/:brand", s.getBrandProfile)
 
+		// Scheduled Campaigns
+		geo.GET("/campaigns", s.listScheduledCampaigns)
+
 		// Bulk Execution
 		geo.POST("/execute/bulk", s.bulkExecute)
 
@@ -128,6 +141,23 @@ func (s *Server) setupRoutes() {
 		geo.POST("/analytics/competitive", s.getCompetitiveBenchmark)
 		geo.POST("/analytics/position", s.getPositionAnalytics)
 		geo.POST("/analytics/prompt-performance", s.getPromptPerformance)
+		geo.GET("/analytics/prompt-timeseries", s.getPromptTimeSeries)
+
+		// Dashboard & Overview
+		geo.GET("/dashboard/overview", s.getDashboardOverview)
+		geo.POST("/analytics/models", s.getModelAnalytics)
+		geo.POST("/analytics/competitor-matrix", s.getCompetitorMatrix)
+		geo.POST("/analytics/trend-comparison", s.getTrendComparison)
+
+		// Export
+		geo.POST("/export", s.exportData)
+
+		// Competitor Analysis
+		geo.GET("/competitors", s.listCompetitors)
+		geo.POST("/competitors/suggest", s.suggestCompetitors) // NEW: LLM-based auto-suggest
+		geo.POST("/competitors/discover", s.discoverCompetitors)
+		geo.POST("/competitors/custom", s.addCustomCompetitors)
+		geo.POST("/competitors/insights", s.getCompetitorInsights)
 	}
 
 	api.GET("/health", s.healthCheck)
@@ -135,7 +165,17 @@ func (s *Server) setupRoutes() {
 
 // Run starts the API server
 func (s *Server) Run(address string) error {
+	// Start the scheduled campaign manager
+	if err := s.scheduledCampaignManager.Start(context.Background()); err != nil {
+		return fmt.Errorf("failed to start scheduled campaign manager: %w", err)
+	}
+
 	return s.router.Run(address)
+}
+
+// Stop stops the API server components
+func (s *Server) Stop() {
+	s.scheduledCampaignManager.Stop()
 }
 
 // Helper functions

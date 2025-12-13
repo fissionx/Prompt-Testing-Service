@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
@@ -45,7 +48,6 @@ func (s *Server) generatePrompts(c *gin.Context) {
 	}
 
 	// Build response with grouping by type
-	var promptPreviews []models.PromptPreview
 	promptsByType := make(map[string][]models.PromptPreview)
 	typeCounts := make(map[string]int)
 
@@ -57,7 +59,6 @@ func (s *Server) generatePrompts(c *gin.Context) {
 			Category:   prompt.Category,
 			Reused:     !prompt.Generated || prompt.Brand != req.Brand,
 		}
-		promptPreviews = append(promptPreviews, preview)
 
 		// Group by type
 		typeKey := string(prompt.PromptType)
@@ -72,7 +73,6 @@ func (s *Server) generatePrompts(c *gin.Context) {
 		Brand:         req.Brand,
 		Category:      req.Category,
 		Domain:        req.Domain,
-		Prompts:       promptPreviews,
 		PromptsByType: promptsByType,
 		Existing:      existingCount,
 		Generated:     generatedCount,
@@ -94,6 +94,12 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		return
 	}
 
+	// Validate that at least prompts or custom prompts are provided
+	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID or custom prompt must be provided")
+		return
+	}
+
 	if req.Temperature == 0 {
 		req.Temperature = 0.7
 	}
@@ -104,17 +110,97 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		return
 	}
 
-	// Create bulk execution service
+	ctx := c.Request.Context()
+
+	// Process custom prompts: save them to database and get their IDs
+	allPromptIDs := make([]string, 0, len(req.PromptIDs)+len(req.CustomPrompts))
+	allPromptIDs = append(allPromptIDs, req.PromptIDs...)
+
+	if len(req.CustomPrompts) > 0 {
+		for _, customPrompt := range req.CustomPrompts {
+			// Create prompt in database
+			promptType := models.PromptType(customPrompt.PromptType)
+			if promptType == "" {
+				promptType = models.PromptTypeCustom
+			}
+
+			prompt := &models.Prompt{
+				ID:         uuid.New().String(),
+				Template:   customPrompt.Template,
+				PromptType: promptType,
+				Category:   customPrompt.Category,
+				Brand:      req.Brand,
+				Generated:  false,
+				Enabled:    true,
+				CreatedAt:  time.Now(),
+				UpdatedAt:  time.Now(),
+			}
+
+			// Save prompt to database
+			if err := s.db.CreatePrompt(ctx, prompt); err != nil {
+				s.errorResponse(c, http.StatusInternalServerError, "Failed to save custom prompt: "+err.Error())
+				return
+			}
+
+			allPromptIDs = append(allPromptIDs, prompt.ID)
+		}
+	}
+
+	// Set default total runs if not specified
+	totalRuns := req.TotalRuns
+	if totalRuns == 0 {
+		totalRuns = 1
+	}
+
+	// If scheduleCron is provided, create a scheduled campaign
+	if req.ScheduleCron != "" {
+		scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
+			ctx,
+			req.CampaignName,
+			req.Brand,
+			allPromptIDs,
+			req.LLMIDs,
+			req.Temperature,
+			req.ScheduleCron,
+			totalRuns,
+		)
+		if err != nil {
+			s.errorResponse(c, http.StatusInternalServerError, "Failed to create scheduled campaign: "+err.Error())
+			return
+		}
+
+		response := models.BulkExecuteResponse{
+			CampaignID:   scheduledCampaign.ID,
+			CampaignName: scheduledCampaign.CampaignName,
+			Brand:        scheduledCampaign.Brand,
+			TotalRuns:    scheduledCampaign.TotalRuns,
+			Status:       scheduledCampaign.Status,
+			StartedAt:    scheduledCampaign.CreatedAt,
+			NextRunAt:    scheduledCampaign.NextRunAt,
+			ScheduleCron: scheduledCampaign.ScheduleCron,
+			Message:      "Scheduled campaign created successfully. First execution started in background. Next run at " + scheduledCampaign.NextRunAt.Format("2006-01-02 15:04:05 UTC"),
+		}
+
+		c.JSON(http.StatusAccepted, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: "Scheduled campaign created and first execution started",
+		})
+		return
+	}
+
+	// Create bulk execution service for one-time execution
 	bulkService := services.NewBulkExecutionService(s.db, s.llmRegistry)
 
 	// Start campaign execution
 	campaign, err := bulkService.ExecuteCampaign(
-		c.Request.Context(),
+		ctx,
 		req.CampaignName,
 		req.Brand,
-		req.PromptIDs,
+		allPromptIDs,
 		req.LLMIDs,
 		req.Temperature,
+		totalRuns,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to start campaign: "+err.Error())
@@ -151,12 +237,48 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
+	// Try to get cached data first
+	query := models.AnalyticsCacheQuery{
+		CampaignID: req.CampaignID,
+		Brand:      req.Brand,
+		StartTime:  req.StartTime,
+		EndTime:    req.EndTime,
+	}
+
+	cachedData, err := s.db.GetCachedGEOInsights(ctx, query)
+	if err == nil && cachedData != nil {
+		// Return cached data
+		response := &models.GEOInsightsResponse{
+			Brand:                 cachedData.Brand,
+			LogoURL:               cachedData.LogoURL,
+			FallbackLogoURL:       cachedData.FallbackLogoURL,
+			AverageVisibility:     cachedData.AverageVisibility,
+			MentionRate:           cachedData.MentionRate,
+			GroundingRate:         cachedData.GroundingRate,
+			SentimentBreakdown:    cachedData.SentimentBreakdown,
+			TopCompetitors:        cachedData.TopCompetitors,
+			PerformanceByLLM:      cachedData.PerformanceByLLM,
+			PerformanceByCategory: cachedData.PerformanceByCategory,
+			Trends:                cachedData.Trends,
+			TotalResponses:        cachedData.TotalResponses,
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: "GEO insights retrieved from cache",
+		})
+		return
+	}
+
 	// Create analytics service
 	analyticsService := services.NewGEOAnalyticsService(s.db)
 
-	// Get insights
+	// Compute insights if not cached
 	insights, err := analyticsService.GetGEOInsights(
-		c.Request.Context(),
+		ctx,
 		req.Brand,
 		req.StartTime,
 		req.EndTime,
@@ -165,6 +287,38 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get insights: "+err.Error())
 		return
 	}
+
+	// Cache the computed data for future requests
+	go func() {
+		startTime := time.Now().Add(-30 * 24 * time.Hour) // Default to last 30 days
+		endTime := time.Now()
+		if req.StartTime != nil {
+			startTime = *req.StartTime
+		}
+		if req.EndTime != nil {
+			endTime = *req.EndTime
+		}
+
+		cachedInsights := &models.CachedGEOInsights{
+			ID:                    uuid.New().String(),
+			CampaignID:            req.CampaignID,
+			Brand:                 req.Brand,
+			StartTime:             startTime,
+			EndTime:               endTime,
+			LogoURL:               insights.LogoURL,
+			FallbackLogoURL:       insights.FallbackLogoURL,
+			AverageVisibility:     insights.AverageVisibility,
+			MentionRate:           insights.MentionRate,
+			GroundingRate:         insights.GroundingRate,
+			SentimentBreakdown:    insights.SentimentBreakdown,
+			TopCompetitors:        insights.TopCompetitors,
+			PerformanceByLLM:      insights.PerformanceByLLM,
+			PerformanceByCategory: insights.PerformanceByCategory,
+			Trends:                insights.Trends,
+			TotalResponses:        insights.TotalResponses,
+		}
+		s.db.SaveCachedGEOInsights(context.Background(), cachedInsights)
+	}()
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -227,4 +381,140 @@ func (s *Server) getBrandProfile(c *gin.Context) {
 		Data:    profile,
 		Message: "Brand profile retrieved successfully",
 	})
+}
+
+// listScheduledCampaigns handles GET /api/v1/geo/campaigns
+// Returns all scheduled campaigns with full prompt and LLM details
+func (s *Server) listScheduledCampaigns(c *gin.Context) {
+	brand := c.Query("brand")
+	status := c.Query("status")
+
+	ctx := c.Request.Context()
+
+	// Get all scheduled campaigns
+	campaigns, err := s.db.ListScheduledCampaigns(ctx, status)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to list campaigns: "+err.Error())
+		return
+	}
+
+	// Filter by brand if specified
+	var filteredCampaigns []*models.ScheduledCampaign
+	for _, campaign := range campaigns {
+		if brand == "" || campaign.Brand == brand {
+			filteredCampaigns = append(filteredCampaigns, campaign)
+		}
+	}
+
+	// Build detailed response with prompt and LLM details
+	campaignDetails := make([]models.ScheduledCampaignDetail, 0, len(filteredCampaigns))
+	activeCount, pausedCount, completedCount := 0, 0, 0
+
+	for _, campaign := range filteredCampaigns {
+		// Get prompt details
+		prompts := make([]models.PromptDetail, 0, len(campaign.PromptIDs))
+		for _, promptID := range campaign.PromptIDs {
+			prompt, err := s.db.GetPrompt(ctx, promptID)
+			if err == nil && prompt != nil {
+				prompts = append(prompts, models.PromptDetail{
+					ID:         prompt.ID,
+					Template:   prompt.Template,
+					PromptType: prompt.PromptType,
+					Category:   prompt.Category,
+				})
+			}
+		}
+
+		// Get LLM details
+		llms := make([]models.LLMDetail, 0, len(campaign.LLMIDs))
+		for _, llmID := range campaign.LLMIDs {
+			llm, err := s.db.GetLLM(ctx, llmID)
+			if err == nil && llm != nil {
+				llms = append(llms, models.LLMDetail{
+					ID:       llm.ID,
+					Name:     llm.Name,
+					Provider: llm.Provider,
+					Model:    llm.Model,
+				})
+			}
+		}
+
+		// Generate human-readable schedule description
+		scheduleDesc := cronToDescription(campaign.ScheduleCron)
+
+		detail := models.ScheduledCampaignDetail{
+			ID:           campaign.ID,
+			CampaignName: campaign.CampaignName,
+			Brand:        campaign.Brand,
+			Prompts:      prompts,
+			LLMs:         llms,
+			Temperature:  campaign.Temperature,
+			ScheduleCron: campaign.ScheduleCron,
+			ScheduleDesc: scheduleDesc,
+			Status:       campaign.Status,
+			TotalRuns:    campaign.TotalRuns,
+			RunCount:     campaign.RunCount,
+			LastRunAt:    campaign.LastRunAt,
+			NextRunAt:    campaign.NextRunAt,
+			CreatedAt:    campaign.CreatedAt,
+			UpdatedAt:    campaign.UpdatedAt,
+		}
+
+		campaignDetails = append(campaignDetails, detail)
+
+		// Count by status
+		switch campaign.Status {
+		case "active":
+			activeCount++
+		case "paused":
+			pausedCount++
+		case "completed":
+			completedCount++
+		}
+	}
+
+	response := models.ListScheduledCampaignsResponse{
+		Brand:     brand,
+		Campaigns: campaignDetails,
+		Total:     len(campaignDetails),
+		Active:    activeCount,
+		Paused:    pausedCount,
+		Completed: completedCount,
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: "Scheduled campaigns retrieved successfully",
+	})
+}
+
+// cronToDescription converts a cron expression to human-readable text
+func cronToDescription(cronExpr string) string {
+	// Common cron patterns
+	cronDescriptions := map[string]string{
+		"0 * * * *":    "Every hour",
+		"0 */2 * * *":  "Every 2 hours",
+		"0 */3 * * *":  "Every 3 hours",
+		"0 */4 * * *":  "Every 4 hours",
+		"0 */6 * * *":  "Every 6 hours",
+		"0 */8 * * *":  "Every 8 hours",
+		"0 */12 * * *": "Every 12 hours",
+		"0 0 * * *":    "Daily at midnight",
+		"0 9 * * *":    "Daily at 9 AM",
+		"0 0 * * 0":    "Weekly on Sunday",
+		"0 0 * * 1":    "Weekly on Monday",
+		"0 0 1 * *":    "Monthly on the 1st",
+		"0 0 15 * *":   "Monthly on the 15th",
+		"*/5 * * * *":  "Every 5 minutes",
+		"*/10 * * * *": "Every 10 minutes",
+		"*/15 * * * *": "Every 15 minutes",
+		"*/30 * * * *": "Every 30 minutes",
+	}
+
+	if desc, ok := cronDescriptions[cronExpr]; ok {
+		return desc
+	}
+
+	return "Custom schedule: " + cronExpr
 }

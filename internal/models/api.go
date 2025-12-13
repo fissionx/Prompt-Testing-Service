@@ -214,7 +214,6 @@ type GeneratePromptsResponse struct {
 	Brand         string                     `json:"brand"`
 	Category      string                     `json:"category"`
 	Domain        string                     `json:"domain"`
-	Prompts       []PromptPreview            `json:"prompts"`
 	PromptsByType map[string][]PromptPreview `json:"promptsByType"`
 	Existing      int                        `json:"existingPrompts"`
 	Generated     int                        `json:"generatedPrompts"`
@@ -232,22 +231,35 @@ type PromptPreview struct {
 
 // BulkExecuteRequest represents the request to execute multiple prompts across multiple LLMs
 type BulkExecuteRequest struct {
-	CampaignName string   `json:"campaignName" binding:"required"`
-	Brand        string   `json:"brand" binding:"required"`
-	PromptIDs    []string `json:"promptIds" binding:"required"`
-	LLMIDs       []string `json:"llmIds" binding:"required"`
-	Temperature  float64  `json:"temperature,omitempty"`
+	CampaignName  string         `json:"campaignName" binding:"required"`
+	Brand         string         `json:"brand" binding:"required"`
+	PromptIDs     []string       `json:"promptIds,omitempty"`     // Existing prompt IDs from the database
+	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"` // New prompts created by the user
+	LLMIDs        []string       `json:"llmIds" binding:"required"`
+	Temperature   float64        `json:"temperature,omitempty"`
+	ScheduleCron  string         `json:"scheduleCron,omitempty"` // Optional cron expression for periodic execution (e.g., "0 */6 * * *" for every 6 hours)
+	TotalRuns     int            `json:"totalRuns,omitempty"`    // Number of times to run each prompt (default: 1)
+}
+
+// CustomPrompt represents a user-created prompt for bulk execution
+type CustomPrompt struct {
+	Template   string   `json:"template" binding:"required"`
+	PromptType string   `json:"promptType,omitempty"` // e.g., "custom", "top_best", "how_to", etc.
+	Category   string   `json:"category,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 // BulkExecuteResponse represents the response from bulk execution
 type BulkExecuteResponse struct {
-	CampaignID   string    `json:"campaignId"`
-	CampaignName string    `json:"campaignName"`
-	Brand        string    `json:"brand"`
-	TotalRuns    int       `json:"totalRuns"`
-	Status       string    `json:"status"`
-	StartedAt    time.Time `json:"startedAt"`
-	Message      string    `json:"message"`
+	CampaignID   string     `json:"campaignId"`
+	CampaignName string     `json:"campaignName"`
+	Brand        string     `json:"brand"`
+	TotalRuns    int        `json:"totalRuns"`
+	Status       string     `json:"status"`
+	StartedAt    time.Time  `json:"startedAt"`
+	NextRunAt    *time.Time `json:"nextRunAt,omitempty"` // Next scheduled execution time (if scheduled)
+	ScheduleCron string     `json:"scheduleCron,omitempty"`
+	Message      string     `json:"message"`
 }
 
 // GEOInsightsRequest represents the request for GEO insights/analytics
@@ -468,4 +480,258 @@ type PromptPerformance struct {
 	EffectivenessGrade string  `json:"effectivenessGrade"`
 	Status             string  `json:"status"`
 	Recommendation     string  `json:"recommendation"`
+}
+
+// PromptTimeSeriesRequest represents the request for prompt time series analytics
+type PromptTimeSeriesRequest struct {
+	PromptID  string     `json:"promptId" form:"promptId" binding:"required"`
+	Brand     string     `json:"brand" form:"brand"`
+	StartTime *time.Time `json:"startTime" form:"startTime"`
+	EndTime   *time.Time `json:"endTime" form:"endTime"`
+}
+
+// PromptTimeSeriesResponse represents the response with prompt time series analytics
+type PromptTimeSeriesResponse struct {
+	PromptID   string `json:"promptId"`
+	PromptText string `json:"promptText"`
+	PromptType string `json:"promptType"`
+	Category   string `json:"category"`
+	Brand      string `json:"brand,omitempty"`
+	Period     string `json:"period"`
+
+	// Overview statistics
+	Overview PromptTimeSeriesOverview `json:"overview"`
+
+	// Time series data
+	TimeSeries []PromptTimeSeriesDataPoint `json:"timeSeries"`
+}
+
+// PromptTimeSeriesOverview contains aggregated statistics for the prompt
+type PromptTimeSeriesOverview struct {
+	TotalResponses     int     `json:"totalResponses"`
+	TotalMentions      int     `json:"totalMentions"`
+	AvgVisibility      float64 `json:"avgVisibility"`
+	AvgPosition        float64 `json:"avgPosition"`
+	MentionRate        float64 `json:"mentionRate"`
+	TopPositionRate    float64 `json:"topPositionRate"`
+	GroundingRate      float64 `json:"groundingRate"`
+	EffectivenessScore float64 `json:"effectivenessScore"`
+	EffectivenessGrade string  `json:"effectivenessGrade"`
+
+	// Sentiment breakdown
+	PositiveSentiment int `json:"positiveSentiment"`
+	NeutralSentiment  int `json:"neutralSentiment"`
+	NegativeSentiment int `json:"negativeSentiment"`
+
+	// LLM breakdown
+	LLMBreakdown map[string]PromptLLMStats `json:"llmBreakdown"`
+
+	// Top competitors mentioned in responses
+	TopCompetitors []string `json:"topCompetitors"`
+}
+
+// PromptLLMStats contains stats for a specific LLM
+type PromptLLMStats struct {
+	LLMName       string  `json:"llmName"`
+	LLMProvider   string  `json:"llmProvider"`
+	ResponseCount int     `json:"responseCount"`
+	MentionRate   float64 `json:"mentionRate"`
+	AvgVisibility float64 `json:"avgVisibility"`
+}
+
+// PromptTimeSeriesDataPoint represents a single data point in the time series
+type PromptTimeSeriesDataPoint struct {
+	Date           string  `json:"date"`
+	ResponseCount  int     `json:"responseCount"`
+	MentionCount   int     `json:"mentionCount"`
+	AvgVisibility  float64 `json:"avgVisibility"`
+	AvgPosition    float64 `json:"avgPosition"`
+	MentionRate    float64 `json:"mentionRate"`
+	GroundingCount int     `json:"groundingCount"`
+	PositiveCount  int     `json:"positiveCount"`
+	NeutralCount   int     `json:"neutralCount"`
+	NegativeCount  int     `json:"negativeCount"`
+}
+
+// ==================== NEW PEEC-LIKE FEATURES ====================
+
+// DashboardOverviewRequest represents the request for dashboard overview
+type DashboardOverviewRequest struct {
+	Brand     string     `json:"brand" form:"brand" binding:"required"`
+	StartTime *time.Time `json:"startTime" form:"startTime"`
+	EndTime   *time.Time `json:"endTime" form:"endTime"`
+}
+
+// DashboardOverviewResponse represents the dashboard overview with key metrics
+type DashboardOverviewResponse struct {
+	Brand           string `json:"brand"`
+	LogoURL         string `json:"logoUrl,omitempty"`
+	FallbackLogoURL string `json:"fallbackLogoUrl,omitempty"`
+	Period          string `json:"period"`
+
+	// Key Metrics Summary
+	Visibility      DashboardMetric `json:"visibility"`
+	Sentiment       DashboardMetric `json:"sentiment"`
+	Position        DashboardMetric `json:"position"`
+	GroundingRate   DashboardMetric `json:"groundingRate"`
+	TotalResponses  int             `json:"totalResponses"`
+	TotalPrompts    int             `json:"totalPrompts"`
+	TotalLLMs       int             `json:"totalLlms"`
+	ActiveCampaigns int             `json:"activeCampaigns"`
+
+	// Quick Trend (last 7 data points)
+	TrendData []TrendDataPoint `json:"trendData"`
+
+	// Top Insights
+	TopPerformingPrompts []string `json:"topPerformingPrompts"`
+	TopCompetitors       []string `json:"topCompetitors"`
+	TopCitationSources   []string `json:"topCitationSources"`
+	RecommendationsCount int      `json:"recommendationsCount"`
+}
+
+// DashboardMetric represents a single dashboard metric with trend
+type DashboardMetric struct {
+	Value       float64 `json:"value"`
+	Change      float64 `json:"change"`      // Percentage change from previous period
+	Trend       string  `json:"trend"`       // "up", "down", "stable"
+	Rank        int     `json:"rank"`        // Rank among competitors (if applicable)
+	TotalBrands int     `json:"totalBrands"` // Total brands in comparison
+}
+
+// TrendDataPoint represents a single point in trend data
+type TrendDataPoint struct {
+	Date       string  `json:"date"`
+	Visibility float64 `json:"visibility"`
+	Sentiment  float64 `json:"sentiment"`
+	Position   float64 `json:"position"`
+}
+
+// ModelAnalyticsRequest represents the request for model-level analytics
+type ModelAnalyticsRequest struct {
+	Brand     string     `json:"brand" binding:"required"`
+	StartTime *time.Time `json:"startTime,omitempty"`
+	EndTime   *time.Time `json:"endTime,omitempty"`
+}
+
+// ModelAnalyticsResponse represents analytics broken down by AI model
+type ModelAnalyticsResponse struct {
+	Brand           string             `json:"brand"`
+	LogoURL         string             `json:"logoUrl,omitempty"`
+	FallbackLogoURL string             `json:"fallbackLogoUrl,omitempty"`
+	Period          string             `json:"period"`
+	Models          []ModelPerformance `json:"models"`
+	BestModel       string             `json:"bestModel"`
+	WorstModel      string             `json:"worstModel"`
+	Recommendations []Recommendation   `json:"recommendations"`
+}
+
+// ModelPerformance represents performance metrics for a specific AI model
+type ModelPerformance struct {
+	ModelID        string  `json:"modelId"`
+	ModelName      string  `json:"modelName"`
+	Provider       string  `json:"provider"`
+	ResponseCount  int     `json:"responseCount"`
+	Visibility     float64 `json:"visibility"`
+	MentionRate    float64 `json:"mentionRate"`
+	AvgPosition    float64 `json:"avgPosition"`
+	TopPositionPct float64 `json:"topPositionPct"`
+	GroundingRate  float64 `json:"groundingRate"`
+	SentimentScore float64 `json:"sentimentScore"`
+	AvgLatencyMs   int64   `json:"avgLatencyMs"`
+}
+
+// CompetitorMatrixRequest represents the request for competitor matrix
+type CompetitorMatrixRequest struct {
+	MainBrand   string     `json:"mainBrand" binding:"required"`
+	Competitors []string   `json:"competitors,omitempty"`
+	StartTime   *time.Time `json:"startTime,omitempty"`
+	EndTime     *time.Time `json:"endTime,omitempty"`
+}
+
+// CompetitorMatrixResponse represents the visibility vs sentiment quadrant matrix
+type CompetitorMatrixResponse struct {
+	MainBrand string                  `json:"mainBrand"`
+	Period    string                  `json:"period"`
+	Quadrants CompetitorQuadrants     `json:"quadrants"`
+	Brands    []CompetitorMatrixBrand `json:"brands"`
+	AxisInfo  MatrixAxisInfo          `json:"axisInfo"`
+}
+
+// CompetitorQuadrants categorizes brands into quadrants
+type CompetitorQuadrants struct {
+	Leaders       []string `json:"leaders"`       // High visibility, High sentiment
+	NichePlayers  []string `json:"nichePlayers"`  // Low visibility, High sentiment
+	Laggers       []string `json:"laggers"`       // Low visibility, Low sentiment
+	Controversial []string `json:"controversial"` // High visibility, Low sentiment
+}
+
+// CompetitorMatrixBrand represents a brand's position in the matrix
+type CompetitorMatrixBrand struct {
+	Brand           string  `json:"brand"`
+	LogoURL         string  `json:"logoUrl,omitempty"`
+	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
+	Visibility      float64 `json:"visibility"` // X-axis (0-100%)
+	Sentiment       float64 `json:"sentiment"`  // Y-axis (0-1 or 0-100)
+	Position        float64 `json:"position"`   // Average position
+	ResponseCount   int     `json:"responseCount"`
+	Quadrant        string  `json:"quadrant"` // "leader", "niche_player", "lagger", "controversial"
+	IsMainBrand     bool    `json:"isMainBrand"`
+}
+
+// MatrixAxisInfo provides axis information for the matrix
+type MatrixAxisInfo struct {
+	VisibilityMedian float64 `json:"visibilityMedian"` // Median visibility for quadrant division
+	SentimentMedian  float64 `json:"sentimentMedian"`  // Median sentiment for quadrant division
+	VisibilityMax    float64 `json:"visibilityMax"`
+	SentimentMax     float64 `json:"sentimentMax"`
+}
+
+// TrendComparisonRequest represents the request for trend comparison
+type TrendComparisonRequest struct {
+	MainBrand   string     `json:"mainBrand" binding:"required"`
+	Competitors []string   `json:"competitors,omitempty"`
+	Metric      string     `json:"metric"` // "visibility", "sentiment", "position"
+	StartTime   *time.Time `json:"startTime,omitempty"`
+	EndTime     *time.Time `json:"endTime,omitempty"`
+	Granularity string     `json:"granularity,omitempty"` // "daily", "weekly", "monthly"
+}
+
+// TrendComparisonResponse represents trend data for multiple brands
+type TrendComparisonResponse struct {
+	MainBrand   string           `json:"mainBrand"`
+	Metric      string           `json:"metric"`
+	Period      string           `json:"period"`
+	Granularity string           `json:"granularity"`
+	Trends      []BrandTrendData `json:"trends"`
+	Dates       []string         `json:"dates"`
+}
+
+// BrandTrendData represents trend data for a single brand
+type BrandTrendData struct {
+	Brand           string    `json:"brand"`
+	LogoURL         string    `json:"logoUrl,omitempty"`
+	FallbackLogoURL string    `json:"fallbackLogoUrl,omitempty"`
+	Values          []float64 `json:"values"`
+	IsMainBrand     bool      `json:"isMainBrand"`
+	CurrentValue    float64   `json:"currentValue"`
+	Change          float64   `json:"change"` // Percentage change
+}
+
+// ExportRequest represents the request for data export
+type ExportRequest struct {
+	Brand      string     `json:"brand" binding:"required"`
+	ExportType string     `json:"exportType" binding:"required"` // "insights", "prompts", "responses", "sources", "competitive"
+	Format     string     `json:"format,omitempty"`              // "csv", "json" (default: csv)
+	StartTime  *time.Time `json:"startTime,omitempty"`
+	EndTime    *time.Time `json:"endTime,omitempty"`
+	PromptIDs  []string   `json:"promptIds,omitempty"`
+	LLMIDs     []string   `json:"llmIds,omitempty"`
+}
+
+// ExportResponse represents the export response
+type ExportResponse struct {
+	FileName    string `json:"fileName"`
+	ContentType string `json:"contentType"`
+	Data        string `json:"data"` // Base64 encoded for binary, raw for JSON
+	RecordCount int    `json:"recordCount"`
 }

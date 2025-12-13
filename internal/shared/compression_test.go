@@ -7,9 +7,9 @@ import (
 
 func TestCompressDecompress(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantErr  bool
+		name    string
+		input   string
+		wantErr bool
 	}{
 		{
 			name:    "Empty string",
@@ -104,12 +104,12 @@ func TestShouldCompress(t *testing.T) {
 func TestBackwardCompatibility(t *testing.T) {
 	// Test that DecompressString handles uncompressed data gracefully
 	uncompressedData := "This is uncompressed text"
-	
+
 	decompressed, err := DecompressString(uncompressedData)
 	if err != nil {
 		t.Errorf("DecompressString() should handle uncompressed data gracefully, got error: %v", err)
 	}
-	
+
 	if decompressed != uncompressedData {
 		t.Errorf("DecompressString() should return original when input is not compressed.\nGot: %s\nWant: %s", decompressed, uncompressedData)
 	}
@@ -118,24 +118,24 @@ func TestBackwardCompatibility(t *testing.T) {
 func TestCompressionRatio(t *testing.T) {
 	// Test that compression actually reduces size for repetitive text
 	original := strings.Repeat("This is a test string for compression. ", 100)
-	
+
 	compressed, err := CompressString(original)
 	if err != nil {
 		t.Fatalf("CompressString() error = %v", err)
 	}
-	
+
 	// Compressed should be smaller than original for repetitive text
 	if len(compressed) >= len(original) {
 		t.Logf("Warning: Compressed size (%d) >= Original size (%d)", len(compressed), len(original))
 		t.Logf("This may happen with base64 encoding overhead on small/random data")
 	}
-	
+
 	// Verify decompression works
 	decompressed, err := DecompressString(compressed)
 	if err != nil {
 		t.Fatalf("DecompressString() error = %v", err)
 	}
-	
+
 	if decompressed != original {
 		t.Errorf("Decompressed doesn't match original")
 	}
@@ -143,7 +143,7 @@ func TestCompressionRatio(t *testing.T) {
 
 func BenchmarkCompressString(b *testing.B) {
 	data := strings.Repeat("This is a test string for compression benchmarking. ", 100)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := CompressString(data)
@@ -159,7 +159,7 @@ func BenchmarkDecompressString(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := DecompressString(compressed)
@@ -168,6 +168,3 @@ func BenchmarkDecompressString(b *testing.B) {
 		}
 	}
 }
-
-
-

@@ -15,6 +15,7 @@ const (
 	PromptTypeComparison PromptType = "comparison" // Competitive: "X vs Y", "Which is better?"
 	PromptTypeTopBest    PromptType = "top_best"   // List-based: "Best AI tools", "Top platforms"
 	PromptTypeBrand      PromptType = "brand"      // Brand-specific: "What does Brand X do?"
+	PromptTypeCustom     PromptType = "custom"     // Custom user-created prompts
 )
 
 // LLMConfig represents an LLM provider configuration

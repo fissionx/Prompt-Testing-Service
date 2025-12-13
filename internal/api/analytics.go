@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/models"
@@ -31,9 +32,40 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 		req.TopN = 20
 	}
 
-	// Get source analytics
+	ctx := c.Request.Context()
+
+	// Try to get cached data first
+	query := models.AnalyticsCacheQuery{
+		Brand:     req.Brand,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+
+	cachedData, err := s.db.GetCachedSourceAnalytics(ctx, query)
+	if err == nil && cachedData != nil {
+		// Return cached data
+		response := &models.SourceAnalyticsResponse{
+			Brand:           cachedData.Brand,
+			LogoURL:         cachedData.LogoURL,
+			FallbackLogoURL: cachedData.FallbackLogoURL,
+			Period:          cachedData.Period,
+			TopSources:      cachedData.TopSources,
+			Recommendations: cachedData.Recommendations,
+			TotalSources:    cachedData.TotalSources,
+			TotalCitations:  cachedData.TotalCitations,
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: "Source analytics retrieved from cache",
+		})
+		return
+	}
+
+	// Compute analytics if not cached
 	analytics, err := s.sourceAnalyticsService.GetSourceAnalytics(
-		c.Request.Context(),
+		ctx,
 		req.Brand,
 		req.StartTime,
 		req.EndTime,
@@ -43,6 +75,33 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get source analytics: "+err.Error())
 		return
 	}
+
+	// Cache the computed data for future requests
+	go func() {
+		startTime := time.Now().Add(-30 * 24 * time.Hour) // Default to last 30 days
+		endTime := time.Now()
+		if req.StartTime != nil {
+			startTime = *req.StartTime
+		}
+		if req.EndTime != nil {
+			endTime = *req.EndTime
+		}
+
+		cachedAnalytics := &models.CachedSourceAnalytics{
+			ID:              uuid.New().String(),
+			Brand:           req.Brand,
+			StartTime:       startTime,
+			EndTime:         endTime,
+			LogoURL:         analytics.LogoURL,
+			FallbackLogoURL: analytics.FallbackLogoURL,
+			Period:          analytics.Period,
+			TopSources:      analytics.TopSources,
+			Recommendations: analytics.Recommendations,
+			TotalSources:    analytics.TotalSources,
+			TotalCitations:  analytics.TotalCitations,
+		}
+		s.db.SaveCachedSourceAnalytics(context.Background(), cachedAnalytics)
+	}()
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
@@ -64,14 +123,42 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 		return
 	}
 
+	ctx := c.Request.Context()
+
+	// Try to get cached data first (only if no specific competitors are requested)
 	if len(req.Competitors) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "At least one competitor is required")
-		return
+		query := models.AnalyticsCacheQuery{
+			Brand:     req.MainBrand,
+			StartTime: req.StartTime,
+			EndTime:   req.EndTime,
+		}
+
+		cachedData, err := s.db.GetCachedCompetitiveBenchmark(ctx, query)
+		if err == nil && cachedData != nil {
+			// Return cached data
+			response := &models.CompetitiveBenchmarkResponse{
+				MainBrand:       cachedData.MainBrandPerf,
+				Competitors:     cachedData.Competitors,
+				MarketLeader:    cachedData.MarketLeader,
+				YourRank:        cachedData.YourRank,
+				TotalBrands:     cachedData.TotalBrands,
+				PromptBreakdown: cachedData.PromptBreakdown,
+				Recommendations: cachedData.Recommendations,
+				AnalyzedAt:      cachedData.AnalyzedAt,
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Data:    response,
+				Message: "Competitive benchmark retrieved from cache",
+			})
+			return
+		}
 	}
 
-	// Get competitive benchmark
+	// Compute benchmark if not cached or specific competitors requested
 	benchmark, err := s.competitiveBenchmarkService.GetCompetitiveBenchmark(
-		c.Request.Context(),
+		ctx,
 		req.MainBrand,
 		req.Competitors,
 		req.PromptIDs,
@@ -83,6 +170,36 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitive benchmark: "+err.Error())
 		return
+	}
+
+	// Cache the computed data for future requests (only for auto-detected competitors)
+	if len(req.Competitors) == 0 {
+		go func() {
+			startTime := time.Now().Add(-30 * 24 * time.Hour)
+			endTime := time.Now()
+			if req.StartTime != nil {
+				startTime = *req.StartTime
+			}
+			if req.EndTime != nil {
+				endTime = *req.EndTime
+			}
+
+			cachedBenchmark := &models.CachedCompetitiveBenchmark{
+				ID:              uuid.New().String(),
+				MainBrand:       req.MainBrand,
+				StartTime:       startTime,
+				EndTime:         endTime,
+				MainBrandPerf:   benchmark.MainBrand,
+				Competitors:     benchmark.Competitors,
+				MarketLeader:    benchmark.MarketLeader,
+				YourRank:        benchmark.YourRank,
+				TotalBrands:     benchmark.TotalBrands,
+				PromptBreakdown: benchmark.PromptBreakdown,
+				Recommendations: benchmark.Recommendations,
+				AnalyzedAt:      benchmark.AnalyzedAt,
+			}
+			s.db.SaveCachedCompetitiveBenchmark(context.Background(), cachedBenchmark)
+		}()
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
@@ -253,9 +370,41 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 		req.MinResponses = 3
 	}
 
-	// Get prompt performance analytics
+	ctx := c.Request.Context()
+
+	// Try to get cached data first
+	query := models.AnalyticsCacheQuery{
+		Brand:     req.Brand,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+
+	cachedData, err := s.db.GetCachedPromptPerformance(ctx, query)
+	if err == nil && cachedData != nil {
+		// Return cached data
+		response := &models.PromptPerformanceResponse{
+			Brand:                cachedData.Brand,
+			LogoURL:              cachedData.LogoURL,
+			FallbackLogoURL:      cachedData.FallbackLogoURL,
+			Period:               cachedData.Period,
+			Prompts:              cachedData.Prompts,
+			TopPerformers:        cachedData.TopPerformers,
+			LowPerformers:        cachedData.LowPerformers,
+			AvgEffectiveness:     cachedData.AvgEffectiveness,
+			TotalPromptsAnalyzed: cachedData.TotalPromptsAnalyzed,
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: "Prompt performance retrieved from cache",
+		})
+		return
+	}
+
+	// Compute prompt performance analytics if not cached
 	performance, err := s.promptPerformanceService.GetPromptPerformance(
-		c.Request.Context(),
+		ctx,
 		req.Brand,
 		req.StartTime,
 		req.EndTime,
@@ -266,9 +415,233 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 		return
 	}
 
+	// Cache the computed data for future requests
+	go func() {
+		startTime := time.Now().Add(-30 * 24 * time.Hour)
+		endTime := time.Now()
+		if req.StartTime != nil {
+			startTime = *req.StartTime
+		}
+		if req.EndTime != nil {
+			endTime = *req.EndTime
+		}
+
+		cachedPerformance := &models.CachedPromptPerformance{
+			ID:                   uuid.New().String(),
+			Brand:                req.Brand,
+			StartTime:            startTime,
+			EndTime:              endTime,
+			LogoURL:              performance.LogoURL,
+			FallbackLogoURL:      performance.FallbackLogoURL,
+			Period:               performance.Period,
+			Prompts:              performance.Prompts,
+			TopPerformers:        performance.TopPerformers,
+			LowPerformers:        performance.LowPerformers,
+			AvgEffectiveness:     performance.AvgEffectiveness,
+			TotalPromptsAnalyzed: performance.TotalPromptsAnalyzed,
+		}
+		s.db.SaveCachedPromptPerformance(context.Background(), cachedPerformance)
+	}()
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Data:    performance,
 		Message: "Prompt performance retrieved successfully",
 	})
+}
+
+// getPromptTimeSeries handles GET /api/v1/geo/analytics/prompt-timeseries
+func (s *Server) getPromptTimeSeries(c *gin.Context) {
+	// Get query parameters
+	promptID := c.Query("promptId")
+	if promptID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "promptId is required")
+		return
+	}
+
+	brand := c.Query("brand")
+
+	// Parse time parameters
+	var startTime, endTime *time.Time
+	if startStr := c.Query("startTime"); startStr != "" {
+		if t, err := time.Parse(time.RFC3339, startStr); err == nil {
+			startTime = &t
+		}
+	}
+	if endStr := c.Query("endTime"); endStr != "" {
+		if t, err := time.Parse(time.RFC3339, endStr); err == nil {
+			endTime = &t
+		}
+	}
+
+	ctx := c.Request.Context()
+
+	// Try to get cached data first
+	query := models.AnalyticsCacheQuery{
+		PromptID:  promptID,
+		Brand:     brand,
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+
+	cachedData, err := s.db.GetCachedPromptTimeSeries(ctx, query)
+	if err == nil && cachedData != nil {
+		// Return cached data
+		response := &models.PromptTimeSeriesResponse{
+			PromptID:   cachedData.PromptID,
+			PromptText: cachedData.PromptText,
+			PromptType: cachedData.PromptType,
+			Category:   cachedData.Category,
+			Brand:      cachedData.Brand,
+			Period:     cachedData.StartTime.Format("2006-01-02") + " to " + cachedData.EndTime.Format("2006-01-02"),
+			Overview:   convertCachedOverview(cachedData.Overview),
+			TimeSeries: convertCachedTimeSeries(cachedData.TimeSeries),
+		}
+
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: "Prompt time series analytics retrieved from cache",
+		})
+		return
+	}
+
+	// Compute prompt time series analytics if not cached
+	promptTimeSeriesService := services.NewPromptTimeSeriesService(s.db)
+	timeSeries, err := promptTimeSeriesService.GetPromptTimeSeries(ctx, promptID, brand, startTime, endTime)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompt time series: "+err.Error())
+		return
+	}
+
+	// Cache the computed data for future requests
+	go func() {
+		cacheStartTime := time.Now().Add(-30 * 24 * time.Hour)
+		cacheEndTime := time.Now()
+		if startTime != nil {
+			cacheStartTime = *startTime
+		}
+		if endTime != nil {
+			cacheEndTime = *endTime
+		}
+
+		cachedTimeSeries := &models.CachedPromptTimeSeries{
+			ID:         uuid.New().String(),
+			PromptID:   promptID,
+			Brand:      brand,
+			StartTime:  cacheStartTime,
+			EndTime:    cacheEndTime,
+			PromptText: timeSeries.PromptText,
+			PromptType: timeSeries.PromptType,
+			Category:   timeSeries.Category,
+			Overview:   convertOverviewToCache(timeSeries.Overview),
+			TimeSeries: convertTimeSeriesToCache(timeSeries.TimeSeries),
+		}
+		s.db.SaveCachedPromptTimeSeries(context.Background(), cachedTimeSeries)
+	}()
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    timeSeries,
+		Message: "Prompt time series analytics retrieved successfully",
+	})
+}
+
+// Helper functions to convert between API and cache models
+func convertCachedOverview(cached models.PromptTimeSeriesOverview) models.PromptTimeSeriesOverview {
+	llmBreakdown := make(map[string]models.PromptLLMStats)
+	for k, v := range cached.LLMBreakdown {
+		llmBreakdown[k] = models.PromptLLMStats{
+			LLMName:       v.LLMName,
+			LLMProvider:   v.LLMProvider,
+			ResponseCount: v.ResponseCount,
+			MentionRate:   v.MentionRate,
+			AvgVisibility: v.AvgVisibility,
+		}
+	}
+
+	return models.PromptTimeSeriesOverview{
+		TotalResponses:     cached.TotalResponses,
+		TotalMentions:      cached.TotalMentions,
+		AvgVisibility:      cached.AvgVisibility,
+		AvgPosition:        cached.AvgPosition,
+		MentionRate:        cached.MentionRate,
+		TopPositionRate:    cached.TopPositionRate,
+		GroundingRate:      cached.GroundingRate,
+		EffectivenessScore: cached.EffectivenessScore,
+		EffectivenessGrade: cached.EffectivenessGrade,
+		PositiveSentiment:  cached.PositiveSentiment,
+		NeutralSentiment:   cached.NeutralSentiment,
+		NegativeSentiment:  cached.NegativeSentiment,
+		LLMBreakdown:       llmBreakdown,
+		TopCompetitors:     cached.TopCompetitors,
+	}
+}
+
+func convertCachedTimeSeries(cached []models.PromptTimeSeriesDataPoint) []models.PromptTimeSeriesDataPoint {
+	result := make([]models.PromptTimeSeriesDataPoint, len(cached))
+	for i, dp := range cached {
+		result[i] = models.PromptTimeSeriesDataPoint{
+			Date:           dp.Date,
+			ResponseCount:  dp.ResponseCount,
+			MentionCount:   dp.MentionCount,
+			AvgVisibility:  dp.AvgVisibility,
+			AvgPosition:    dp.AvgPosition,
+			MentionRate:    dp.MentionRate,
+			GroundingCount: dp.GroundingCount,
+			PositiveCount:  dp.PositiveCount,
+			NeutralCount:   dp.NeutralCount,
+			NegativeCount:  dp.NegativeCount,
+		}
+	}
+	return result
+}
+
+func convertOverviewToCache(overview models.PromptTimeSeriesOverview) models.PromptTimeSeriesOverview {
+	llmBreakdown := make(map[string]models.PromptLLMStats)
+	for k, v := range overview.LLMBreakdown {
+		llmBreakdown[k] = models.PromptLLMStats{
+			LLMName:       v.LLMName,
+			LLMProvider:   v.LLMProvider,
+			ResponseCount: v.ResponseCount,
+			MentionRate:   v.MentionRate,
+			AvgVisibility: v.AvgVisibility,
+		}
+	}
+
+	return models.PromptTimeSeriesOverview{
+		TotalResponses:     overview.TotalResponses,
+		TotalMentions:      overview.TotalMentions,
+		AvgVisibility:      overview.AvgVisibility,
+		AvgPosition:        overview.AvgPosition,
+		MentionRate:        overview.MentionRate,
+		TopPositionRate:    overview.TopPositionRate,
+		GroundingRate:      overview.GroundingRate,
+		EffectivenessScore: overview.EffectivenessScore,
+		EffectivenessGrade: overview.EffectivenessGrade,
+		PositiveSentiment:  overview.PositiveSentiment,
+		NeutralSentiment:   overview.NeutralSentiment,
+		NegativeSentiment:  overview.NegativeSentiment,
+		LLMBreakdown:       llmBreakdown,
+		TopCompetitors:     overview.TopCompetitors,
+	}
+}
+
+func convertTimeSeriesToCache(timeSeries []models.PromptTimeSeriesDataPoint) []models.PromptTimeSeriesDataPoint {
+	result := make([]models.PromptTimeSeriesDataPoint, len(timeSeries))
+	for i, dp := range timeSeries {
+		result[i] = models.PromptTimeSeriesDataPoint{
+			Date:           dp.Date,
+			ResponseCount:  dp.ResponseCount,
+			MentionCount:   dp.MentionCount,
+			AvgVisibility:  dp.AvgVisibility,
+			AvgPosition:    dp.AvgPosition,
+			MentionRate:    dp.MentionRate,
+			GroundingCount: dp.GroundingCount,
+			PositiveCount:  dp.PositiveCount,
+			NeutralCount:   dp.NeutralCount,
+			NegativeCount:  dp.NegativeCount,
+		}
+	}
+	return result
 }

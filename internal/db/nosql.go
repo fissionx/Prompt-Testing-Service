@@ -53,4 +53,37 @@ type NoSQLDatabase interface {
 	// Brand Logo cache operations
 	SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error
 	GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error)
+
+	// Cached GEO Insights operations
+	SaveCachedGEOInsights(ctx context.Context, insights *models.CachedGEOInsights) error
+	GetCachedGEOInsights(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedGEOInsights, error)
+	DeleteCachedGEOInsights(ctx context.Context, id string) error
+
+	// Cached Source Analytics operations
+	SaveCachedSourceAnalytics(ctx context.Context, analytics *models.CachedSourceAnalytics) error
+	GetCachedSourceAnalytics(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedSourceAnalytics, error)
+	DeleteCachedSourceAnalytics(ctx context.Context, id string) error
+
+	// Cached Competitive Benchmark operations
+	SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark *models.CachedCompetitiveBenchmark) error
+	GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error)
+	DeleteCachedCompetitiveBenchmark(ctx context.Context, id string) error
+
+	// Cached Prompt Performance operations
+	SaveCachedPromptPerformance(ctx context.Context, performance *models.CachedPromptPerformance) error
+	GetCachedPromptPerformance(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptPerformance, error)
+	DeleteCachedPromptPerformance(ctx context.Context, id string) error
+
+	// Scheduled Campaign operations
+	SaveScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error
+	GetScheduledCampaign(ctx context.Context, id string) (*models.ScheduledCampaign, error)
+	GetScheduledCampaignByBrand(ctx context.Context, brand string) (*models.ScheduledCampaign, error)
+	ListScheduledCampaigns(ctx context.Context, status string) ([]*models.ScheduledCampaign, error)
+	UpdateScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error
+	DeleteScheduledCampaign(ctx context.Context, id string) error
+
+	// Cached Prompt Time Series operations
+	SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *models.CachedPromptTimeSeries) error
+	GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error)
+	DeleteCachedPromptTimeSeries(ctx context.Context, id string) error
 }

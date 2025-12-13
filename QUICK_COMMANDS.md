@@ -11,7 +11,7 @@
 
 # Alternative: Environment variable
 GEGO_ENV=local gego api start
-GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/" gego api start
+GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:@fissionxgeo.mcwvkmk.mongodb.net/" gego api start
 ```
 
 ## 🔧 Setup Commands

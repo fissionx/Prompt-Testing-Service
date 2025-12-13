@@ -256,3 +256,93 @@ func (h *HybridDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCach
 func (h *HybridDB) GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error) {
 	return h.nosqlDB.GetBrandLogo(ctx, brandName)
 }
+
+// Cached GEO Insights operations - Use NoSQL
+func (h *HybridDB) SaveCachedGEOInsights(ctx context.Context, insights *models.CachedGEOInsights) error {
+	return h.nosqlDB.SaveCachedGEOInsights(ctx, insights)
+}
+
+func (h *HybridDB) GetCachedGEOInsights(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedGEOInsights, error) {
+	return h.nosqlDB.GetCachedGEOInsights(ctx, query)
+}
+
+func (h *HybridDB) DeleteCachedGEOInsights(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteCachedGEOInsights(ctx, id)
+}
+
+// Cached Source Analytics operations - Use NoSQL
+func (h *HybridDB) SaveCachedSourceAnalytics(ctx context.Context, analytics *models.CachedSourceAnalytics) error {
+	return h.nosqlDB.SaveCachedSourceAnalytics(ctx, analytics)
+}
+
+func (h *HybridDB) GetCachedSourceAnalytics(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedSourceAnalytics, error) {
+	return h.nosqlDB.GetCachedSourceAnalytics(ctx, query)
+}
+
+func (h *HybridDB) DeleteCachedSourceAnalytics(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteCachedSourceAnalytics(ctx, id)
+}
+
+// Cached Competitive Benchmark operations - Use NoSQL
+func (h *HybridDB) SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark *models.CachedCompetitiveBenchmark) error {
+	return h.nosqlDB.SaveCachedCompetitiveBenchmark(ctx, benchmark)
+}
+
+func (h *HybridDB) GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error) {
+	return h.nosqlDB.GetCachedCompetitiveBenchmark(ctx, query)
+}
+
+func (h *HybridDB) DeleteCachedCompetitiveBenchmark(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteCachedCompetitiveBenchmark(ctx, id)
+}
+
+// Cached Prompt Performance operations - Use NoSQL
+func (h *HybridDB) SaveCachedPromptPerformance(ctx context.Context, performance *models.CachedPromptPerformance) error {
+	return h.nosqlDB.SaveCachedPromptPerformance(ctx, performance)
+}
+
+func (h *HybridDB) GetCachedPromptPerformance(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptPerformance, error) {
+	return h.nosqlDB.GetCachedPromptPerformance(ctx, query)
+}
+
+func (h *HybridDB) DeleteCachedPromptPerformance(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteCachedPromptPerformance(ctx, id)
+}
+
+// Scheduled Campaign operations - Use NoSQL
+func (h *HybridDB) SaveScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error {
+	return h.nosqlDB.SaveScheduledCampaign(ctx, campaign)
+}
+
+func (h *HybridDB) GetScheduledCampaign(ctx context.Context, id string) (*models.ScheduledCampaign, error) {
+	return h.nosqlDB.GetScheduledCampaign(ctx, id)
+}
+
+func (h *HybridDB) GetScheduledCampaignByBrand(ctx context.Context, brand string) (*models.ScheduledCampaign, error) {
+	return h.nosqlDB.GetScheduledCampaignByBrand(ctx, brand)
+}
+
+func (h *HybridDB) ListScheduledCampaigns(ctx context.Context, status string) ([]*models.ScheduledCampaign, error) {
+	return h.nosqlDB.ListScheduledCampaigns(ctx, status)
+}
+
+func (h *HybridDB) UpdateScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error {
+	return h.nosqlDB.UpdateScheduledCampaign(ctx, campaign)
+}
+
+func (h *HybridDB) DeleteScheduledCampaign(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteScheduledCampaign(ctx, id)
+}
+
+// Cached Prompt Time Series operations - Use NoSQL
+func (h *HybridDB) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *models.CachedPromptTimeSeries) error {
+	return h.nosqlDB.SaveCachedPromptTimeSeries(ctx, timeSeries)
+}
+
+func (h *HybridDB) GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error) {
+	return h.nosqlDB.GetCachedPromptTimeSeries(ctx, query)
+}
+
+func (h *HybridDB) DeleteCachedPromptTimeSeries(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteCachedPromptTimeSeries(ctx, id)
+}

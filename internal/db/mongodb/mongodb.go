@@ -56,6 +56,11 @@ func (m *MongoDB) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to create indexes: %w", err)
 	}
 
+	// Create analytics cache indexes
+	if err := m.createAnalyticsCacheIndexes(ctx); err != nil {
+		return fmt.Errorf("failed to create analytics cache indexes: %w", err)
+	}
+
 	return nil
 }
 
