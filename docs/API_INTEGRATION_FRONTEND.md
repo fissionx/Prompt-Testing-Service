@@ -738,36 +738,141 @@ Advanced features and analytics:
 
 ---
 
+## 7. Competitor Management
+
+### 7.1 Suggest Competitors
+
+**Endpoint:** `GET /api/v1/geo/competitors/suggest`
+
+**Purpose:** Get AI-powered competitor suggestions based on brand and website. First call uses LLM, subsequent calls return cached suggestions.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Your brand name |
+| `website` | string | No | Your website URL (recommended for better suggestions) |
+| `description` | string | No | Brand description |
+| `category` | string | No | Industry category |
+| `forceRefresh` | boolean | No | Force LLM regeneration (default: false) |
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": ["VS Code", "GitHub Copilot", "Tabnine", "Codeium"],
+    "source": "llm",
+    "message": "Found 4 competitors for Cursor"
+  }
+}
+```
+
+**UI Integration Notes:**
+- ✅ `competitors` - Display as selectable list with checkboxes
+- ✅ `source` - Show "AI Generated" badge if "llm", "Cached" if "cached"
+- ✅ Allow users to select competitors for saving
+- ✅ Allow users to add custom competitors
+
+### 7.2 Save Competitors
+
+**Endpoint:** `POST /api/v1/geo/competitors`
+
+**Purpose:** Save user-selected competitors for analytics.
+
+**Request Body:**
+```json
+{
+  "brand": "Cursor",
+  "competitors": ["VS Code", "GitHub Copilot", "Tabnine"],
+  "source": "suggested"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": ["VS Code", "GitHub Copilot", "Tabnine"],
+    "source": "suggested",
+    "savedAt": "2024-01-01T00:00:00Z",
+    "message": "Successfully saved 3 competitors for Cursor"
+  }
+}
+```
+
+### 7.3 Get Saved Competitors
+
+**Endpoint:** `GET /api/v1/geo/competitors?brand=Cursor`
+
+**Purpose:** Retrieve saved competitors for a brand.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": ["VS Code", "GitHub Copilot", "Tabnine"],
+    "suggestedList": ["VS Code", "GitHub Copilot", "Tabnine", "Codeium", "JetBrains"],
+    "source": "suggested",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+---
+
 ## Example Integration Flow
 
 ```javascript
-// 1. Generate prompts for a brand
+// 1. Setup: Suggest and save competitors first
+const suggestResponse = await fetch('/api/v1/geo/competitors/suggest?brand=MIT&website=https://mit.edu');
+const { data: { competitors: suggestedCompetitors } } = await suggestResponse.json();
+
+// 2. Save selected competitors
+await fetch('/api/v1/geo/competitors', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    brand: 'MIT',
+    competitors: ['Stanford', 'Harvard', 'Caltech'],
+    source: 'suggested'
+  })
+});
+
+// 3. Generate prompts for a brand
 const generateResponse = await fetch('/api/v1/geo/prompts/generate', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     brand: 'MIT',
+    website: 'https://mit.edu',
     category: 'Education',
     count: 20
   })
 });
-const { data: { prompts } } = await generateResponse.json();
+const { data: { promptsByType } } = await generateResponse.json();
+const allPrompts = Object.values(promptsByType).flat();
 
-// 2. Let user select prompts and LLMs, then execute campaign
+// 4. Let user select prompts and LLMs, then execute campaign
 const executeResponse = await fetch('/api/v1/geo/execute/bulk', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     campaignName: 'MIT Visibility Test',
     brand: 'MIT',
-    promptIds: selectedPromptIds,
+    promptIds: allPrompts.map(p => p.id),
     llmIds: selectedLlmIds,
     temperature: 0.7
   })
 });
 const { data: { campaignId } } = await executeResponse.json();
 
-// 3. Wait a bit, then fetch insights
+// 5. Wait a bit, then fetch insights
 setTimeout(async () => {
   const insightsResponse = await fetch('/api/v1/geo/insights', {
     method: 'POST',
@@ -785,13 +890,13 @@ setTimeout(async () => {
   // - Competitors: insights.topCompetitors
 }, 5000);
 
-// 4. Get competitive analysis
+// 6. Get competitive analysis (automatically uses saved competitors!)
 const competitiveResponse = await fetch('/api/v1/geo/analytics/competitive', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    mainBrand: 'MIT',
-    competitors: ['Stanford', 'Harvard', 'Caltech']
+    mainBrand: 'MIT'
+    // No need to specify competitors - uses saved list automatically
   })
 });
 const { data: benchmark } = await competitiveResponse.json();

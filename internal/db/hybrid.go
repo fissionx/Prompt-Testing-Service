@@ -165,6 +165,10 @@ func (h *HybridDB) DeleteAllPrompts(ctx context.Context) (int, error) {
 	return h.nosqlDB.DeleteAllPrompts(ctx)
 }
 
+func (h *HybridDB) DeletePromptsByBrand(ctx context.Context, brand string) (int, error) {
+	return h.nosqlDB.DeletePromptsByBrand(ctx, brand)
+}
+
 func (h *HybridDB) CreateResponse(ctx context.Context, response *models.Response) error {
 	return h.nosqlDB.CreateResponse(ctx, response)
 }

@@ -41,6 +41,7 @@ type Prompt struct {
 	Category   string     `json:"category,omitempty" bson:"category,omitempty"`
 	Domain     string     `json:"domain,omitempty" bson:"domain,omitempty"`
 	Brand      string     `json:"brand,omitempty" bson:"brand,omitempty"`
+	SourceID   string     `json:"sourceId,omitempty" bson:"source_id,omitempty"`
 	Generated  bool       `json:"generated" bson:"generated"`
 	Enabled    bool       `json:"enabled" bson:"enabled"`
 	CreatedAt  time.Time  `json:"createdAt" bson:"created_at"`
@@ -171,9 +172,9 @@ type GEOCampaign struct {
 type BrandCompetitors struct {
 	ID            string    `json:"id" bson:"_id"`
 	Brand         string    `json:"brand" bson:"brand"`
-	Competitors   []string  `json:"competitors" bson:"competitors"`             // User-defined competitor list
-	SuggestedList []string  `json:"suggestedList" bson:"suggested_list"`       // Original AI-suggested competitors (cached)
-	Source        string    `json:"source" bson:"source"`                       // "suggested", "custom", or "mixed"
+	Competitors   []string  `json:"competitors" bson:"competitors"`      // User-defined competitor list
+	SuggestedList []string  `json:"suggestedList" bson:"suggested_list"` // Original AI-suggested competitors (cached)
+	Source        string    `json:"source" bson:"source"`                // "suggested", "custom", or "mixed"
 	CreatedAt     time.Time `json:"createdAt" bson:"created_at"`
 	UpdatedAt     time.Time `json:"updatedAt" bson:"updated_at"`
 }

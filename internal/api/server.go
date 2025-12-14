@@ -156,6 +156,11 @@ func (s *Server) setupRoutes() {
 		geo.POST("/competitors", s.saveCompetitors)
 		geo.GET("/competitors", s.getCompetitors)
 		geo.DELETE("/competitors", s.deleteCompetitors)
+
+		// Prompt Management (prompts per brand)
+		geo.GET("/prompts", s.getBrandPrompts)
+		geo.POST("/prompts/execute/bulk", s.saveAndExecutePrompts)
+		geo.DELETE("/prompts", s.deletePromptsByBrand)
 	}
 
 	api.GET("/health", s.healthCheck)

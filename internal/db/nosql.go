@@ -22,6 +22,7 @@ type NoSQLDatabase interface {
 	UpdatePrompt(ctx context.Context, prompt *models.Prompt) error
 	DeletePrompt(ctx context.Context, id string) error
 	DeleteAllPrompts(ctx context.Context) (int, error)
+	DeletePromptsByBrand(ctx context.Context, brand string) (int, error)
 
 	// Response operations
 	CreateResponse(ctx context.Context, response *models.Response) error

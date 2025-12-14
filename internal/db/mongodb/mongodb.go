@@ -128,6 +128,26 @@ func (m *MongoDB) createIndexes(ctx context.Context) error {
 		return fmt.Errorf("failed to create response indexes: %w", err)
 	}
 
+	// Create indexes for prompts collection (brand lookup for efficient filtering)
+	promptIndexes := []mongo.IndexModel{
+		{
+			Keys: bson.D{
+				{Key: "brand", Value: 1},
+			},
+		},
+		{
+			Keys: bson.D{
+				{Key: "brand", Value: 1},
+				{Key: "created_at", Value: -1},
+			},
+		},
+	}
+
+	_, err = m.database.Collection(collPrompts).Indexes().CreateMany(ctx, promptIndexes)
+	if err != nil {
+		return fmt.Errorf("failed to create prompt indexes: %w", err)
+	}
+
 	// Create index for prompt library (domain + category lookup for cross-brand reuse)
 	libraryIndexes := []mongo.IndexModel{
 		{
@@ -189,12 +209,18 @@ func (m *MongoDB) CreatePrompt(ctx context.Context, prompt *models.Prompt) error
 	}
 
 	doc := bson.M{
-		"_id":        prompt.ID,
-		"template":   template,
-		"tags":       prompt.Tags,
-		"enabled":    prompt.Enabled,
-		"created_at": prompt.CreatedAt,
-		"updated_at": prompt.UpdatedAt,
+		"_id":         prompt.ID,
+		"template":    template,
+		"prompt_type": prompt.PromptType,
+		"tags":        prompt.Tags,
+		"category":    prompt.Category,
+		"domain":      prompt.Domain,
+		"brand":       prompt.Brand,
+		"source_id":   prompt.SourceID,
+		"generated":   prompt.Generated,
+		"enabled":     prompt.Enabled,
+		"created_at":  prompt.CreatedAt,
+		"updated_at":  prompt.UpdatedAt,
 	}
 
 	_, err := m.database.Collection(collPrompts).InsertOne(ctx, doc)
@@ -228,11 +254,17 @@ func (m *MongoDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, err
 	}
 
 	prompt := &models.Prompt{
-		ID:        promptID,
-		Template:  template,
-		Enabled:   getBool(doc, "enabled"),
-		CreatedAt: getTime(doc, "created_at"),
-		UpdatedAt: getTime(doc, "updated_at"),
+		ID:         promptID,
+		Template:   template,
+		PromptType: models.PromptType(getString(doc, "prompt_type")),
+		Category:   getString(doc, "category"),
+		Domain:     getString(doc, "domain"),
+		Brand:      getString(doc, "brand"),
+		SourceID:   getString(doc, "source_id"),
+		Generated:  getBool(doc, "generated"),
+		Enabled:    getBool(doc, "enabled"),
+		CreatedAt:  getTime(doc, "created_at"),
+		UpdatedAt:  getTime(doc, "updated_at"),
 	}
 
 	if tags, ok := doc["tags"].([]interface{}); ok {
@@ -283,11 +315,17 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 		}
 
 		prompt := &models.Prompt{
-			ID:        promptID,
-			Template:  template,
-			Enabled:   getBool(doc, "enabled"),
-			CreatedAt: getTime(doc, "created_at"),
-			UpdatedAt: getTime(doc, "updated_at"),
+			ID:         promptID,
+			Template:   template,
+			PromptType: models.PromptType(getString(doc, "prompt_type")),
+			Category:   getString(doc, "category"),
+			Domain:     getString(doc, "domain"),
+			Brand:      getString(doc, "brand"),
+			SourceID:   getString(doc, "source_id"),
+			Generated:  getBool(doc, "generated"),
+			Enabled:    getBool(doc, "enabled"),
+			CreatedAt:  getTime(doc, "created_at"),
+			UpdatedAt:  getTime(doc, "updated_at"),
 		}
 
 		// Handle optional fields
@@ -319,12 +357,18 @@ func (m *MongoDB) UpdatePrompt(ctx context.Context, prompt *models.Prompt) error
 
 	// Convert to BSON document with explicit _id field
 	doc := bson.M{
-		"_id":        prompt.ID,
-		"template":   template,
-		"tags":       prompt.Tags,
-		"enabled":    prompt.Enabled,
-		"created_at": prompt.CreatedAt,
-		"updated_at": prompt.UpdatedAt,
+		"_id":         prompt.ID,
+		"template":    template,
+		"prompt_type": prompt.PromptType,
+		"tags":        prompt.Tags,
+		"category":    prompt.Category,
+		"domain":      prompt.Domain,
+		"brand":       prompt.Brand,
+		"source_id":   prompt.SourceID,
+		"generated":   prompt.Generated,
+		"enabled":     prompt.Enabled,
+		"created_at":  prompt.CreatedAt,
+		"updated_at":  prompt.UpdatedAt,
 	}
 
 	result, err := m.database.Collection(collPrompts).ReplaceOne(
@@ -368,6 +412,16 @@ func (m *MongoDB) DeletePrompt(ctx context.Context, id string) error {
 // DeleteAllPrompts deletes all prompts
 func (m *MongoDB) DeleteAllPrompts(ctx context.Context) (int, error) {
 	result, err := m.database.Collection(collPrompts).DeleteMany(ctx, bson.M{})
+	if err != nil {
+		return 0, err
+	}
+	return int(result.DeletedCount), nil
+}
+
+// DeletePromptsByBrand deletes all prompts for a specific brand
+func (m *MongoDB) DeletePromptsByBrand(ctx context.Context, brand string) (int, error) {
+	filter := bson.M{"brand": bson.M{"$regex": primitive.Regex{Pattern: "^" + brand + "$", Options: "i"}}}
+	result, err := m.database.Collection(collPrompts).DeleteMany(ctx, filter)
 	if err != nil {
 		return 0, err
 	}

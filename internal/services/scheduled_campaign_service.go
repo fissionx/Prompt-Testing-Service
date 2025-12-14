@@ -152,8 +152,9 @@ func (m *ScheduledCampaignManager) CreateScheduledCampaign(
 		}
 	}
 
-	// Execute immediately for the first time
-	go m.executeCampaign(context.Background(), campaign)
+	// NOTE: We do NOT execute immediately anymore.
+	// The campaign will only run at the scheduled times defined by scheduleCron.
+	// If you want immediate execution, use the bulk API without scheduleCron.
 
 	return campaign, nil
 }

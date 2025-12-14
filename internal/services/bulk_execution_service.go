@@ -63,7 +63,7 @@ func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName
 // executeInBackground runs the campaign execution asynchronously
 func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign *models.GEOCampaign, temperature float64, totalRuns int) {
 	log.Printf("========== STARTING CAMPAIGN: %s ==========", campaign.Name)
-	log.Printf("Brand: %s, Prompts: %d, LLMs: %d, Runs per prompt: %d, Total Runs: %d", 
+	log.Printf("Brand: %s, Prompts: %d, LLMs: %d, Runs per prompt: %d, Total Runs: %d",
 		campaign.Brand, len(campaign.PromptIDs), len(campaign.LLMIDs), totalRuns, campaign.TotalRuns)
 
 	// Fetch prompts and LLMs
@@ -92,17 +92,17 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 		for _, llmConfig := range llms {
 			for run := 0; run < totalRuns; run++ {
 				wg.Add(1)
-				
+
 				go func(p *models.Prompt, llm *models.LLMConfig, runNum int) {
 					defer wg.Done()
-					
+
 					// Acquire semaphore
 					semaphore <- struct{}{}
 					defer func() { <-semaphore }()
 
 					// Execute single prompt-LLM pair
 					err := s.executeSingle(ctx, p, llm, campaign.Brand, temperature)
-					
+
 					mu.Lock()
 					completed++
 					if completed%10 == 0 || completed == campaign.TotalRuns {
@@ -147,17 +147,17 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	if err != nil {
 		// Save error response
 		errorResponse := &models.Response{
-			ID:           uuid.New().String(),
-			PromptID:     prompt.ID,
-			PromptText:   prompt.Template,
-			LLMID:        llmConfig.ID,
-			LLMName:      llmConfig.Name,
-			LLMProvider:  llmConfig.Provider,
-			LLMModel:     llmConfig.Model,
-			Brand:        brand,
-			Temperature:  temperature,
-			Error:        err.Error(),
-			CreatedAt:    time.Now(),
+			ID:          uuid.New().String(),
+			PromptID:    prompt.ID,
+			PromptText:  prompt.Template,
+			LLMID:       llmConfig.ID,
+			LLMName:     llmConfig.Name,
+			LLMProvider: llmConfig.Provider,
+			LLMModel:    llmConfig.Model,
+			Brand:       brand,
+			Temperature: temperature,
+			Error:       err.Error(),
+			CreatedAt:   time.Now(),
 		}
 		s.db.CreateResponse(ctx, errorResponse)
 		return err
@@ -192,31 +192,31 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 			responseModel.Sentiment = geo.Sentiment
 			responseModel.CompetitorsMention = geo.Competitors
 			responseModel.GroundingSources = response.GroundingSources
-			
+
 			// Extract position/ranking from the search_answer text
 			searchAnswer := geoAnalysis.SearchAnswer
 			if searchAnswer == "" {
 				searchAnswer = response.Text
 			}
-			
+
 			if geo.BrandMentioned {
 				position, totalBrands := ExtractBrandPosition(searchAnswer, brand)
 				responseModel.BrandPosition = position
 				responseModel.TotalBrandsListed = totalBrands
 			}
-			
+
 			// Extract domains from grounding sources
 			if len(response.GroundingSources) > 0 {
 				responseModel.GroundingDomains = ExtractDomainsFromSources(response.GroundingSources)
 			}
 		}
 	}
-	
+
 	// Add time-series fields
 	now := time.Now()
 	responseModel.Week = now.Format("2006-W02")
 	responseModel.Month = now.Format("2006-01")
-	quarter := (int(now.Month()) - 1) / 3 + 1
+	quarter := (int(now.Month())-1)/3 + 1
 	responseModel.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
 
 	// Save response
@@ -279,7 +279,7 @@ type GEOAnalysisResult struct {
 func parseGEOAnalysis(text string) *GEOAnalysisResult {
 	// Clean up the response - remove markdown code blocks if present
 	cleanedText := strings.TrimSpace(text)
-	
+
 	// Remove markdown code block wrappers (```json ... ``` or ``` ... ```)
 	jsonBlockRegex := regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")
 	if matches := jsonBlockRegex.FindStringSubmatch(cleanedText); len(matches) > 1 {
@@ -300,20 +300,20 @@ func parseGEOAnalysis(text string) *GEOAnalysisResult {
 			cleanedText = cleanedText[jsonStartIdx : jsonEndIdx+1]
 		}
 	}
-	
+
 	var result GEOAnalysisResult
 	if err := json.Unmarshal([]byte(cleanedText), &result); err != nil {
 		log.Printf("❌ Failed to parse GEO analysis JSON: %v", err)
 		log.Printf("Cleaned text (first 500 chars): %s", truncateForLog(cleanedText, 500))
 		return nil
 	}
-	
-	log.Printf("✅ Parsed GEO: Score=%d, Mentioned=%v, Sentiment=%s, Competitors=%v", 
-		result.GEOAnalysis.VisibilityScore, 
+
+	log.Printf("✅ Parsed GEO: Score=%d, Mentioned=%v, Sentiment=%s, Competitors=%v",
+		result.GEOAnalysis.VisibilityScore,
 		result.GEOAnalysis.BrandMentioned,
 		result.GEOAnalysis.Sentiment,
 		result.GEOAnalysis.Competitors)
-	
+
 	return &result
 }
 
@@ -324,4 +324,3 @@ func truncateForLog(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
-
