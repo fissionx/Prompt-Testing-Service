@@ -86,4 +86,10 @@ type NoSQLDatabase interface {
 	SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *models.CachedPromptTimeSeries) error
 	GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error)
 	DeleteCachedPromptTimeSeries(ctx context.Context, id string) error
+
+	// Brand Competitors operations
+	SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error
+	GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error)
+	DeleteBrandCompetitors(ctx context.Context, brand string) error
+	ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error)
 }

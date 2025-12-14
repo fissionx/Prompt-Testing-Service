@@ -346,3 +346,20 @@ func (h *HybridDB) GetCachedPromptTimeSeries(ctx context.Context, query models.A
 func (h *HybridDB) DeleteCachedPromptTimeSeries(ctx context.Context, id string) error {
 	return h.nosqlDB.DeleteCachedPromptTimeSeries(ctx, id)
 }
+
+// Brand Competitors operations - Use NoSQL
+func (h *HybridDB) SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error {
+	return h.nosqlDB.SaveBrandCompetitors(ctx, competitors)
+}
+
+func (h *HybridDB) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
+	return h.nosqlDB.GetBrandCompetitors(ctx, brand)
+}
+
+func (h *HybridDB) DeleteBrandCompetitors(ctx context.Context, brand string) error {
+	return h.nosqlDB.DeleteBrandCompetitors(ctx, brand)
+}
+
+func (h *HybridDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
+	return h.nosqlDB.ListBrandCompetitors(ctx)
+}

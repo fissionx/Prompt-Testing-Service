@@ -29,6 +29,7 @@ type Server struct {
 	scheduledCampaignManager    *services.ScheduledCampaignManager
 	dashboardService            *services.DashboardService
 	exportService               *services.ExportService
+	competitorService           *services.CompetitorService
 	llmRegistry                 *llm.Registry
 	router                      *gin.Engine
 	corsOrigin                  string
@@ -77,6 +78,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		scheduledCampaignManager:    scheduledCampaignManager,
 		dashboardService:            services.NewDashboardService(database),
 		exportService:               services.NewExportService(database),
+		competitorService:           services.NewCompetitorService(database, llmRegistry),
 		llmRegistry:                 llmRegistry,
 		router:                      router,
 		corsOrigin:                  corsOrigin,
@@ -127,9 +129,6 @@ func (s *Server) setupRoutes() {
 		geo.GET("/profiles", s.listBrandProfiles)
 		geo.GET("/profiles/:brand", s.getBrandProfile)
 
-		// Scheduled Campaigns
-		geo.GET("/campaigns", s.listScheduledCampaigns)
-
 		// Bulk Execution
 		geo.POST("/execute/bulk", s.bulkExecute)
 
@@ -152,12 +151,11 @@ func (s *Server) setupRoutes() {
 		// Export
 		geo.POST("/export", s.exportData)
 
-		// Competitor Analysis
-		geo.GET("/competitors", s.listCompetitors)
-		geo.POST("/competitors/suggest", s.suggestCompetitors) // NEW: LLM-based auto-suggest
-		geo.POST("/competitors/discover", s.discoverCompetitors)
-		geo.POST("/competitors/custom", s.addCustomCompetitors)
-		geo.POST("/competitors/insights", s.getCompetitorInsights)
+		// Competitor Management
+		geo.GET("/competitors/suggest", s.suggestCompetitors)
+		geo.POST("/competitors", s.saveCompetitors)
+		geo.GET("/competitors", s.getCompetitors)
+		geo.DELETE("/competitors", s.deleteCompetitors)
 	}
 
 	api.GET("/health", s.healthCheck)

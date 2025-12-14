@@ -2,101 +2,35 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/fissionx/gego/internal/models"
-	"github.com/fissionx/gego/internal/services"
 )
 
-// listCompetitors handles GET /api/v1/geo/competitors
-// Returns the list of competitors for a brand with their logos and websites
-func (s *Server) listCompetitors(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
-		return
-	}
-
-	includeCustom := c.Query("includeCustom") == "true"
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-
-	ctx := c.Request.Context()
-
-	competitorService := services.NewCompetitorService(s.db)
-	result, err := competitorService.ListCompetitors(ctx, brand, includeCustom, limit)
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to list competitors: "+err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    result,
-		Message: "Competitors retrieved successfully",
-	})
-}
-
-// discoverCompetitors handles POST /api/v1/geo/competitors/discover
-// Discovers competitors from response data
-func (s *Server) discoverCompetitors(c *gin.Context) {
-	var req models.DiscoverCompetitorsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
-		return
-	}
-
-	if req.Limit == 0 {
-		req.Limit = 20
-	}
-
-	ctx := c.Request.Context()
-
-	competitorService := services.NewCompetitorService(s.db)
-	result, err := competitorService.DiscoverCompetitors(
-		ctx,
-		req.Brand,
-		req.StartTime,
-		req.EndTime,
-		req.Limit,
-	)
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to discover competitors: "+err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    result,
-		Message: "Competitors discovered successfully",
-	})
-}
-
-// suggestCompetitors handles POST /api/v1/geo/competitors/suggest
-// Uses LLM to automatically suggest competitors based on brand name/website
+// suggestCompetitors handles GET /api/v1/competitors/suggest
 func (s *Server) suggestCompetitors(c *gin.Context) {
 	var req models.SuggestCompetitorsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
 	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
 		return
 	}
 
 	ctx := c.Request.Context()
 
-	// Use the competitor service with LLM support
-	competitorService := services.NewCompetitorServiceWithLLM(s.db, s.llmRegistry)
-	result, err := competitorService.SuggestCompetitors(ctx, &req)
+	response, err := s.competitorService.SuggestCompetitors(
+		ctx,
+		req.Brand,
+		req.Website,
+		req.Description,
+		req.Category,
+		req.ForceRefresh,
+	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to suggest competitors: "+err.Error())
 		return
@@ -104,15 +38,14 @@ func (s *Server) suggestCompetitors(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data:    result,
-		Message: "Competitors suggested successfully",
+		Data:    response,
+		Message: response.Message,
 	})
 }
 
-// addCustomCompetitors handles POST /api/v1/geo/competitors/custom
-// Allows users to add their own competitors to the list
-func (s *Server) addCustomCompetitors(c *gin.Context) {
-	var req models.AddCustomCompetitorsRequest
+// saveCompetitors handles POST /api/v1/competitors
+func (s *Server) saveCompetitors(c *gin.Context) {
+	var req models.SaveCompetitorsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
@@ -130,47 +63,70 @@ func (s *Server) addCustomCompetitors(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	competitorService := services.NewCompetitorService(s.db)
-	result, err := competitorService.AddCustomCompetitors(ctx, req.Brand, req.Competitors)
+	response, err := s.competitorService.SaveCompetitors(
+		ctx,
+		req.Brand,
+		req.Competitors,
+		req.Source,
+	)
 	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to add custom competitors: "+err.Error())
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to save competitors: "+err.Error())
 		return
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data:    result,
-		Message: "Custom competitors added successfully",
+		Data:    response,
+		Message: response.Message,
 	})
 }
 
-// getCompetitorInsights handles POST /api/v1/geo/competitors/insights
-// Returns comprehensive competitor insights and analysis
-func (s *Server) getCompetitorInsights(c *gin.Context) {
-	var req models.CompetitorInsightsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+// getCompetitors handles GET /api/v1/competitors
+func (s *Server) getCompetitors(c *gin.Context) {
+	brand := c.Query("brand")
+	if brand == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
 		return
 	}
 
 	ctx := c.Request.Context()
 
-	competitorService := services.NewCompetitorService(s.db)
-	result, err := competitorService.GetCompetitorInsights(ctx, &req)
+	response, err := s.competitorService.GetCompetitors(ctx, brand)
 	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitor insights: "+err.Error())
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitors: "+err.Error())
+		return
+	}
+
+	message := "Competitors retrieved successfully"
+	if len(response.Competitors) == 0 {
+		message = "No competitors saved for this brand"
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: message,
+	})
+}
+
+// deleteCompetitors handles DELETE /api/v1/competitors
+func (s *Server) deleteCompetitors(c *gin.Context) {
+	brand := c.Query("brand")
+	if brand == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	err := s.competitorService.DeleteCompetitors(ctx, brand)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to delete competitors: "+err.Error())
 		return
 	}
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Data:    result,
-		Message: "Competitor insights retrieved successfully",
+		Message: "Competitors deleted successfully",
 	})
 }
-

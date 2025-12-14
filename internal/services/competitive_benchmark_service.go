@@ -81,20 +81,28 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 		return nil, fmt.Errorf("no responses found for brand %s", mainBrand)
 	}
 
-	// If competitors not specified, auto-detect from responses
+	// If competitors not specified, check for saved competitors first
 	if len(competitors) == 0 {
-		competitorSet := make(map[string]bool)
-		for _, resp := range responses {
-			for _, comp := range resp.CompetitorsMention {
-				// Normalize competitor name
-				normalized := strings.TrimSpace(comp)
-				if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
-					competitorSet[normalized] = true
+		// Try to get saved competitors
+		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
+		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
+			// Use saved competitors
+			competitors = savedCompetitors.Competitors
+		} else {
+			// Fall back to auto-detection from responses
+			competitorSet := make(map[string]bool)
+			for _, resp := range responses {
+				for _, comp := range resp.CompetitorsMention {
+					// Normalize competitor name
+					normalized := strings.TrimSpace(comp)
+					if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
+						competitorSet[normalized] = true
+					}
 				}
 			}
-		}
-		for comp := range competitorSet {
-			competitors = append(competitors, comp)
+			for comp := range competitorSet {
+				competitors = append(competitors, comp)
+			}
 		}
 	}
 

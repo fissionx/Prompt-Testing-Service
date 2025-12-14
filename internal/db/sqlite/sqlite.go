@@ -514,3 +514,27 @@ func (s *SQLite) DeleteAllSchedules(ctx context.Context) (int, error) {
 
 	return int(rowsAffected), nil
 }
+
+// ==================== Brand Competitors Operations ====================
+// Note: SQLite only handles SQL operations (LLMs, Schedules).
+// NoSQL operations including competitors are handled by MongoDB/Hybrid database.
+
+// SaveBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error {
+	return fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
+}
+
+// GetBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
+	return nil, fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
+}
+
+// DeleteBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) DeleteBrandCompetitors(ctx context.Context, brand string) error {
+	return fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
+}
+
+// ListBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
+	return nil, fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
+}

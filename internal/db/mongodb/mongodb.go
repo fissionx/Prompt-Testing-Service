@@ -22,11 +22,12 @@ type MongoDB struct {
 }
 
 const (
-	collPrompts        = "prompts"
-	collResponses      = "responses"
-	collPromptLibrary  = "prompt_library"
-	collBrandProfiles  = "brand_profiles"
-	collBrandLogos     = "brand_logos"
+	collPrompts          = "prompts"
+	collResponses        = "responses"
+	collPromptLibrary    = "prompt_library"
+	collBrandProfiles    = "brand_profiles"
+	collBrandLogos       = "brand_logos"
+	collBrandCompetitors = "brand_competitors"
 )
 
 // New creates a new MongoDB database instance
@@ -380,13 +381,13 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 	// Compress large text fields to save storage space
 	compressedResponseText := response.ResponseText
 	compressedPromptText := response.PromptText
-	
+
 	if shared.ShouldCompress(response.ResponseText) {
 		if compressed, err := shared.CompressString(response.ResponseText); err == nil {
 			compressedResponseText = compressed
 		}
 	}
-	
+
 	if shared.ShouldCompress(response.PromptText) {
 		if compressed, err := shared.CompressString(response.PromptText); err == nil {
 			compressedPromptText = compressed
@@ -408,7 +409,7 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 		"latency_ms":    response.LatencyMs,
 		"error":         response.Error,
 		"created_at":    response.CreatedAt,
-		
+
 		// GEO Analytics Fields
 		"brand":                response.Brand,
 		"visibility_score":     response.VisibilityScore,
@@ -418,16 +419,16 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 		"competitors_mention":  response.CompetitorsMention,
 		"grounding_sources":    response.GroundingSources,
 		"grounding_domains":    response.GroundingDomains,
-		
+
 		// Position/Ranking Fields
 		"brand_position":      response.BrandPosition,
 		"total_brands_listed": response.TotalBrandsListed,
-		
+
 		// Time-Series Fields
 		"week":    response.Week,
 		"month":   response.Month,
 		"quarter": response.Quarter,
-		
+
 		// Regional Fields
 		"region":   response.Region,
 		"language": response.Language,
@@ -451,7 +452,7 @@ func (m *MongoDB) GetResponse(ctx context.Context, id string) (*models.Response,
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Decompress text fields if they were compressed
 	if decompressed, err := shared.DecompressString(response.ResponseText); err == nil {
 		response.ResponseText = decompressed
@@ -459,7 +460,7 @@ func (m *MongoDB) GetResponse(ctx context.Context, id string) (*models.Response,
 	if decompressed, err := shared.DecompressString(response.PromptText); err == nil {
 		response.PromptText = decompressed
 	}
-	
+
 	return &response, nil
 }
 
@@ -985,7 +986,7 @@ func (m *MongoDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile
 // SaveBrandLogo saves or updates a brand logo in the cache
 func (m *MongoDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error {
 	logo.UpdatedAt = time.Now()
-	
+
 	doc := bson.M{
 		"_id":               logo.ID,
 		"brand_name":        logo.BrandName,
@@ -1006,7 +1007,7 @@ func (m *MongoDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache
 		doc,
 		opts,
 	)
-	
+
 	return err
 }
 
@@ -1022,4 +1023,72 @@ func (m *MongoDB) GetBrandLogo(ctx context.Context, brandName string) (*models.B
 	}
 
 	return &logo, nil
+}
+
+// ==================== Brand Competitors Operations ====================
+
+// SaveBrandCompetitors saves or updates brand competitors
+func (m *MongoDB) SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error {
+	now := time.Now()
+	if competitors.CreatedAt.IsZero() {
+		competitors.CreatedAt = now
+	}
+	competitors.UpdatedAt = now
+
+	doc := bson.M{
+		"_id":            competitors.ID,
+		"brand":          competitors.Brand,
+		"competitors":    competitors.Competitors,
+		"suggested_list": competitors.SuggestedList,
+		"source":         competitors.Source,
+		"created_at":     competitors.CreatedAt,
+		"updated_at":     competitors.UpdatedAt,
+	}
+
+	// Upsert by brand - one competitor list per brand
+	opts := options.Replace().SetUpsert(true)
+	_, err := m.database.Collection(collBrandCompetitors).ReplaceOne(
+		ctx,
+		bson.M{"brand": competitors.Brand},
+		doc,
+		opts,
+	)
+
+	return err
+}
+
+// GetBrandCompetitors retrieves competitors for a specific brand
+func (m *MongoDB) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
+	var competitors models.BrandCompetitors
+	err := m.database.Collection(collBrandCompetitors).FindOne(ctx, bson.M{"brand": brand}).Decode(&competitors)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // Not found - not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get brand competitors: %w", err)
+	}
+
+	return &competitors, nil
+}
+
+// DeleteBrandCompetitors deletes competitors for a specific brand
+func (m *MongoDB) DeleteBrandCompetitors(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collBrandCompetitors).DeleteOne(ctx, bson.M{"brand": brand})
+	return err
+}
+
+// ListBrandCompetitors lists all brand competitors
+func (m *MongoDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
+	cursor, err := m.database.Collection(collBrandCompetitors).Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var competitorsList []*models.BrandCompetitors
+	if err := cursor.All(ctx, &competitorsList); err != nil {
+		return nil, err
+	}
+
+	return competitorsList, nil
 }

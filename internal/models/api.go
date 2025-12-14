@@ -735,3 +735,47 @@ type ExportResponse struct {
 	Data        string `json:"data"` // Base64 encoded for binary, raw for JSON
 	RecordCount int    `json:"recordCount"`
 }
+
+// ==================== COMPETITOR MANAGEMENT ====================
+
+// SuggestCompetitorsRequest represents the request to suggest competitors for a brand
+type SuggestCompetitorsRequest struct {
+	Brand        string `json:"brand" form:"brand" binding:"required"`
+	Website      string `json:"website" form:"website"`
+	Description  string `json:"description" form:"description"`
+	Category     string `json:"category" form:"category"`
+	ForceRefresh bool   `json:"forceRefresh" form:"forceRefresh"` // Force re-computation even if cached
+}
+
+// SuggestCompetitorsResponse represents the response with suggested competitors
+type SuggestCompetitorsResponse struct {
+	Brand       string   `json:"brand"`
+	Competitors []string `json:"competitors"`
+	Source      string   `json:"source"` // "cached", "computed", "responses"
+	Message     string   `json:"message,omitempty"`
+}
+
+// SaveCompetitorsRequest represents the request to save user-defined competitors
+type SaveCompetitorsRequest struct {
+	Brand       string   `json:"brand" binding:"required"`
+	Competitors []string `json:"competitors" binding:"required"` // User's final competitor list
+	Source      string   `json:"source,omitempty"`               // "suggested", "custom", "mixed"
+}
+
+// SaveCompetitorsResponse represents the response after saving competitors
+type SaveCompetitorsResponse struct {
+	Brand       string    `json:"brand"`
+	Competitors []string  `json:"competitors"`
+	Source      string    `json:"source"`
+	SavedAt     time.Time `json:"savedAt"`
+	Message     string    `json:"message"`
+}
+
+// GetCompetitorsResponse represents the response with brand's saved competitors
+type GetCompetitorsResponse struct {
+	Brand         string    `json:"brand"`
+	Competitors   []string  `json:"competitors"`
+	SuggestedList []string  `json:"suggestedList,omitempty"` // Original suggestions for reference
+	Source        string    `json:"source"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}

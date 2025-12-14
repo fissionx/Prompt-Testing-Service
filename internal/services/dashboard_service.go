@@ -424,17 +424,25 @@ func (s *DashboardService) GetCompetitorMatrix(
 
 	// Auto-detect competitors if not provided
 	if len(competitors) == 0 {
-		competitorSet := make(map[string]bool)
-		for _, resp := range mainBrandResponses {
-			for _, comp := range resp.CompetitorsMention {
-				normalized := strings.TrimSpace(comp)
-				if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
-					competitorSet[normalized] = true
+		// Try to get saved competitors first
+		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
+		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
+			// Use saved competitors
+			competitors = savedCompetitors.Competitors
+		} else {
+			// Fall back to auto-detection from responses
+			competitorSet := make(map[string]bool)
+			for _, resp := range mainBrandResponses {
+				for _, comp := range resp.CompetitorsMention {
+					normalized := strings.TrimSpace(comp)
+					if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
+						competitorSet[normalized] = true
+					}
 				}
 			}
-		}
-		for comp := range competitorSet {
-			competitors = append(competitors, comp)
+			for comp := range competitorSet {
+				competitors = append(competitors, comp)
+			}
 		}
 	}
 
@@ -613,17 +621,25 @@ func (s *DashboardService) GetTrendComparison(
 
 	// Auto-detect competitors if not provided
 	if len(competitors) == 0 {
-		competitorSet := make(map[string]bool)
-		for _, resp := range mainBrandResponses {
-			for _, comp := range resp.CompetitorsMention {
-				normalized := strings.TrimSpace(comp)
-				if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
-					competitorSet[normalized] = true
+		// Try to get saved competitors first
+		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
+		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
+			// Use saved competitors
+			competitors = savedCompetitors.Competitors
+		} else {
+			// Fall back to auto-detection from responses
+			competitorSet := make(map[string]bool)
+			for _, resp := range mainBrandResponses {
+				for _, comp := range resp.CompetitorsMention {
+					normalized := strings.TrimSpace(comp)
+					if normalized != "" && !strings.EqualFold(normalized, mainBrand) {
+						competitorSet[normalized] = true
+					}
 				}
 			}
-		}
-		for comp := range competitorSet {
-			competitors = append(competitors, comp)
+			for comp := range competitorSet {
+				competitors = append(competitors, comp)
+			}
 		}
 		// Limit to top 5 competitors
 		if len(competitors) > 5 {

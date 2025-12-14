@@ -166,3 +166,14 @@ type GEOCampaign struct {
 	CreatedAt   time.Time  `json:"createdAt" bson:"created_at"`
 	UpdatedAt   time.Time  `json:"updatedAt" bson:"updated_at"`
 }
+
+// BrandCompetitors represents a brand's competitor list (both suggested and user-defined)
+type BrandCompetitors struct {
+	ID            string    `json:"id" bson:"_id"`
+	Brand         string    `json:"brand" bson:"brand"`
+	Competitors   []string  `json:"competitors" bson:"competitors"`             // User-defined competitor list
+	SuggestedList []string  `json:"suggestedList" bson:"suggested_list"`       // Original AI-suggested competitors (cached)
+	Source        string    `json:"source" bson:"source"`                       // "suggested", "custom", or "mixed"
+	CreatedAt     time.Time `json:"createdAt" bson:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" bson:"updated_at"`
+}
