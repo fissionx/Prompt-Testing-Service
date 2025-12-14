@@ -215,6 +215,39 @@ All APIs follow a consistent response format:
 
 ---
 
+## 2.3 Delete All LLMs
+
+**Endpoint:** `DELETE /api/v1/llms`
+
+**Purpose:** Delete all LLM configurations from the system. Useful for clearing all configurations or resetting the system.
+
+**Request:** No parameters required
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "5 LLM(s) deleted successfully",
+  "data": {
+    "deleted_count": 5
+  }
+}
+```
+
+**Response Fields:**
+- `message` - Confirmation message with count of deleted LLMs
+- `data.deleted_count` - Number of LLM configurations that were deleted
+
+**UI Use Case:**
+- Settings page "Clear All" or "Reset" button
+- Confirmation dialog before deletion: "Are you sure you want to delete all LLM configurations?"
+- Show success message with count of deleted configurations
+
+**Warning:**
+⚠️ This is a destructive action that cannot be undone. All LLM configurations will be permanently deleted.
+
+---
+
 # 3. Competitor APIs
 
 ## 3.1 Suggest Competitors

@@ -194,6 +194,11 @@ func (s *LLMService) DeleteLLM(ctx context.Context, id string) error {
 	return s.db.DeleteLLM(ctx, id)
 }
 
+// DeleteAllLLMs deletes all LLM configurations
+func (s *LLMService) DeleteAllLLMs(ctx context.Context) (int, error) {
+	return s.db.DeleteAllLLMs(ctx)
+}
+
 // EnableLLM enables an LLM configuration
 func (s *LLMService) EnableLLM(ctx context.Context, id string) error {
 	llm, err := s.db.GetLLM(ctx, id)

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 
@@ -190,6 +191,23 @@ func (s *Server) deleteLLM(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Message: "LLM deleted successfully",
+	})
+}
+
+// deleteAllLLMs handles DELETE /api/v1/llms
+func (s *Server) deleteAllLLMs(c *gin.Context) {
+	count, err := s.llmService.DeleteAllLLMs(c.Request.Context())
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to delete LLMs: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Message: fmt.Sprintf("%d LLM(s) deleted successfully", count),
+		Data: map[string]int{
+			"deleted_count": count,
+		},
 	})
 }
 

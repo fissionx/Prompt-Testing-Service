@@ -97,6 +97,7 @@ func (s *Server) setupRoutes() {
 	api.POST("/llms", s.createLLM)
 	api.PUT("/llms/:id", s.updateLLM)
 	api.DELETE("/llms/:id", s.deleteLLM)
+	api.DELETE("/llms", s.deleteAllLLMs)
 
 	api.GET("/prompts", s.listPrompts)
 	api.GET("/prompts/:id", s.getPrompt)
