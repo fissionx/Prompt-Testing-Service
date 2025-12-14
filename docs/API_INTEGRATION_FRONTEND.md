@@ -4,19 +4,426 @@ This document provides complete API specifications for integrating GEGO's GEO (G
 
 ## Base URL
 
+**Local Development:**
 ```
 http://localhost:8989/api/v1
+```
+
+**Production:**
+```
+{{HOST}}/api/v1
 ```
 
 ## Authentication
 
 Currently, no authentication is required. CORS is enabled for all origins by default.
 
+## API Response Format
+
+All APIs follow a consistent response format:
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Operation completed successfully",
+  "data": { /* response data */ }
+}
+```
+
+**Error Response:**
+```json
+{
+  "success": false,
+  "error": "Error message description"
+}
+```
+
+---
+
+## Table of Contents
+
+1. [System APIs](#1-system-apis)
+   - [Health Check](#11-health-check)
+2. [LLM Configuration APIs](#2-llm-configuration-apis)
+   - [Get All LLMs](#21-get-all-llms)
+   - [Add New LLM](#22-add-new-llm)
+3. [Competitor APIs](#3-competitor-apis)
+   - [Suggest Competitors](#31-suggest-competitors)
+   - [Save Competitors](#32-save-competitors)
+   - [Get Competitors](#33-get-competitors)
+   - [Delete Competitors](#34-delete-competitors)
+4. [Prompt APIs](#4-prompt-apis)
+   - [Generate Prompts](#41-generate-prompts)
+   - [Get Prompts by Brand](#42-get-prompts-by-brand)
+5. [Execution APIs](#5-execution-apis)
+   - [Execute Bulk Campaign](#51-execute-bulk-campaign)
+   - [Delete All Campaigns](#52-delete-all-campaigns)
+6. [Analytics APIs](#6-analytics-apis)
+   - [Dashboard Overview](#61-dashboard-overview)
+   - [Source Analytics](#62-source-analytics)
+   - [Prompt Performance](#63-prompt-performance)
+   - [Prompt Time Series](#64-prompt-time-series)
+   - [Position Analytics](#65-position-analytics)
+   - [Model Analytics](#66-model-analytics)
+   - [Competitive Benchmark](#67-competitive-benchmark)
+   - [Trend Comparison](#68-trend-comparison)
+
 ---
 
 ## API Endpoints
 
-## 1. Generate Prompts
+---
+
+# 1. System APIs
+
+## 1.1 Health Check
+
+**Endpoint:** `GET /api/v1/health`
+
+**Purpose:** Check if the API server is running and responsive.
+
+**Request:** No parameters required
+
+**Response (200 OK):**
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
+
+**UI Use Case:**
+- Display server status indicator (green dot when healthy)
+- Show in settings/status page
+- Use for connection testing
+
+---
+
+# 2. LLM Configuration APIs
+
+## 2.1 Get All LLMs
+
+**Endpoint:** `GET /api/v1/llms`
+
+**Purpose:** Retrieve all configured LLM providers and their details for prompt execution.
+
+**Request:** No parameters required
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "llms": [
+      {
+        "id": "uuid",
+        "name": "GPT-4",
+        "provider": "openai",
+        "model": "gpt-4",
+        "enabled": true,
+        "apiKeyConfigured": true
+      },
+      {
+        "id": "uuid",
+        "name": "Claude 3.5 Sonnet",
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet-20241022",
+        "enabled": true,
+        "apiKeyConfigured": true
+      },
+      {
+        "id": "uuid",
+        "name": "Gemini Flash 2.5",
+        "provider": "google",
+        "model": "models/gemini-2.5-flash",
+        "enabled": true,
+        "apiKeyConfigured": false
+      }
+    ],
+    "total": 3,
+    "enabled": 2
+  }
+}
+```
+
+**UI Integration:**
+- ✅ `id` - Use for selecting LLMs in execution requests
+- ✅ `name` - Display name in LLM selection UI
+- ✅ `provider` - Show provider icon/logo (OpenAI, Anthropic, Google, etc.)
+- ✅ `model` - Display model identifier
+- ✅ `enabled` - Only show enabled LLMs in selection
+- ✅ `apiKeyConfigured` - Show warning if false
+
+**UI Recommendations:**
+```
+┌─────────────────────────────────────────────┐
+│ Select LLMs for Testing                     │
+├─────────────────────────────────────────────┤
+│ ☑ GPT-4 (OpenAI) ✓ Ready                   │
+│ ☑ Claude 3.5 Sonnet (Anthropic) ✓ Ready    │
+│ ☐ Gemini Flash 2.5 (Google) ⚠️ No API Key  │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 2.2 Add New LLM
+
+**Endpoint:** `POST /api/v1/llms`
+
+**Purpose:** Add a new LLM configuration to the system.
+
+**Request Body:**
+```json
+{
+  "name": "Gemini Flash 2.5",
+  "provider": "google",
+  "model": "models/gemini-2.5-flash",
+  "apiKey": "your-api-key-here",
+  "enabled": true
+}
+```
+
+**Field Descriptions:**
+- `name` (string, required) - Display name for the LLM
+- `provider` (string, required) - Provider identifier: `openai`, `anthropic`, `google`, `perplexity`, `ollama`
+- `model` (string, required) - Model identifier from the provider
+- `apiKey` (string, optional) - API key for the provider (not needed for Ollama)
+- `enabled` (boolean, optional) - Whether to enable this LLM (default: true)
+
+**Response (201 Created):**
+```json
+{
+  "success": true,
+  "message": "LLM configuration added successfully",
+  "data": {
+    "id": "uuid",
+    "name": "Gemini Flash 2.5",
+    "provider": "google",
+    "model": "models/gemini-2.5-flash",
+    "enabled": true,
+    "createdAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**UI Use Case:**
+- Settings page for adding new LLM providers
+- Form with provider dropdown, model input, and API key field
+- Validation for required fields
+
+---
+
+# 3. Competitor APIs
+
+## 3.1 Suggest Competitors
+
+**Endpoint:** `GET /api/v1/geo/competitors/suggest`
+
+**Purpose:** Get AI-powered competitor suggestions based on your brand and website. Uses LLM to analyze your brand and suggest relevant competitors.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Your brand name |
+| `website` | string | No | Your website URL (recommended for better suggestions) |
+| `description` | string | No | Brand description |
+| `category` | string | No | Industry category |
+| `forceRefresh` | boolean | No | Force new LLM suggestions (default: false, uses cache) |
+
+**Example Request:**
+```
+GET /api/v1/geo/competitors/suggest?brand=Cursor&website=https://cursor.com
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": [
+      "GitHub Copilot",
+      "Codeium",
+      "Tabnine",
+      "Amazon CodeWhisperer",
+      "Replit"
+    ],
+    "source": "llm",
+    "message": "Found 5 competitors for Cursor",
+    "generatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**Field Descriptions:**
+- `competitors` (array) - List of suggested competitor names
+- `source` (string) - `llm` (newly generated) or `cached` (from previous request)
+- `message` (string) - Human-readable summary
+
+**UI Integration:**
+- ✅ Display as selectable checkboxes
+- ✅ Show "AI Generated" badge if source is "llm"
+- ✅ Show "Cached" badge if source is "cached"
+- ✅ Allow users to select competitors to save
+- ✅ Provide option to add custom competitors manually
+
+**UI Example:**
+```
+┌────────────────────────────────────────┐
+│ AI Suggested Competitors 🤖            │
+│ (Based on your website analysis)       │
+├────────────────────────────────────────┤
+│ ☑ GitHub Copilot                       │
+│ ☑ Codeium                              │
+│ ☑ Tabnine                              │
+│ ☐ Amazon CodeWhisperer                 │
+│ ☐ Replit                               │
+├────────────────────────────────────────┤
+│ [+ Add Custom Competitor]              │
+│                                         │
+│ [Save Selected] [Refresh Suggestions]  │
+└────────────────────────────────────────┘
+```
+
+---
+
+## 3.2 Save Competitors
+
+**Endpoint:** `POST /api/v1/geo/competitors`
+
+**Purpose:** Save user-selected competitors for future analytics and benchmarking.
+
+**Request Body:**
+```json
+{
+  "brand": "Cursor",
+  "competitors": [
+    "GitHub Copilot",
+    "Codeium"
+  ],
+  "source": "suggested"
+}
+```
+
+**Field Descriptions:**
+- `brand` (string, required) - Your brand name
+- `competitors` (array, required) - List of competitor names to save
+- `source` (string, required) - Source of competitors: `suggested`, `manual`, or `mixed`
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": [
+      "GitHub Copilot",
+      "Codeium"
+    ],
+    "source": "suggested",
+    "savedAt": "2024-01-01T00:00:00Z",
+    "message": "Successfully saved 2 competitors for Cursor"
+  }
+}
+```
+
+**UI Use Case:**
+- Save button after competitor selection
+- Show success toast: "2 competitors saved successfully"
+- Automatically used in competitive analytics
+
+---
+
+## 3.3 Get Competitors
+
+**Endpoint:** `GET /api/v1/geo/competitors`
+
+**Purpose:** Retrieve saved competitors for a brand.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Brand name to get competitors for |
+
+**Example Request:**
+```
+GET /api/v1/geo/competitors?brand=Cursor
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "competitors": [
+      "GitHub Copilot",
+      "Codeium"
+    ],
+    "suggestedList": [
+      "GitHub Copilot",
+      "Codeium",
+      "Tabnine",
+      "Amazon CodeWhisperer",
+      "Replit"
+    ],
+    "source": "suggested",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**Field Descriptions:**
+- `competitors` (array) - Currently saved competitors
+- `suggestedList` (array) - Full list of AI suggestions (if available)
+- `source` (string) - How competitors were added
+- `updatedAt` (timestamp) - Last update time
+
+**UI Integration:**
+- ✅ Display saved competitors with edit option
+- ✅ Show suggested but not saved competitors as "Add more"
+- ✅ Allow removing competitors
+
+---
+
+## 3.4 Delete Competitors
+
+**Endpoint:** `DELETE /api/v1/geo/competitors`
+
+**Purpose:** Delete all saved competitors for a brand.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Brand name to delete competitors for |
+
+**Example Request:**
+```
+DELETE /api/v1/geo/competitors?brand=Cursor
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Successfully deleted all competitors for Cursor"
+}
+```
+
+**UI Use Case:**
+- "Clear all competitors" button with confirmation dialog
+- Show in settings or competitor management page
+
+---
+
+# 4. Prompt APIs
+
+## 4.1 Generate Prompts
 
 **Endpoint:** `POST /api/v1/geo/prompts/generate`
 
@@ -94,241 +501,431 @@ Currently, no authentication is required. CORS is enabled for all origins by def
 
 ---
 
-## 2. Bulk Execute Campaign
+## 4.2 Get Prompts by Brand
 
-**Endpoint:** `POST /api/v1/geo/execute/bulk`
+**Endpoint:** `GET /api/v1/geo/prompts`
 
-**Purpose:** Execute multiple prompts across multiple LLMs to test brand visibility. Runs asynchronously in the background.
+**Purpose:** Retrieve all generated prompts for a specific brand.
 
-### Request Body
+**Query Parameters:**
 
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Brand name to get prompts for |
+
+**Example Request:**
+```
+GET /api/v1/geo/prompts?brand=Cursor
+```
+
+**Response (200 OK):**
 ```json
 {
-  "campaignName": "string",    // Required: Name for this campaign
-  "brand": "string",           // Required: Brand name to analyze
-  "promptIds": ["uuid"],       // Required: Array of prompt IDs to execute
-  "llmIds": ["uuid"],          // Required: Array of LLM IDs to use
-  "temperature": 0.7           // Optional: LLM temperature (0.0-2.0), default: 0.7
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "prompts": [
+      {
+        "id": "28bf8648-cb51-45df-a8fa-fadc8140c95a",
+        "template": "What are the best AI coding assistants for developers?",
+        "promptType": "comparison",
+        "category": "AI coding",
+        "reused": true,
+        "createdAt": "2024-01-01T00:00:00Z"
+      },
+      {
+        "id": "uuid-2",
+        "template": "Which code completion tool should I choose?",
+        "promptType": "recommendation",
+        "category": "AI coding",
+        "reused": false,
+        "createdAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "total": 25,
+    "promptsByType": {
+      "comparison": [...],
+      "recommendation": [...],
+      "informational": [...]
+    },
+    "typeCounts": {
+      "comparison": 10,
+      "recommendation": 8,
+      "informational": 7
+    }
+  }
 }
 ```
 
-### Response (202 Accepted)
+**UI Integration:**
+- ✅ Display as searchable/filterable list
+- ✅ Group by `promptType` using tabs or accordion
+- ✅ Show `reused` badge (green for reused, blue for new)
+- ✅ Use `id` for selection in bulk execution
+- ✅ Display `typeCounts` in summary cards
 
+**UI Example:**
+```
+┌────────────────────────────────────────────┐
+│ Prompts for Cursor (25 total)             │
+│ [Comparison: 10] [Recommendation: 8]       │
+├────────────────────────────────────────────┤
+│ ☑ What are the best AI coding...  [Reused]│
+│ ☐ Which code completion tool...   [New]   │
+│ ☐ How does Cursor compare to...   [Reused]│
+└────────────────────────────────────────────┘
+```
+
+---
+
+# 5. Execution APIs
+
+## 5.1 Execute Bulk Campaign
+
+**Endpoint:** `POST /api/v1/geo/prompts/execute/bulk`
+
+**Purpose:** Execute multiple prompts across multiple LLMs to test brand visibility. Supports one-time execution and optional scheduled recurring runs. Runs asynchronously in the background.
+
+**Request Body:**
+```json
+{
+  "campaignName": "cursor brand check",
+  "brand": "Cursor",
+  "promptIds": [
+    "28bf8648-cb51-45df-a8fa-fadc8140c95a"
+  ],
+  "customPrompts": [
+    {
+      "template": "compare cursor with copilot and windsurf",
+      "promptType": "compare"
+    }
+  ],
+  "llmIds": [
+    "f03b45b7-bf22-4449-a32d-8a90540432dd"
+  ],
+  "temperature": 0.7,
+  "scheduleCron": "*/2 * * * *",
+  "totalRuns": 1
+}
+```
+
+**Field Descriptions:**
+
+**Required Fields:**
+- `campaignName` (string) - Name for this campaign
+- `brand` (string) - Brand name to analyze
+- `promptIds` (array) - Array of prompt IDs from generated prompts
+- `llmIds` (array) - Array of LLM IDs to execute prompts on
+
+**Optional Fields:**
+- `customPrompts` (array) - Custom prompts to execute alongside saved prompts
+  - `template` (string) - The prompt text
+  - `promptType` (string) - Type: `comparison`, `recommendation`, `informational`, etc.
+- `temperature` (float) - LLM temperature (0.0-2.0), default: 0.7
+  - Lower (0.0-0.3): More focused and deterministic
+  - Medium (0.4-0.7): Balanced creativity
+  - Higher (0.8-2.0): More creative and varied
+- `scheduleCron` (string) - Cron expression for recurring execution (e.g., `*/2 * * * *` = every 2 minutes)
+  - If omitted: One-time execution
+  - If provided: Recurring scheduled execution
+- `totalRuns` (number) - Number of times to run the campaign (for scheduled campaigns)
+
+**Response (202 Accepted):**
 ```json
 {
   "success": true,
   "message": "Campaign execution started",
   "data": {
     "campaignId": "uuid",
-    "campaignName": "string",
-    "brand": "string",
-    "totalRuns": 60,              // prompts.length × llms.length
-    "status": "running",          // running, completed, failed
+    "campaignName": "cursor brand check",
+    "brand": "Cursor",
+    "totalRuns": 2,
+    "status": "running",
     "startedAt": "2024-01-01T00:00:00Z",
+    "scheduleCron": "*/2 * * * *",
+    "scheduled": true,
     "message": "Campaign started successfully. Execution running in background."
   }
 }
 ```
 
-### UI Integration Notes
+**Field Descriptions (Response):**
+- `campaignId` (string) - Unique campaign identifier
+- `totalRuns` (number) - Total executions (promptIds + customPrompts) × llmIds
+- `status` (string) - `running`, `scheduled`, `completed`, `failed`
+- `scheduled` (boolean) - true if recurring, false if one-time
+- `scheduleCron` (string) - Cron schedule if recurring
 
-**Essential Fields for UI:**
-- ✅ `campaignId` - Store for tracking campaign progress
-- ✅ `campaignName` - Display campaign name
-- ✅ `brand` - Display brand being analyzed
-- ✅ `totalRuns` - Show total execution count
-- ✅ `status` - Display status indicator (running/completed/failed)
-- ✅ `startedAt` - Show timestamp
+**UI Integration:**
 
-**Not Needed for UI:**
-- `message` - Internal status message (can be shown in toast notification)
+**Essential Fields:**
+- ✅ `campaignId` - Store for tracking
+- ✅ `campaignName` - Display in progress indicator
+- ✅ `totalRuns` - Show execution count
+- ✅ `status` - Display status badge
+- ✅ `scheduled` - Show "One-time" vs "Recurring" indicator
 
 **UI Recommendations:**
-1. Show a loading indicator with text: "Executing 60 prompts across 3 LLMs..."
-2. Display a progress notification or status card
-3. Store `campaignId` to poll for results or redirect to insights page
-4. Show estimated completion time based on `totalRuns`
-5. After execution completes (poll status), redirect to insights/analytics
 
-**Important:** This API returns immediately (202 Accepted) while execution happens in the background. You should:
-- Show immediate feedback that execution started
-- Navigate to insights page after 1-2 seconds
-- Poll insights API to check for new results
+**For One-time Execution:**
+```
+┌────────────────────────────────────────┐
+│ ⏳ Executing Campaign                  │
+│ "cursor brand check"                   │
+│                                         │
+│ Status: Running                        │
+│ Progress: 2 prompt executions          │
+│ Started: 2 seconds ago                 │
+│                                         │
+│ [View Live Results]                    │
+└────────────────────────────────────────┘
+```
+
+**For Scheduled Execution:**
+```
+┌────────────────────────────────────────┐
+│ 📅 Scheduled Campaign Active           │
+│ "cursor brand check"                   │
+│                                         │
+│ Schedule: Every 2 minutes              │
+│ Next Run: In 1m 30s                    │
+│ Runs Completed: 5 / 10                 │
+│                                         │
+│ [View Results] [Stop Campaign]         │
+└────────────────────────────────────────┘
+```
+
+**Important Notes:**
+- API returns immediately (202 Accepted) while execution happens in background
+- For one-time: Redirect to analytics after 2-3 seconds
+- For scheduled: Show campaign management page
+- Poll analytics APIs to see new results appear
 
 ---
 
-## 3. GEO Insights
+## 5.2 Delete All Campaigns
 
-**Endpoint:** `POST /api/v1/geo/insights`
+**Endpoint:** `DELETE /api/v1/geo/campaigns/all`
 
-**Purpose:** Get comprehensive GEO analytics and performance insights for a brand.
+**Purpose:** Delete all background scheduled campaigns (stops all recurring executions).
 
-### Request Body
+**Request:** No parameters required
 
-```json
-{
-  "brand": "string",           // Optional: Brand name (if omitted, returns all brands)
-  "campaignId": "string",      // Optional: Specific campaign ID
-  "startTime": "2024-01-01T00:00:00Z",  // Optional: Filter by date range
-  "endTime": "2024-12-31T23:59:59Z"     // Optional: Filter by date range
-}
-```
-
-### Response (200 OK)
-
+**Response (200 OK):**
 ```json
 {
   "success": true,
-  "message": "GEO insights retrieved successfully",
+  "message": "All campaigns deleted successfully",
   "data": {
-    "brand": "string",
-    "logoUrl": "https://logo.clearbit.com/brand.com",       // Brand logo URL
-    "fallbackLogoUrl": "https://ui-avatars.com/...",        // Fallback if logo not found
-    "averageVisibility": 7.5,           // 0-10 score indicating how visible the brand is
-    "mentionRate": 65.5,                // Percentage (0-100) of responses mentioning the brand
-    "groundingRate": 45.2,              // Percentage of responses citing brand in sources
-    "totalResponses": 120,              // Total number of LLM responses analyzed
+    "deletedCount": 5
+  }
+}
+```
+
+**UI Use Case:**
+- "Stop all campaigns" button in settings
+- Show confirmation dialog: "This will stop 5 running campaigns"
+- Use when cleaning up test campaigns
+
+---
+
+# 6. Analytics APIs
+
+## 6.1 Dashboard Overview
+
+**Endpoint:** `GET /api/v1/geo/dashboard/overview`
+
+**Purpose:** Get a comprehensive overview of brand performance with key metrics at a glance.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Brand name to analyze |
+| `startTime` | ISO 8601 | No | Filter results from this date |
+| `endTime` | ISO 8601 | No | Filter results until this date |
+
+**Example Request:**
+```
+GET /api/v1/geo/dashboard/overview?brand=Cursor
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "logoUrl": "https://logo.clearbit.com/cursor.com",
+    "fallbackLogoUrl": "https://ui-avatars.com/api/?name=Cursor",
     
-    "sentimentBreakdown": {
-      "positive": 75,                    // Count of positive mentions
-      "neutral": 30,
-      "negative": 5
+    "summary": {
+      "totalResponses": 150,
+      "totalPrompts": 25,
+      "totalLLMs": 3,
+      "dateRange": {
+        "start": "2024-01-01T00:00:00Z",
+        "end": "2024-01-31T23:59:59Z"
+      }
+    },
+    
+    "keyMetrics": {
+      "averageVisibility": 7.8,
+      "mentionRate": 72.5,
+      "averagePosition": 2.3,
+      "groundingRate": 48.5
+    },
+    
+    "sentiment": {
+      "positive": 95,
+      "neutral": 40,
+      "negative": 15,
+      "averageScore": 0.72
     },
     
     "topCompetitors": [
       {
-        "name": "Competitor A",
+        "name": "GitHub Copilot",
         "logoUrl": "https://...",
-        "fallbackLogoUrl": "https://...",
-        "mentionCount": 45,
-        "visibilityAvg": 8.2
+        "mentionCount": 85,
+        "averageVisibility": 8.2
+      },
+      {
+        "name": "Codeium",
+        "logoUrl": "https://...",
+        "mentionCount": 65,
+        "averageVisibility": 7.1
       }
     ],
     
-    "performanceByLlm": [
+    "performanceByLLM": [
       {
         "llmName": "GPT-4",
-        "llmProvider": "openai",
-        "visibility": 8.5,               // Average visibility score for this LLM
-        "mentionRate": 75.5,             // Mention rate for this LLM
-        "responseCount": 40
+        "provider": "openai",
+        "visibility": 8.5,
+        "mentionRate": 80.0,
+        "responseCount": 50
       }
     ],
     
-    "performanceByCategory": [
+    "recentActivity": [
       {
-        "category": "Comparison",
-        "visibility": 7.8,
-        "mentionRate": 68.5,
-        "responseCount": 25
-      }
-    ],
-    
-    "trends": [                          // Time-series data (optional)
-      {
-        "date": "2024-01-01",
-        "visibility": 7.5,
-        "mentions": 12
+        "type": "campaign_completed",
+        "campaignName": "cursor brand check",
+        "timestamp": "2024-01-01T00:00:00Z",
+        "totalRuns": 25
       }
     ]
   }
 }
 ```
 
-### UI Integration Notes
+**UI Integration:**
 
-**Essential Fields for Dashboard:**
-- ✅ `brand` - Display brand name
-- ✅ `logoUrl` / `fallbackLogoUrl` - Display brand logo (use fallback if primary fails)
-- ✅ `averageVisibility` - **KEY METRIC** - Display as large number/gauge (0-10 scale)
-- ✅ `mentionRate` - **KEY METRIC** - Display as percentage with progress bar
-- ✅ `groundingRate` - **KEY METRIC** - Display as percentage
-- ✅ `totalResponses` - Show as context: "Based on 120 AI responses"
-- ✅ `sentimentBreakdown` - Display as pie/donut chart (positive/neutral/negative)
-- ✅ `topCompetitors` - Display as ranked list with logos and scores
-- ✅ `performanceByLlm` - Display as table or bar chart comparing LLM performance
-- ✅ `performanceByCategory` - Display as table showing performance by prompt type
-
-**Optional Fields:**
-- `trends` - Display time-series line chart if available
-
-**UI Recommendations:**
+**Essential for Dashboard:**
+- ✅ `keyMetrics.averageVisibility` - **PRIMARY METRIC** (0-10 scale)
+- ✅ `keyMetrics.mentionRate` - **PRIMARY METRIC** (percentage)
+- ✅ `keyMetrics.averagePosition` - Ranking position (lower is better)
+- ✅ `keyMetrics.groundingRate` - Citation rate (percentage)
+- ✅ `sentiment` - Pie chart breakdown
+- ✅ `topCompetitors` - Competitive landscape
+- ✅ `performanceByLLM` - LLM comparison chart
+- ✅ `summary` - Context stats
 
 **Dashboard Layout:**
 ```
-┌─────────────────────────────────────────────────┐
-│ [Brand Logo] Brand Name                         │
-│                                                  │
-│ ┌─────────────┐ ┌──────────────┐ ┌────────────┐│
-│ │ Visibility  │ │ Mention Rate │ │ Grounding  ││
-│ │    7.5/10   │ │    65.5%     │ │   45.2%    ││
-│ └─────────────┘ └──────────────┘ └────────────┘│
-│                                                  │
-│ Sentiment Breakdown          Top Competitors    │
-│ [Pie Chart]                  [List with logos]  │
-│                                                  │
-│ Performance by LLM           By Prompt Type     │
-│ [Bar Chart]                  [Table]            │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ [Logo] Cursor Dashboard                      │
+│ Based on 150 responses · 25 prompts · 3 LLMs│
+├──────────────────────────────────────────────┤
+│ ┌────────────┐ ┌────────────┐ ┌───────────┐ │
+│ │ Visibility │ │ Mention    │ │ Position  │ │
+│ │   7.8/10   │ │   72.5%    │ │    #2.3   │ │
+│ │     🟢     │ │     🟢     │ │     🟢    │ │
+│ └────────────┘ └────────────┘ └───────────┘ │
+│                                               │
+│ Sentiment Analysis      Top Competitors      │
+│ [Pie: 95/40/15]         1. GitHub Copilot    │
+│                         2. Codeium           │
+│                                               │
+│ Performance by LLM                           │
+│ GPT-4:  ████████ 8.5 (80% mention)          │
+│ Claude: ██████   7.2 (65% mention)          │
+└──────────────────────────────────────────────┘
 ```
 
 **Metric Color Coding:**
-- Visibility: 8-10 = Green, 5-7.9 = Yellow, 0-4.9 = Red
-- Mention Rate: >60% = Green, 30-60% = Yellow, <30% = Red
-- Grounding Rate: >40% = Green, 20-40% = Yellow, <20% = Red
+- Visibility: 8-10=🟢 5-7.9=🟡 0-4.9=🔴
+- Mention Rate: >70%=🟢 40-70%=🟡 <40%=🔴
+- Position: 1-3=🟢 4-5=🟡 6+=🔴
 
 ---
 
-## 4. Source Analytics
+## 6.2 Source Analytics
 
 **Endpoint:** `POST /api/v1/geo/analytics/sources`
 
-**Purpose:** Analyze which sources/domains AI models cite when mentioning your brand.
+**Purpose:** Analyze which sources/domains AI models cite when mentioning your brand. Critical for understanding your digital footprint in AI training data.
 
-### Request Body
-
+**Request Body:**
 ```json
 {
-  "brand": "string",           // Required: Brand name
-  "startTime": "2024-01-01T00:00:00Z",  // Optional: Filter by date
-  "endTime": "2024-12-31T23:59:59Z",    // Optional: Filter by date
-  "topN": 20                   // Optional: Number of top sources to return (default: 20)
+  "brand": "Cursor",
+  "startTime": "2025-01-01T00:00:00Z",
+  "endTime": "2025-12-31T23:59:59Z",
+  "topN": 2
 }
 ```
 
-### Response (200 OK)
+**Field Descriptions:**
+- `brand` (string, required) - Brand name to analyze
+- `startTime` (ISO 8601, optional) - Filter citations from this date
+- `endTime` (ISO 8601, optional) - Filter citations until this date
+- `topN` (number, optional) - Number of top sources to return (default: 20)
 
+**Response (200 OK):**
 ```json
 {
   "success": true,
   "message": "Source analytics retrieved successfully",
   "data": {
-    "brand": "string",
+    "brand": "Cursor",
     "logoUrl": "https://...",
     "fallbackLogoUrl": "https://...",
     "period": "Last 30 days",
-    "totalSources": 45,                  // Total unique domains cited
-    "totalCitations": 230,               // Total number of citations
+    "totalSources": 45,
+    "totalCitations": 230,
     
     "topSources": [
       {
-        "domain": "example.com",
-        "citationCount": 45,             // Number of times this domain was cited
-        "mentionRate": 37.5,             // Percentage of responses citing this domain
+        "domain": "techcrunch.com",
+        "citationCount": 45,
+        "mentionRate": 37.5,
         "llmBreakdown": {
-          "GPT-4": 20,                   // Citation count per LLM
+          "GPT-4": 20,
           "Claude": 15,
           "Gemini": 10
         },
-        "categories": ["comparison", "informational"]  // Prompt types where cited
+        "categories": ["comparison", "informational"]
+      },
+      {
+        "domain": "ycombinator.com",
+        "citationCount": 38,
+        "mentionRate": 31.7,
+        "llmBreakdown": {
+          "GPT-4": 18,
+          "Claude": 12,
+          "Gemini": 8
+        },
+        "categories": ["recommendation"]
       }
     ],
     
     "recommendations": [
       {
         "type": "content_partnership",
-        "priority": "high",              // high, medium, low
-        "title": "Strengthen presence on example.com",
+        "priority": "high",
+        "title": "Strengthen presence on techcrunch.com",
         "description": "This domain is cited 45 times. Consider contributing content.",
         "action": "Reach out for guest posting opportunities",
         "impact": "Could improve citation rate by 15%"
@@ -338,165 +935,518 @@ Currently, no authentication is required. CORS is enabled for all origins by def
 }
 ```
 
-### UI Integration Notes
+**Field Descriptions (Response):**
+- `totalSources` - Unique domains citing your brand
+- `totalCitations` - Total citation count across all LLM responses
+- `topSources[].domain` - The citing website
+- `topSources[].citationCount` - How many times this domain was cited
+- `topSources[].mentionRate` - Percentage of responses citing this domain
+- `topSources[].llmBreakdown` - Which LLMs cite this source
+- `recommendations` - Actionable insights for improving source presence
 
-**Essential Fields for UI:**
-- ✅ `brand` + logos - Display at top
-- ✅ `totalSources` - Show as summary stat
-- ✅ `totalCitations` - Show as summary stat
+**UI Integration:**
+
+**Essential Fields:**
+- ✅ `totalSources` & `totalCitations` - Summary stats
 - ✅ `topSources[].domain` - Display as clickable links
-- ✅ `topSources[].citationCount` - Display with bar chart
-- ✅ `topSources[].mentionRate` - Show percentage
-- ✅ `topSources[].llmBreakdown` - Display in expandable row or tooltip
-- ✅ `recommendations` - Display as actionable cards with priority badges
+- ✅ `topSources[].citationCount` - Bar chart visualization
+- ✅ `topSources[].mentionRate` - Percentage display
+- ✅ `topSources[].llmBreakdown` - Expandable detail
+- ✅ `recommendations` - Action cards with priority badges
 
-**Optional:**
-- `topSources[].categories` - Can show as tags
-- `period` - Display as context
-
-**UI Recommendations:**
-
-**Layout:**
+**UI Example:**
 ```
-┌──────────────────────────────────────────────────┐
-│ Sources Citing [Brand]                           │
-│ 45 unique sources · 230 total citations          │
-│                                                   │
-│ Top Citing Domains:                              │
-│ ┌────────────────────────────────────────────┐  │
-│ │ 1. example.com          45 citations (38%) │  │
-│ │    [Bar ████████████░░░░░░░░]              │  │
-│ │    GPT-4: 20 | Claude: 15 | Gemini: 10    │  │
-│ └────────────────────────────────────────────┘  │
-│                                                   │
-│ 💡 Recommendations [HIGH PRIORITY]               │
-│ [Action Cards]                                   │
-└──────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│ Sources Citing Cursor                           │
+│ 45 unique sources · 230 total citations         │
+├─────────────────────────────────────────────────┤
+│ Top Citing Domains:                             │
+│                                                  │
+│ 1. techcrunch.com          45 citations (37.5%) │
+│    ████████████████░░░░░░░░                     │
+│    GPT-4: 20 | Claude: 15 | Gemini: 10         │
+│                                                  │
+│ 2. ycombinator.com         38 citations (31.7%) │
+│    ██████████████░░░░░░░░░░                     │
+│    GPT-4: 18 | Claude: 12 | Gemini: 8          │
+├─────────────────────────────────────────────────┤
+│ 💡 Recommendations [HIGH PRIORITY]              │
+│                                                  │
+│ [🔴 HIGH] Strengthen presence on techcrunch.com │
+│ Reach out for guest posting opportunities       │
+│ Impact: Could improve citation rate by 15%     │
+└─────────────────────────────────────────────────┘
 ```
 
-**Priority Badge Colors:**
-- HIGH = Red/Orange
-- MEDIUM = Yellow
-- LOW = Blue
+**Priority Colors:**
+- HIGH = 🔴 Red/Orange
+- MEDIUM = 🟡 Yellow  
+- LOW = 🔵 Blue
 
 ---
 
-## 5. Prompt Performance Analytics
+## 6.3 Prompt Performance
 
 **Endpoint:** `POST /api/v1/geo/analytics/prompt-performance`
 
-**Purpose:** Analyze which prompts generate the best brand visibility and recommendations for optimization.
+**Purpose:** Analyze which prompts generate the best brand visibility and identify optimization opportunities.
 
-### Request Body
-
+**Request Body:**
 ```json
 {
-  "brand": "string",           // Required: Brand name
-  "startTime": "2024-01-01T00:00:00Z",  // Optional: Filter by date
-  "endTime": "2024-12-31T23:59:59Z",    // Optional: Filter by date
-  "minResponses": 3            // Optional: Minimum responses needed per prompt (default: 3)
+  "brand": "Cursor",
+  "startTime": "2025-01-01T00:00:00Z",
+  "endTime": "2025-12-31T23:59:59Z",
+  "minResponses": 3
 }
 ```
 
-### Response (200 OK)
+**Field Descriptions:**
+- `brand` (string, required) - Brand name to analyze
+- `startTime` (ISO 8601, optional) - Filter from this date
+- `endTime` (ISO 8601, optional) - Filter until this date
+- `minResponses` (number, optional) - Minimum responses needed per prompt (default: 3)
 
+**Response (200 OK):**
 ```json
 {
   "success": true,
   "message": "Prompt performance retrieved successfully",
   "data": {
-    "brand": "string",
+    "brand": "Cursor",
     "logoUrl": "https://...",
     "fallbackLogoUrl": "https://...",
     "period": "Last 30 days",
     "totalPromptsAnalyzed": 25,
-    "avgEffectiveness": 72.5,          // Overall average effectiveness score
+    "avgEffectiveness": 72.5,
     
-    "topPerformers": ["prompt-id-1", "prompt-id-2", "prompt-id-3"],  // Best prompt IDs
-    "lowPerformers": ["prompt-id-4", "prompt-id-5"],                  // Worst prompt IDs
+    "topPerformers": ["prompt-id-1", "prompt-id-2", "prompt-id-3"],
+    "lowPerformers": ["prompt-id-4", "prompt-id-5"],
     
     "prompts": [
       {
         "promptId": "uuid",
-        "promptText": "What are the best universities for engineering?",
+        "promptText": "What are the best AI coding assistants?",
         "promptType": "comparison",
-        "category": "Education",
+        "category": "AI coding",
         
-        // Performance Metrics
-        "avgVisibility": 8.5,          // Average visibility score (0-10)
-        "avgPosition": 2.3,            // Average ranking position (lower is better)
-        "mentionRate": 85.5,           // Percentage brand is mentioned
-        "topPositionRate": 67.5,       // Percentage of top 3 rankings
-        "avgSentiment": 0.8,           // Sentiment score (-1 to +1)
+        "avgVisibility": 8.5,
+        "avgPosition": 2.3,
+        "mentionRate": 85.5,
+        "topPositionRate": 67.5,
+        "avgSentiment": 0.8,
         
-        // Volume Metrics
-        "totalResponses": 20,          // Total LLM responses for this prompt
-        "brandMentions": 17,           // Times brand was mentioned
+        "totalResponses": 20,
+        "brandMentions": 17,
         
-        // Effectiveness
-        "effectivenessScore": 85.2,    // Composite score (0-100)
-        "effectivenessGrade": "A",     // A, B, C, D, F
-        "status": "high_performing",   // high_performing, performing, under_performing
+        "effectivenessScore": 85.2,
+        "effectivenessGrade": "A",
+        "status": "high_performing",
         "recommendation": "Keep this prompt. It drives excellent visibility."
+      },
+      {
+        "promptId": "uuid-2",
+        "promptText": "How to improve coding productivity?",
+        "promptType": "informational",
+        "category": "Productivity",
+        
+        "avgVisibility": 3.2,
+        "avgPosition": 8.5,
+        "mentionRate": 25.0,
+        "topPositionRate": 10.0,
+        "avgSentiment": 0.5,
+        
+        "totalResponses": 20,
+        "brandMentions": 5,
+        
+        "effectivenessScore": 32.5,
+        "effectivenessGrade": "D",
+        "status": "under_performing",
+        "recommendation": "Consider revising or removing this prompt."
       }
     ]
   }
 }
 ```
 
-### UI Integration Notes
+**Field Descriptions (Response):**
+- `avgEffectiveness` - Overall average effectiveness (0-100)
+- `topPerformers` / `lowPerformers` - Best/worst prompt IDs
+- `prompts[].avgVisibility` - Average visibility score (0-10)
+- `prompts[].avgPosition` - Average ranking position (lower = better)
+- `prompts[].mentionRate` - % of responses mentioning brand
+- `prompts[].topPositionRate` - % of times brand is in top 3
+- `prompts[].effectivenessGrade` - Letter grade (A-F)
+- `prompts[].status` - `high_performing`, `performing`, `under_performing`
+- `prompts[].recommendation` - Actionable insight
 
-**Essential Fields for UI:**
-- ✅ `totalPromptsAnalyzed` - Show as summary
-- ✅ `avgEffectiveness` - Display as overall score
-- ✅ `topPerformers` / `lowPerformers` - Use to highlight/filter prompts
-- ✅ `prompts[].promptText` - Display prompt content
-- ✅ `prompts[].promptType` - Show as badge
-- ✅ `prompts[].avgVisibility` - **KEY METRIC** - Display prominently
-- ✅ `prompts[].mentionRate` - **KEY METRIC** - Display as percentage
-- ✅ `prompts[].avgPosition` - **KEY METRIC** - Show ranking
-- ✅ `prompts[].effectivenessGrade` - Display as colored badge (A-F)
-- ✅ `prompts[].status` - Use for color coding rows
-- ✅ `prompts[].recommendation` - Display in tooltip or detail view
-- ✅ `prompts[].totalResponses` - Show as context
+**UI Integration:**
 
-**Optional:**
-- `topPositionRate`, `avgSentiment`, `brandMentions` - Show in expanded view
+**Essential Fields:**
+- ✅ `totalPromptsAnalyzed` & `avgEffectiveness` - Summary
+- ✅ `prompts[].promptText` - Display prompt
+- ✅ `prompts[].avgVisibility` - **KEY METRIC**
+- ✅ `prompts[].mentionRate` - **KEY METRIC**  
+- ✅ `prompts[].avgPosition` - **KEY METRIC**
+- ✅ `prompts[].effectivenessGrade` - Color-coded badge
+- ✅ `prompts[].status` - Status icon
+- ✅ `prompts[].recommendation` - Tooltip/expandable
 
-**UI Recommendations:**
-
-**Table View:**
+**UI Example:**
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Prompt Performance: 25 prompts analyzed · Avg Effectiveness: 72.5  │
-├─────────────────┬────────┬────────┬──────────┬────────────┬────────┤
-│ Prompt          │ Type   │ Grade  │ Mention  │ Position   │ Status │
-│                 │        │        │ Rate     │            │        │
-├─────────────────┼────────┼────────┼──────────┼────────────┼────────┤
-│ What are the... │ Comp.  │   A    │  85.5%   │    2.3     │   🟢   │
-│ [Expand ▼]      │        │        │          │            │        │
-├─────────────────┼────────┼────────┼──────────┼────────────┼────────┤
-│ Which platform..│ Recom. │   B    │  72.3%   │    3.8     │   🟡   │
-└─────────────────┴────────┴────────┴──────────┴────────────┴────────┘
-
-💡 Recommendation: Keep this prompt. It drives excellent visibility.
+┌─────────────────────────────────────────────────────────────┐
+│ Prompt Performance: 25 prompts · Avg: 72.5                 │
+├────────────────┬──────┬───────┬─────────┬─────────┬────────┤
+│ Prompt         │ Type │ Grade │ Mention │ Position│ Status │
+├────────────────┼──────┼───────┼─────────┼─────────┼────────┤
+│ What are the...│ Comp │ A 🟢 │  85.5%  │   2.3   │   🟢   │
+│ [Expand ▼]     │      │       │         │         │        │
+│                                                              │
+│ 💡 Keep this prompt. It drives excellent visibility.       │
+├────────────────┼──────┼───────┼─────────┼─────────┼────────┤
+│ How to improve.│ Info │ D 🔴 │  25.0%  │   8.5   │   🔴   │
+│                                                              │
+│ ⚠️ Consider revising or removing this prompt.               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Grade Color Coding:**
-- A (85-100) = Green/Excellent
-- B (70-84) = Light Green/Good
-- C (50-69) = Yellow/Average
-- D (30-49) = Orange/Poor
-- F (0-29) = Red/Failing
-
-**Status Icons:**
-- 🟢 high_performing
-- 🟡 performing
-- 🔴 under_performing
+**Grade Colors:**
+- A (85-100): 🟢 Green
+- B (70-84): 🟡 Light Green
+- C (50-69): 🟡 Yellow
+- D (30-49): 🟠 Orange
+- F (0-29): 🔴 Red
 
 ---
 
-## 6. Competitive Benchmark
+## 6.4 Prompt Time Series
+
+**Endpoint:** `GET /api/v1/geo/analytics/prompt-timeseries`
+
+**Purpose:** Track how a specific prompt's performance changes over time.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `promptId` | string | Yes | Prompt ID to analyze |
+| `startTime` | ISO 8601 | No | Filter from this date |
+| `endTime` | ISO 8601 | No | Filter until this date |
+
+**Example Request:**
+```
+GET /api/v1/geo/analytics/prompt-timeseries?promptId=63307b70-8d00-4aad-ae0e-60b7bd9d55a4
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "promptId": "63307b70-8d00-4aad-ae0e-60b7bd9d55a4",
+    "promptText": "What are the best AI coding assistants?",
+    "brand": "Cursor",
+    
+    "timeseries": [
+      {
+        "date": "2024-01-01",
+        "visibility": 7.5,
+        "position": 2.3,
+        "mentionRate": 75.0,
+        "sentiment": 0.8,
+        "responseCount": 10
+      },
+      {
+        "date": "2024-01-02",
+        "visibility": 8.2,
+        "position": 1.8,
+        "mentionRate": 82.5,
+        "sentiment": 0.85,
+        "responseCount": 12
+      }
+    ],
+    
+    "summary": {
+      "totalDataPoints": 30,
+      "trend": "improving",
+      "visibilityChange": "+12.5%",
+      "positionChange": "-0.8"
+    }
+  }
+}
+```
+
+**Field Descriptions:**
+- `timeseries[]` - Array of daily performance snapshots
+- `summary.trend` - `improving`, `stable`, `declining`
+- `summary.visibilityChange` - Change over period (percentage)
+- `summary.positionChange` - Position improvement (negative is better)
+
+**UI Integration:**
+- ✅ Display as line chart with multiple metrics
+- ✅ Show trend indicator (↑ improving, → stable, ↓ declining)
+- ✅ Allow toggling between metrics (visibility, position, mention rate)
+- ✅ Display summary stats
+
+**UI Example:**
+```
+┌────────────────────────────────────────────────┐
+│ Performance Trend: "What are the best..."     │
+│ Status: ↑ Improving (+12.5% visibility)       │
+├────────────────────────────────────────────────┤
+│ [Line Chart]                                   │
+│ 10│                              ●             │
+│  8│                    ●     ●                 │
+│  6│         ●     ●                            │
+│  4│    ●                                       │
+│  2│                                            │
+│   └────────────────────────────────────────   │
+│    Jan 1  Jan 8  Jan 15 Jan 22 Jan 29        │
+│                                                │
+│ Metrics: [● Visibility] [ Position] [ Mention]│
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 6.5 Position Analytics
+
+**Endpoint:** `POST /api/v1/geo/analytics/position`
+
+**Purpose:** Analyze where your brand ranks in AI responses (position 1, 2, 3, etc.).
+
+**Request Body:**
+```json
+{
+  "brand": "Cursor",
+  "startTime": "2025-01-01T00:00:00Z",
+  "endTime": "2025-12-31T23:59:59Z"
+}
+```
+
+**Field Descriptions:**
+- `brand` (string, required) - Brand name
+- `startTime` (ISO 8601, optional) - Filter from date
+- `endTime` (ISO 8601, optional) - Filter until date
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "logoUrl": "https://...",
+    
+    "positionDistribution": {
+      "1": 45,
+      "2": 38,
+      "3": 22,
+      "4": 15,
+      "5": 8,
+      "6+": 5
+    },
+    
+    "metrics": {
+      "averagePosition": 2.3,
+      "topPositionRate": 68.5,
+      "topThreeRate": 79.2,
+      "totalMentions": 133
+    },
+    
+    "byLLM": [
+      {
+        "llmName": "GPT-4",
+        "averagePosition": 1.8,
+        "topPositionRate": 75.0
+      },
+      {
+        "llmName": "Claude",
+        "averagePosition": 2.5,
+        "topPositionRate": 60.0
+      }
+    ],
+    
+    "byPromptType": [
+      {
+        "promptType": "comparison",
+        "averagePosition": 2.1,
+        "topPositionRate": 72.0
+      },
+      {
+        "promptType": "recommendation",
+        "averagePosition": 2.8,
+        "topPositionRate": 55.0
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions:**
+- `positionDistribution` - Count of appearances at each ranking position
+- `averagePosition` - Mean ranking (lower is better)
+- `topPositionRate` - % of times ranked #1
+- `topThreeRate` - % of times in top 3
+- `byLLM` - Position breakdown by LLM
+- `byPromptType` - Position breakdown by prompt category
+
+**UI Integration:**
+- ✅ Display position distribution as bar chart
+- ✅ Show key metrics prominently
+- ✅ Compare performance across LLMs
+- ✅ Compare performance across prompt types
+
+**UI Example:**
+```
+┌────────────────────────────────────────────────┐
+│ Position Analysis for Cursor                  │
+│ Avg Position: #2.3 · Top 3 Rate: 79.2%       │
+├────────────────────────────────────────────────┤
+│ Position Distribution:                         │
+│ #1: ██████████████████████ 45 (33.8%)        │
+│ #2: ████████████████░░░░░░ 38 (28.6%)        │
+│ #3: ██████████░░░░░░░░░░░░ 22 (16.5%)        │
+│ #4: ██████░░░░░░░░░░░░░░░░ 15 (11.3%)        │
+│ #5: ███░░░░░░░░░░░░░░░░░░░  8 (6.0%)         │
+│ 6+: ██░░░░░░░░░░░░░░░░░░░░  5 (3.8%)         │
+├────────────────────────────────────────────────┤
+│ Best Performance:                              │
+│ • GPT-4: Avg #1.8 (75% top position)          │
+│ • Comparison prompts: Avg #2.1               │
+└────────────────────────────────────────────────┘
+```
+
+---
+
+## 6.6 Model Analytics
+
+**Endpoint:** `POST /api/v1/geo/analytics/models`
+
+**Purpose:** Compare your brand's performance across different LLM models.
+
+**Request Body:**
+```json
+{
+  "brand": "Cursor",
+  "startTime": "2025-01-01T00:00:00Z",
+  "endTime": "2025-12-31T23:59:59Z"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    
+    "modelPerformance": [
+      {
+        "llmId": "uuid",
+        "llmName": "GPT-4",
+        "provider": "openai",
+        "model": "gpt-4",
+        
+        "metrics": {
+          "visibility": 8.5,
+          "mentionRate": 85.0,
+          "averagePosition": 1.8,
+          "groundingRate": 52.3,
+          "sentiment": 0.82
+        },
+        
+        "stats": {
+          "totalResponses": 50,
+          "brandMentions": 42,
+          "topPositionCount": 28
+        },
+        
+        "grade": "A",
+        "status": "excellent"
+      },
+      {
+        "llmId": "uuid-2",
+        "llmName": "Claude 3.5 Sonnet",
+        "provider": "anthropic",
+        "model": "claude-3-5-sonnet-20241022",
+        
+        "metrics": {
+          "visibility": 7.2,
+          "mentionRate": 68.5,
+          "averagePosition": 2.8,
+          "groundingRate": 45.2,
+          "sentiment": 0.75
+        },
+        
+        "stats": {
+          "totalResponses": 45,
+          "brandMentions": 31,
+          "topPositionCount": 18
+        },
+        
+        "grade": "B",
+        "status": "good"
+      }
+    ],
+    
+    "bestPerforming": {
+      "byVisibility": "GPT-4",
+      "byMentionRate": "GPT-4",
+      "byPosition": "GPT-4"
+    },
+    
+    "recommendations": [
+      {
+        "type": "model_priority",
+        "priority": "high",
+        "title": "Prioritize GPT-4 optimization",
+        "description": "GPT-4 shows 18% better visibility than Claude",
+        "action": "Focus GEO efforts on GPT-4 training data sources"
+      }
+    ]
+  }
+}
+```
+
+**Field Descriptions:**
+- `modelPerformance[]` - Performance breakdown per LLM
+- `metrics` - Key performance indicators per model
+- `stats` - Volume and count metrics
+- `grade` - Performance grade (A-F)
+- `bestPerforming` - Which model performs best for each metric
+- `recommendations` - Strategic insights
+
+**UI Integration:**
+- ✅ Display as comparison table
+- ✅ Show provider logos
+- ✅ Color-code grades
+- ✅ Highlight best performing model
+- ✅ Display recommendations
+
+**UI Example:**
+```
+┌──────────────────────────────────────────────────────────┐
+│ Model Performance Comparison                              │
+├──────────────┬────────────┬─────────┬──────────┬─────────┤
+│ Model        │ Visibility │ Mention │ Position │ Grade   │
+├──────────────┼────────────┼─────────┼──────────┼─────────┤
+│ 🥇 GPT-4     │    8.5     │  85.0%  │   1.8    │  A 🟢  │
+│ (OpenAI)     │            │         │          │         │
+├──────────────┼────────────┼─────────┼──────────┼─────────┤
+│ Claude 3.5   │    7.2     │  68.5%  │   2.8    │  B 🟡  │
+│ (Anthropic)  │            │         │          │         │
+├──────────────┼────────────┼─────────┼──────────┼─────────┤
+│ Gemini Flash │    6.8     │  62.0%  │   3.2    │  C 🟡  │
+│ (Google)     │            │         │          │         │
+└──────────────┴────────────┴─────────┴──────────┴─────────┘
+
+💡 [HIGH] Prioritize GPT-4 optimization
+GPT-4 shows 18% better visibility than Claude
+```
+
+---
+
+## 6.7 Competitive Benchmark
 
 **Endpoint:** `POST /api/v1/geo/analytics/competitive`
 
