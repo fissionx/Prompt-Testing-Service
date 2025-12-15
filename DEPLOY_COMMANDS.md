@@ -27,7 +27,7 @@ flyctl launch --no-deploy --copy-config --name gego
 ### 2.2: Set MongoDB Secret
 
 ```bash
-flyctl secrets set MONGODB_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/" -a gego
+flyctl secrets set MONGODB_URI="mongodb+srv://fissionx_geo_db_use:<password>@fissionxgeo.mcwvkmk.mongodb.net/" -a gego
 ```
 
 ### 2.3: Deploy

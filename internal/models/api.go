@@ -587,6 +587,10 @@ type DashboardOverviewResponse struct {
 	TopCompetitors       []string `json:"topCompetitors"`
 	TopCitationSources   []string `json:"topCitationSources"`
 	RecommendationsCount int      `json:"recommendationsCount"`
+
+	// Last Run Information
+	LastRunDate   *time.Time `json:"lastRunDate,omitempty"`
+	LastRunStatus string     `json:"lastRunStatus,omitempty"` // "completed" or "running"
 }
 
 // DashboardMetric represents a single dashboard metric with trend

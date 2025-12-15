@@ -73,6 +73,8 @@ func (s *DashboardService) GetDashboardOverview(
 		response.Sentiment = models.DashboardMetric{Trend: "stable"}
 		response.Position = models.DashboardMetric{Trend: "stable"}
 		response.GroundingRate = models.DashboardMetric{Trend: "stable"}
+		// Still check for last run info even if no responses
+		s.setLastRunInfo(ctx, brand, response)
 		return response, nil
 	}
 
@@ -119,6 +121,9 @@ func (s *DashboardService) GetDashboardOverview(
 	// Get active campaigns count
 	campaigns, _ := s.db.ListScheduledCampaigns(ctx, "active")
 	response.ActiveCampaigns = len(campaigns)
+
+	// Get last run date and status (check all responses, not just filtered ones)
+	s.setLastRunInfo(ctx, brand, response)
 
 	return response, nil
 }
@@ -815,4 +820,56 @@ func calculateMedian(values []float64) float64 {
 		return (sorted[mid-1] + sorted[mid]) / 2
 	}
 	return sorted[mid]
+}
+
+// setLastRunInfo sets the lastRunDate and lastRunStatus for the dashboard response
+func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, response *models.DashboardOverviewResponse) {
+	// Fetch responses for the brand (without time filter) to get the true last run date
+	allFilter := shared.ResponseFilter{
+		Limit: 1000, // Fetch enough to find the most recent one
+	}
+	allResponses, err := s.db.ListResponses(ctx, allFilter)
+	if err == nil {
+		// Find the most recent response for this brand
+		var lastRunDate *time.Time
+		for _, resp := range allResponses {
+			if resp.Brand == brand {
+				if lastRunDate == nil || resp.CreatedAt.After(*lastRunDate) {
+					lastRunDate = &resp.CreatedAt
+				}
+			}
+		}
+		if lastRunDate != nil {
+			response.LastRunDate = lastRunDate
+		}
+	}
+
+	// Check if there's a running scheduled campaign for this brand
+	scheduledCampaign, err := s.db.GetScheduledCampaignByBrand(ctx, brand)
+	if err == nil && scheduledCampaign != nil {
+		// Check if the campaign status is "running"
+		if scheduledCampaign.Status == "running" {
+			response.LastRunStatus = "running"
+			// Update lastRunDate to campaign's created time if it's more recent
+			if response.LastRunDate == nil || scheduledCampaign.CreatedAt.After(*response.LastRunDate) {
+				response.LastRunDate = &scheduledCampaign.CreatedAt
+			}
+			return
+		}
+	}
+
+	// Check if there are very recent responses (within last 5 minutes) which might indicate a running execution
+	if response.LastRunDate != nil {
+		timeSinceLastRun := time.Since(*response.LastRunDate)
+		// If responses were created within the last 5 minutes, consider it as running
+		if timeSinceLastRun < 5*time.Minute {
+			response.LastRunStatus = "running"
+			return
+		}
+	}
+
+	// Default to completed if no running campaign and no very recent responses
+	if response.LastRunDate != nil {
+		response.LastRunStatus = "completed"
+	}
 }
