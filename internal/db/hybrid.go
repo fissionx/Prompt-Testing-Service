@@ -367,3 +367,20 @@ func (h *HybridDB) DeleteBrandCompetitors(ctx context.Context, brand string) err
 func (h *HybridDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
 	return h.nosqlDB.ListBrandCompetitors(ctx)
 }
+
+// GEO Campaign operations - Use NoSQL
+func (h *HybridDB) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error {
+	return h.nosqlDB.SaveGEOCampaign(ctx, campaign)
+}
+
+func (h *HybridDB) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCampaign, error) {
+	return h.nosqlDB.GetGEOCampaign(ctx, id)
+}
+
+func (h *HybridDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error) {
+	return h.nosqlDB.GetRunningGEOCampaignByBrand(ctx, brand)
+}
+
+func (h *HybridDB) UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error {
+	return h.nosqlDB.UpdateGEOCampaign(ctx, campaign)
+}

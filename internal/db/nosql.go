@@ -93,4 +93,10 @@ type NoSQLDatabase interface {
 	GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error)
 	DeleteBrandCompetitors(ctx context.Context, brand string) error
 	ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error)
+
+	// GEO Campaign operations
+	SaveGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error
+	GetGEOCampaign(ctx context.Context, id string) (*models.GEOCampaign, error)
+	GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error)
+	UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error
 }

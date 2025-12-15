@@ -118,6 +118,9 @@ func (s *DashboardService) GetDashboardOverview(
 	}
 	response.TopCitationSources = getTopKeys(sourceCounts, 5)
 
+	// Get top performing prompts
+	response.TopPerformingPrompts = s.getTopPerformingPrompts(brandResponses)
+
 	// Get active campaigns count
 	campaigns, _ := s.db.ListScheduledCampaigns(ctx, "active")
 	response.ActiveCampaigns = len(campaigns)
@@ -824,6 +827,14 @@ func calculateMedian(values []float64) float64 {
 
 // setLastRunInfo sets the lastRunDate and lastRunStatus for the dashboard response
 func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, response *models.DashboardOverviewResponse) {
+	// First, check if there's a running GEO campaign for this brand (most accurate)
+	runningCampaign, err := s.db.GetRunningGEOCampaignByBrand(ctx, brand)
+	if err == nil && runningCampaign != nil {
+		response.LastRunStatus = "running"
+		response.LastRunDate = &runningCampaign.CreatedAt
+		return
+	}
+
 	// Fetch responses for the brand (without time filter) to get the true last run date
 	allFilter := shared.ResponseFilter{
 		Limit: 1000, // Fetch enough to find the most recent one
@@ -858,18 +869,89 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 		}
 	}
 
-	// Check if there are very recent responses (within last 5 minutes) which might indicate a running execution
-	if response.LastRunDate != nil {
-		timeSinceLastRun := time.Since(*response.LastRunDate)
-		// If responses were created within the last 5 minutes, consider it as running
-		if timeSinceLastRun < 5*time.Minute {
-			response.LastRunStatus = "running"
-			return
-		}
-	}
-
-	// Default to completed if no running campaign and no very recent responses
+	// Default to completed if no running campaign
 	if response.LastRunDate != nil {
 		response.LastRunStatus = "completed"
 	}
+}
+
+// getTopPerformingPrompts calculates the top performing prompts based on visibility and mention rate
+func (s *DashboardService) getTopPerformingPrompts(responses []*models.Response) []string {
+	if len(responses) == 0 {
+		return []string{}
+	}
+
+	// Aggregate performance metrics per prompt
+	type promptStats struct {
+		promptID      string
+		promptText    string
+		totalCount    int
+		mentionCount  int
+		visibilitySum float64
+	}
+
+	promptMap := make(map[string]*promptStats)
+
+	for _, resp := range responses {
+		if resp.PromptID == "" {
+			continue
+		}
+
+		stats, exists := promptMap[resp.PromptID]
+		if !exists {
+			stats = &promptStats{
+				promptID:   resp.PromptID,
+				promptText: resp.PromptText,
+			}
+			promptMap[resp.PromptID] = stats
+		}
+
+		stats.totalCount++
+		if resp.BrandMentioned {
+			stats.mentionCount++
+		}
+		stats.visibilitySum += float64(resp.VisibilityScore)
+	}
+
+	// Calculate performance score for each prompt
+	type promptScore struct {
+		promptText string
+		score      float64
+	}
+
+	var scores []promptScore
+	for _, stats := range promptMap {
+		if stats.totalCount == 0 {
+			continue
+		}
+
+		// Calculate composite score: 60% mention rate + 40% average visibility
+		mentionRate := float64(stats.mentionCount) / float64(stats.totalCount) * 100
+		avgVisibility := stats.visibilitySum / float64(stats.totalCount)
+		compositeScore := mentionRate*0.6 + avgVisibility*0.4
+
+		// Use prompt text, or fallback to prompt ID if text is empty
+		promptText := stats.promptText
+		if promptText == "" {
+			promptText = stats.promptID
+		}
+
+		scores = append(scores, promptScore{
+			promptText: promptText,
+			score:     compositeScore,
+		})
+	}
+
+	// Sort by score descending
+	sort.Slice(scores, func(i, j int) bool {
+		return scores[i].score > scores[j].score
+	})
+
+	// Get top 5 prompt texts
+	topPrompts := make([]string, 0, 5)
+	for i := 0; i < len(scores) && i < 5; i++ {
+		topPrompts = append(topPrompts, scores[i].promptText)
+	}
+
+	return topPrompts
 }

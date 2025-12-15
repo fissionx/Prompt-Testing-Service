@@ -54,6 +54,12 @@ func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName
 		UpdatedAt: time.Now(),
 	}
 
+	// Save campaign to database immediately
+	if err := s.db.SaveGEOCampaign(ctx, campaign); err != nil {
+		log.Printf("Failed to save campaign: %v", err)
+		// Continue anyway - campaign will still run
+	}
+
 	// Start execution in background
 	go s.executeInBackground(context.Background(), campaign, temperature, totalRuns)
 
@@ -71,6 +77,8 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 	if err != nil {
 		log.Printf("Failed to fetch prompts: %v", err)
 		campaign.Status = "failed"
+		campaign.UpdatedAt = time.Now()
+		s.db.UpdateGEOCampaign(ctx, campaign)
 		return
 	}
 
@@ -78,6 +86,8 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 	if err != nil {
 		log.Printf("Failed to fetch LLMs: %v", err)
 		campaign.Status = "failed"
+		campaign.UpdatedAt = time.Now()
+		s.db.UpdateGEOCampaign(ctx, campaign)
 		return
 	}
 
@@ -124,6 +134,11 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 	campaign.Status = "completed"
 	campaign.CompletedAt = &completedTime
 	campaign.UpdatedAt = completedTime
+
+	// Update campaign status in database
+	if err := s.db.UpdateGEOCampaign(ctx, campaign); err != nil {
+		log.Printf("Failed to update campaign status: %v", err)
+	}
 
 	log.Printf("========== CAMPAIGN COMPLETED: %s ==========", campaign.Name)
 	log.Printf("Total executions: %d", completed)

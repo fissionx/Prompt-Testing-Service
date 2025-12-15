@@ -28,6 +28,7 @@ const (
 	collBrandProfiles    = "brand_profiles"
 	collBrandLogos       = "brand_logos"
 	collBrandCompetitors = "brand_competitors"
+	collGEOCampaigns     = "geo_campaigns"
 )
 
 // New creates a new MongoDB database instance
@@ -1145,4 +1146,74 @@ func (m *MongoDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandComp
 	}
 
 	return competitorsList, nil
+}
+
+// SaveGEOCampaign saves or updates a GEO campaign
+func (m *MongoDB) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error {
+	now := time.Now()
+	if campaign.CreatedAt.IsZero() {
+		campaign.CreatedAt = now
+	}
+	campaign.UpdatedAt = now
+
+	doc := bson.M{
+		"_id":        campaign.ID,
+		"name":       campaign.Name,
+		"brand_id":   campaign.BrandID,
+		"brand":      campaign.Brand,
+		"prompt_ids": campaign.PromptIDs,
+		"llm_ids":    campaign.LLMIDs,
+		"status":     campaign.Status,
+		"total_runs": campaign.TotalRuns,
+		"created_at": campaign.CreatedAt,
+		"updated_at": campaign.UpdatedAt,
+	}
+
+	if campaign.CompletedAt != nil {
+		doc["completed_at"] = campaign.CompletedAt
+	}
+
+	// Upsert by ID
+	filter := bson.M{"_id": campaign.ID}
+	opts := options.Replace().SetUpsert(true)
+	_, err := m.database.Collection(collGEOCampaigns).ReplaceOne(ctx, filter, doc, opts)
+	return err
+}
+
+// GetGEOCampaign retrieves a GEO campaign by ID
+func (m *MongoDB) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCampaign, error) {
+	var campaign models.GEOCampaign
+	err := m.database.Collection(collGEOCampaigns).FindOne(ctx, bson.M{"_id": id}).Decode(&campaign)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GEO campaign: %w", err)
+	}
+	return &campaign, nil
+}
+
+// GetRunningGEOCampaignByBrand retrieves the most recent running GEO campaign for a brand
+func (m *MongoDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error) {
+	filter := bson.M{
+		"brand":  brand,
+		"status": "running",
+	}
+
+	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})
+
+	var campaign models.GEOCampaign
+	err := m.database.Collection(collGEOCampaigns).FindOne(ctx, filter, opts).Decode(&campaign)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get running GEO campaign by brand: %w", err)
+	}
+	return &campaign, nil
+}
+
+// UpdateGEOCampaign updates a GEO campaign
+func (m *MongoDB) UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error {
+	return m.SaveGEOCampaign(ctx, campaign)
 }
