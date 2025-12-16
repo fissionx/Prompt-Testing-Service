@@ -88,12 +88,23 @@ func (s *Server) getCompetitorMatrix(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// Convert Competitor objects to strings for internal processing
+	competitorNames := make([]string, 0, len(req.Competitors))
+	competitorMap := make(map[string]string) // name -> domain mapping
+	for _, comp := range req.Competitors {
+		competitorNames = append(competitorNames, comp.Name)
+		if comp.Domain != "" {
+			competitorMap[comp.Name] = comp.Domain
+		}
+	}
+
 	matrix, err := s.dashboardService.GetCompetitorMatrix(
 		ctx,
 		req.MainBrand,
-		req.Competitors,
+		competitorNames,
 		req.StartTime,
 		req.EndTime,
+		competitorMap,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitor matrix: "+err.Error())
@@ -122,14 +133,25 @@ func (s *Server) getTrendComparison(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// Convert Competitor objects to strings for internal processing
+	competitorNames := make([]string, 0, len(req.Competitors))
+	competitorMap := make(map[string]string) // name -> domain mapping
+	for _, comp := range req.Competitors {
+		competitorNames = append(competitorNames, comp.Name)
+		if comp.Domain != "" {
+			competitorMap[comp.Name] = comp.Domain
+		}
+	}
+
 	trends, err := s.dashboardService.GetTrendComparison(
 		ctx,
 		req.MainBrand,
-		req.Competitors,
+		competitorNames,
 		req.Metric,
 		req.StartTime,
 		req.EndTime,
 		req.Granularity,
+		competitorMap,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get trend comparison: "+err.Error())

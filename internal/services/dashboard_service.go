@@ -404,6 +404,7 @@ func (s *DashboardService) GetCompetitorMatrix(
 	mainBrand string,
 	competitors []string,
 	startTime, endTime *time.Time,
+	competitorMap map[string]string, // name -> domain mapping
 ) (*models.CompetitorMatrixResponse, error) {
 	period := "all-time"
 	if startTime != nil && endTime != nil {
@@ -435,8 +436,16 @@ func (s *DashboardService) GetCompetitorMatrix(
 		// Try to get saved competitors first
 		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
 		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
-			// Use saved competitors
-			competitors = savedCompetitors.Competitors
+			// Use saved competitors - parse "name|domain" format
+			parsedCompetitors, parsedMap := parseCompetitorStrings(savedCompetitors.Competitors)
+			competitors = parsedCompetitors
+			// Merge parsed domains into competitorMap
+			if competitorMap == nil {
+				competitorMap = make(map[string]string)
+			}
+			for name, domain := range parsedMap {
+				competitorMap[name] = domain
+			}
 		} else {
 			// Fall back to auto-detection from responses
 			competitorSet := make(map[string]bool)
@@ -451,6 +460,17 @@ func (s *DashboardService) GetCompetitorMatrix(
 			for comp := range competitorSet {
 				competitors = append(competitors, comp)
 			}
+		}
+	} else {
+		// Parse competitors if they're in "name|domain" format
+		parsedCompetitors, parsedMap := parseCompetitorStrings(competitors)
+		competitors = parsedCompetitors
+		// Merge parsed domains into competitorMap
+		if competitorMap == nil {
+			competitorMap = make(map[string]string)
+		}
+		for name, domain := range parsedMap {
+			competitorMap[name] = domain
 		}
 	}
 
@@ -523,8 +543,21 @@ func (s *DashboardService) GetCompetitorMatrix(
 		}
 
 		logo := logoMap[brand]
+		
+		// Get domain from map or derive it
+		domain := ""
+		if competitorMap != nil {
+			if d, ok := competitorMap[brand]; ok {
+				domain = d
+			}
+		}
+		if domain == "" {
+			domain = deriveCompetitorDomainFromName(brand)
+		}
+		
 		matrixBrand := models.CompetitorMatrixBrand{
 			Brand:           brand,
+			Domain:          domain,
 			LogoURL:         logo.LogoURL,
 			FallbackLogoURL: logo.FallbackLogoURL,
 			Visibility:      roundToTwo(visibility),
@@ -594,6 +627,7 @@ func (s *DashboardService) GetTrendComparison(
 	metric string,
 	startTime, endTime *time.Time,
 	granularity string,
+	competitorMap map[string]string, // name -> domain mapping
 ) (*models.TrendComparisonResponse, error) {
 	if granularity == "" {
 		granularity = "daily"
@@ -632,8 +666,16 @@ func (s *DashboardService) GetTrendComparison(
 		// Try to get saved competitors first
 		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
 		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
-			// Use saved competitors
-			competitors = savedCompetitors.Competitors
+			// Use saved competitors - parse "name|domain" format
+			parsedCompetitors, parsedMap := parseCompetitorStrings(savedCompetitors.Competitors)
+			competitors = parsedCompetitors
+			// Merge parsed domains into competitorMap
+			if competitorMap == nil {
+				competitorMap = make(map[string]string)
+			}
+			for name, domain := range parsedMap {
+				competitorMap[name] = domain
+			}
 		} else {
 			// Fall back to auto-detection from responses
 			competitorSet := make(map[string]bool)
@@ -652,6 +694,17 @@ func (s *DashboardService) GetTrendComparison(
 		// Limit to top 5 competitors
 		if len(competitors) > 5 {
 			competitors = competitors[:5]
+		}
+	} else {
+		// Parse competitors if they're in "name|domain" format
+		parsedCompetitors, parsedMap := parseCompetitorStrings(competitors)
+		competitors = parsedCompetitors
+		// Merge parsed domains into competitorMap
+		if competitorMap == nil {
+			competitorMap = make(map[string]string)
+		}
+		for name, domain := range parsedMap {
+			competitorMap[name] = domain
 		}
 	}
 
@@ -728,8 +781,21 @@ func (s *DashboardService) GetTrendComparison(
 	var trends []models.BrandTrendData
 	for _, brand := range allBrands {
 		logo := logoMap[brand]
+		
+		// Get domain from map or derive it
+		domain := ""
+		if competitorMap != nil {
+			if d, ok := competitorMap[brand]; ok {
+				domain = d
+			}
+		}
+		if domain == "" {
+			domain = deriveCompetitorDomainFromName(brand)
+		}
+		
 		trend := models.BrandTrendData{
 			Brand:           brand,
+			Domain:          domain,
 			LogoURL:         logo.LogoURL,
 			FallbackLogoURL: logo.FallbackLogoURL,
 			IsMainBrand:     brand == mainBrand,
@@ -1003,6 +1069,35 @@ func sanitizeDomainName(name string) string {
 	sanitized = strings.Trim(sanitized, ".-")
 	
 	return sanitized
+}
+
+// parseCompetitorStrings parses competitor strings that may be in "name|domain" format
+// Returns the list of names and a map of name -> domain
+func parseCompetitorStrings(competitorStrings []string) ([]string, map[string]string) {
+	names := make([]string, 0, len(competitorStrings))
+	domainMap := make(map[string]string)
+	
+	for _, str := range competitorStrings {
+		var name, domain string
+		
+		// Check if it's in "name|domain" format
+		if idx := strings.Index(str, "|"); idx != -1 {
+			name = strings.TrimSpace(str[:idx])
+			domain = strings.TrimSpace(str[idx+1:])
+		} else {
+			// Old format: just the name
+			name = strings.TrimSpace(str)
+		}
+		
+		if name != "" {
+			names = append(names, name)
+			if domain != "" {
+				domainMap[name] = domain
+			}
+		}
+	}
+	
+	return names, domainMap
 }
 
 // normalizeCitationDomain normalizes a citation source domain to include www. prefix

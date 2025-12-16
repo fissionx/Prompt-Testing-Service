@@ -37,6 +37,7 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 	promptIDs, llmIDs []string,
 	startTime, endTime *time.Time,
 	region string,
+	competitorMap map[string]string, // name -> domain mapping
 ) (*models.CompetitiveBenchmarkResponse, error) {
 	// Fetch all responses for the main brand's campaigns
 	filter := shared.ResponseFilter{
@@ -86,8 +87,16 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 		// Try to get saved competitors
 		savedCompetitors, err := s.db.GetBrandCompetitors(ctx, mainBrand)
 		if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
-			// Use saved competitors
-			competitors = savedCompetitors.Competitors
+			// Use saved competitors - parse "name|domain" format
+			parsedCompetitors, parsedMap := parseCompetitorStrings(savedCompetitors.Competitors)
+			competitors = parsedCompetitors
+			// Merge parsed domains into competitorMap
+			if competitorMap == nil {
+				competitorMap = make(map[string]string)
+			}
+			for name, domain := range parsedMap {
+				competitorMap[name] = domain
+			}
 		} else {
 			// Fall back to auto-detection from responses
 			competitorSet := make(map[string]bool)
@@ -103,6 +112,17 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 			for comp := range competitorSet {
 				competitors = append(competitors, comp)
 			}
+		}
+	} else {
+		// Parse competitors if they're in "name|domain" format
+		parsedCompetitors, parsedMap := parseCompetitorStrings(competitors)
+		competitors = parsedCompetitors
+		// Merge parsed domains into competitorMap
+		if competitorMap == nil {
+			competitorMap = make(map[string]string)
+		}
+		for name, domain := range parsedMap {
+			competitorMap[name] = domain
 		}
 	}
 
@@ -180,8 +200,20 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 		stats := brandStats[brand]
 		logo := logoMap[brand]
 
+		// Get domain from map or derive it
+		domain := ""
+		if competitorMap != nil {
+			if d, ok := competitorMap[brand]; ok {
+				domain = d
+			}
+		}
+		if domain == "" {
+			domain = deriveCompetitorDomainFromName(brand)
+		}
+
 		perf := models.BrandPerformance{
 			Brand:           brand,
+			Domain:          domain,
 			LogoURL:         logo.LogoURL,
 			FallbackLogoURL: logo.FallbackLogoURL,
 			ResponseCount:   stats.mentionCount,

@@ -146,8 +146,10 @@ func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brand string, 
 	
 	for comp, count := range competitorCounts {
 		logo := compLogoMap[comp]
+		domain := deriveCompetitorDomainFromName(comp)
 		insights.TopCompetitors = append(insights.TopCompetitors, models.CompetitorInsight{
 			Name:            comp,
+			Domain:          domain,
 			LogoURL:         logo.LogoURL,
 			FallbackLogoURL: logo.FallbackLogoURL,
 			MentionCount:    count,

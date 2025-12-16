@@ -279,7 +279,7 @@ func (s *ExportService) exportSources(ctx context.Context, req models.ExportRequ
 
 func (s *ExportService) exportCompetitive(ctx context.Context, req models.ExportRequest) (*models.ExportResponse, error) {
 	benchmark, err := s.competitiveBenchmarkService.GetCompetitiveBenchmark(
-		ctx, req.Brand, nil, req.PromptIDs, req.LLMIDs, req.StartTime, req.EndTime, "",
+		ctx, req.Brand, nil, req.PromptIDs, req.LLMIDs, req.StartTime, req.EndTime, "", nil,
 	)
 	if err != nil {
 		return nil, err

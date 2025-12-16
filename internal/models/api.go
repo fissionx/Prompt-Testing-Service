@@ -231,14 +231,13 @@ type PromptPreview struct {
 
 // BulkExecuteRequest represents the request to execute multiple prompts across multiple LLMs
 type BulkExecuteRequest struct {
-	CampaignName  string         `json:"campaignName" binding:"required"`
-	Brand         string         `json:"brand" binding:"required"`
-	PromptIDs     []string       `json:"promptIds,omitempty"`     // Existing prompt IDs from the database
-	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"` // New prompts created by the user
-	LLMIDs        []string       `json:"llmIds" binding:"required"`
-	Temperature   float64        `json:"temperature,omitempty"`
-	ScheduleCron  string         `json:"scheduleCron,omitempty"` // Optional cron expression for periodic execution (e.g., "0 */6 * * *" for every 6 hours)
-	TotalRuns     int            `json:"totalRuns,omitempty"`    // Number of times to run each prompt (default: 1)
+	CampaignName string   `json:"campaignName" binding:"required"`
+	Brand        string   `json:"brand" binding:"required"`
+	PromptIDs    []string `json:"promptIds" binding:"required"` // Existing prompt IDs from the database
+	LLMIDs       []string `json:"llmIds" binding:"required"`
+	Temperature  float64  `json:"temperature,omitempty"`
+	ScheduleCron string   `json:"scheduleCron,omitempty"` // Optional cron expression for periodic execution (e.g., "0 */6 * * *" for every 6 hours)
+	TotalRuns    int      `json:"totalRuns,omitempty"`    // Number of times to run each prompt (default: 1)
 }
 
 // CustomPrompt represents a user-created prompt for bulk execution
@@ -247,6 +246,34 @@ type CustomPrompt struct {
 	PromptType string   `json:"promptType,omitempty"` // e.g., "custom", "top_best", "how_to", etc.
 	Category   string   `json:"category,omitempty"`
 	Tags       []string `json:"tags,omitempty"`
+}
+
+// SaveCustomPromptsRequest represents the request to save custom prompts along with promptIds from suggested prompts
+type SaveCustomPromptsRequest struct {
+	Brand         string         `json:"brand" binding:"required"`
+	PromptIDs     []string       `json:"promptIds,omitempty"`     // Prompt IDs from suggested prompts
+	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"` // New custom prompts to create
+}
+
+// SaveCustomPromptsResponse represents the response after saving custom prompts
+type SaveCustomPromptsResponse struct {
+	Brand          string   `json:"brand"`
+	SavedPromptIDs []string `json:"savedPromptIds"` // All prompt IDs (both existing and newly created)
+	CreatedCount   int      `json:"createdCount"`   // Number of new prompts created
+	ExistingCount  int      `json:"existingCount"`  // Number of existing prompt IDs provided
+}
+
+// DeletePromptsRequest represents the request to delete prompts by IDs
+type DeletePromptsRequest struct {
+	PromptIDs []string `json:"promptIds" binding:"required"` // List of prompt IDs to delete (1 or more)
+}
+
+// DeletePromptsResponse represents the response after deleting prompts
+type DeletePromptsResponse struct {
+	DeletedCount int      `json:"deletedCount"`         // Number of prompts successfully deleted
+	FailedCount  int      `json:"failedCount"`          // Number of prompts that failed to delete
+	DeletedIDs   []string `json:"deletedIds,omitempty"` // IDs of successfully deleted prompts
+	FailedIDs    []string `json:"failedIds,omitempty"`  // IDs that failed to delete
 }
 
 // BulkExecuteResponse represents the response from bulk execution
@@ -289,6 +316,7 @@ type GEOInsightsResponse struct {
 // CompetitorInsight represents competitor visibility data
 type CompetitorInsight struct {
 	Name            string  `json:"name"`
+	Domain          string  `json:"domain,omitempty"`
 	LogoURL         string  `json:"logoUrl,omitempty"`
 	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
 	MentionCount    int     `json:"mentionCount"`
@@ -352,18 +380,19 @@ type SourceAnalyticsResponse struct {
 
 // CompetitiveBenchmarkRequest represents request for competitive analysis
 type CompetitiveBenchmarkRequest struct {
-	MainBrand   string     `json:"mainBrand" binding:"required"`
-	Competitors []string   `json:"competitors,omitempty"`
-	PromptIDs   []string   `json:"promptIds,omitempty"`
-	LLMIDs      []string   `json:"llmIds,omitempty"`
-	StartTime   *time.Time `json:"startTime,omitempty"`
-	EndTime     *time.Time `json:"endTime,omitempty"`
-	Region      string     `json:"region,omitempty"`
+	MainBrand   string       `json:"mainBrand" binding:"required"`
+	Competitors []Competitor `json:"competitors,omitempty"`
+	PromptIDs   []string     `json:"promptIds,omitempty"`
+	LLMIDs      []string     `json:"llmIds,omitempty"`
+	StartTime   *time.Time   `json:"startTime,omitempty"`
+	EndTime     *time.Time   `json:"endTime,omitempty"`
+	Region      string       `json:"region,omitempty"`
 }
 
 // BrandPerformance represents comprehensive brand performance metrics
 type BrandPerformance struct {
 	Brand           string  `json:"brand"`
+	Domain          string  `json:"domain,omitempty"`
 	LogoURL         string  `json:"logoUrl,omitempty"`
 	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
 	Visibility      float64 `json:"visibility"`
@@ -658,10 +687,10 @@ type ModelPerformance struct {
 
 // CompetitorMatrixRequest represents the request for competitor matrix
 type CompetitorMatrixRequest struct {
-	MainBrand   string     `json:"mainBrand" binding:"required"`
-	Competitors []string   `json:"competitors,omitempty"`
-	StartTime   *time.Time `json:"startTime,omitempty"`
-	EndTime     *time.Time `json:"endTime,omitempty"`
+	MainBrand   string       `json:"mainBrand" binding:"required"`
+	Competitors []Competitor `json:"competitors,omitempty"`
+	StartTime   *time.Time   `json:"startTime,omitempty"`
+	EndTime     *time.Time   `json:"endTime,omitempty"`
 }
 
 // CompetitorMatrixResponse represents the visibility vs sentiment quadrant matrix
@@ -684,6 +713,7 @@ type CompetitorQuadrants struct {
 // CompetitorMatrixBrand represents a brand's position in the matrix
 type CompetitorMatrixBrand struct {
 	Brand           string  `json:"brand"`
+	Domain          string  `json:"domain,omitempty"`
 	LogoURL         string  `json:"logoUrl,omitempty"`
 	FallbackLogoURL string  `json:"fallbackLogoUrl,omitempty"`
 	Visibility      float64 `json:"visibility"` // X-axis (0-100%)
@@ -704,12 +734,12 @@ type MatrixAxisInfo struct {
 
 // TrendComparisonRequest represents the request for trend comparison
 type TrendComparisonRequest struct {
-	MainBrand   string     `json:"mainBrand" binding:"required"`
-	Competitors []string   `json:"competitors,omitempty"`
-	Metric      string     `json:"metric"` // "visibility", "sentiment", "position"
-	StartTime   *time.Time `json:"startTime,omitempty"`
-	EndTime     *time.Time `json:"endTime,omitempty"`
-	Granularity string     `json:"granularity,omitempty"` // "daily", "weekly", "monthly"
+	MainBrand   string       `json:"mainBrand" binding:"required"`
+	Competitors []Competitor `json:"competitors,omitempty"`
+	Metric      string       `json:"metric"` // "visibility", "sentiment", "position"
+	StartTime   *time.Time   `json:"startTime,omitempty"`
+	EndTime     *time.Time   `json:"endTime,omitempty"`
+	Granularity string       `json:"granularity,omitempty"` // "daily", "weekly", "monthly"
 }
 
 // TrendComparisonResponse represents trend data for multiple brands
@@ -725,6 +755,7 @@ type TrendComparisonResponse struct {
 // BrandTrendData represents trend data for a single brand
 type BrandTrendData struct {
 	Brand           string    `json:"brand"`
+	Domain          string    `json:"domain,omitempty"`
 	LogoURL         string    `json:"logoUrl,omitempty"`
 	FallbackLogoURL string    `json:"fallbackLogoUrl,omitempty"`
 	Values          []float64 `json:"values"`
@@ -754,6 +785,12 @@ type ExportResponse struct {
 
 // ==================== COMPETITOR MANAGEMENT ====================
 
+// Competitor represents a competitor with name and domain/URL
+type Competitor struct {
+	Name   string `json:"name"`
+	Domain string `json:"domain"` // URL or domain (e.g., "www.windsurf.com")
+}
+
 // SuggestCompetitorsRequest represents the request to suggest competitors for a brand
 type SuggestCompetitorsRequest struct {
 	Brand        string `json:"brand" form:"brand" binding:"required"`
@@ -765,33 +802,33 @@ type SuggestCompetitorsRequest struct {
 
 // SuggestCompetitorsResponse represents the response with suggested competitors
 type SuggestCompetitorsResponse struct {
-	Brand       string   `json:"brand"`
-	Competitors []string `json:"competitors"`
-	Source      string   `json:"source"` // "cached", "computed", "responses"
-	Message     string   `json:"message,omitempty"`
+	Brand       string       `json:"brand"`
+	Competitors []Competitor `json:"competitors"`
+	Source      string       `json:"source"` // "cached", "computed", "responses"
+	Message     string       `json:"message,omitempty"`
 }
 
 // SaveCompetitorsRequest represents the request to save user-defined competitors
 type SaveCompetitorsRequest struct {
-	Brand       string   `json:"brand" binding:"required"`
-	Competitors []string `json:"competitors" binding:"required"` // User's final competitor list
-	Source      string   `json:"source,omitempty"`               // "suggested", "custom", "mixed"
+	Brand       string       `json:"brand" binding:"required"`
+	Competitors []Competitor `json:"competitors" binding:"required"` // User's final competitor list with name and domain
+	Source      string       `json:"source,omitempty"`               // "suggested", "custom", "mixed"
 }
 
 // SaveCompetitorsResponse represents the response after saving competitors
 type SaveCompetitorsResponse struct {
-	Brand       string    `json:"brand"`
-	Competitors []string  `json:"competitors"`
-	Source      string    `json:"source"`
-	SavedAt     time.Time `json:"savedAt"`
-	Message     string    `json:"message"`
+	Brand       string       `json:"brand"`
+	Competitors []Competitor `json:"competitors"`
+	Source      string       `json:"source"`
+	SavedAt     time.Time    `json:"savedAt"`
+	Message     string       `json:"message"`
 }
 
 // GetCompetitorsResponse represents the response with brand's saved competitors
 type GetCompetitorsResponse struct {
-	Brand         string    `json:"brand"`
-	Competitors   []string  `json:"competitors"`
-	SuggestedList []string  `json:"suggestedList,omitempty"` // Original suggestions for reference
-	Source        string    `json:"source"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	Brand         string       `json:"brand"`
+	Competitors   []Competitor `json:"competitors"`
+	SuggestedList []Competitor `json:"suggestedList,omitempty"` // Original suggestions for reference
+	Source        string       `json:"source"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
 }

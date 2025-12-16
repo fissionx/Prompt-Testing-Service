@@ -92,8 +92,10 @@ func (s *SourceAnalyticsService) GetSourceAnalytics(
 	totalResponses := len(brandResponses)
 	
 	for domain, stats := range domainStats {
+		// Normalize domain to include www. prefix
+		normalizedDomain := normalizeCitationDomain(domain)
 		insight := models.SourceInsight{
-			Domain:        domain,
+			Domain:        normalizedDomain,
 			CitationCount: stats.citationCount,
 			MentionRate:   float64(stats.citationCount) / float64(totalResponses) * 100,
 			LLMBreakdown:  stats.llmBreakdown,

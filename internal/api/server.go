@@ -160,8 +160,10 @@ func (s *Server) setupRoutes() {
 
 		// Prompt Management (prompts per brand)
 		geo.GET("/prompts", s.getBrandPrompts)
+		geo.POST("/prompts/save", s.saveCustomPrompts)
 		geo.POST("/prompts/execute/bulk", s.saveAndExecutePrompts)
-		geo.DELETE("/prompts", s.deletePromptsByBrand)
+		geo.DELETE("/prompts", s.deletePromptsByIDs)         // Deletes prompts by IDs (request body with promptIds array)
+		geo.DELETE("/prompts/brand", s.deletePromptsByBrand) // Deletes all prompts by brand (query param ?brand=X)
 	}
 
 	api.GET("/health", s.healthCheck)

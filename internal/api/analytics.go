@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,13 +44,20 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 
 	cachedData, err := s.db.GetCachedSourceAnalytics(ctx, query)
 	if err == nil && cachedData != nil {
-		// Return cached data
+		// Normalize domains in cached data to ensure www. prefix
+		normalizedSources := make([]models.SourceInsight, len(cachedData.TopSources))
+		for i, source := range cachedData.TopSources {
+			normalizedSources[i] = source
+			normalizedSources[i].Domain = normalizeDomainForSource(source.Domain)
+		}
+
+		// Return cached data with normalized domains
 		response := &models.SourceAnalyticsResponse{
 			Brand:           cachedData.Brand,
 			LogoURL:         cachedData.LogoURL,
 			FallbackLogoURL: cachedData.FallbackLogoURL,
 			Period:          cachedData.Period,
-			TopSources:      cachedData.TopSources,
+			TopSources:      normalizedSources,
 			Recommendations: cachedData.Recommendations,
 			TotalSources:    cachedData.TotalSources,
 			TotalCitations:  cachedData.TotalCitations,
@@ -135,10 +143,26 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 
 		cachedData, err := s.db.GetCachedCompetitiveBenchmark(ctx, query)
 		if err == nil && cachedData != nil {
-			// Return cached data
+			// Ensure domains are populated in cached data
+			// Main brand domain
+			mainBrandPerf := cachedData.MainBrandPerf
+			if mainBrandPerf.Domain == "" {
+				mainBrandPerf.Domain = deriveDomainFromName(mainBrandPerf.Brand)
+			}
+
+			// Competitor domains
+			competitors := make([]models.BrandPerformance, len(cachedData.Competitors))
+			for i, comp := range cachedData.Competitors {
+				competitors[i] = comp
+				if competitors[i].Domain == "" {
+					competitors[i].Domain = deriveDomainFromName(comp.Brand)
+				}
+			}
+
+			// Return cached data with domains
 			response := &models.CompetitiveBenchmarkResponse{
-				MainBrand:       cachedData.MainBrandPerf,
-				Competitors:     cachedData.Competitors,
+				MainBrand:       mainBrandPerf,
+				Competitors:     competitors,
 				MarketLeader:    cachedData.MarketLeader,
 				YourRank:        cachedData.YourRank,
 				TotalBrands:     cachedData.TotalBrands,
@@ -156,16 +180,27 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 		}
 	}
 
+	// Convert Competitor objects to strings for internal processing
+	competitorNames := make([]string, 0, len(req.Competitors))
+	competitorMap := make(map[string]string) // name -> domain mapping
+	for _, comp := range req.Competitors {
+		competitorNames = append(competitorNames, comp.Name)
+		if comp.Domain != "" {
+			competitorMap[comp.Name] = comp.Domain
+		}
+	}
+
 	// Compute benchmark if not cached or specific competitors requested
 	benchmark, err := s.competitiveBenchmarkService.GetCompetitiveBenchmark(
 		ctx,
 		req.MainBrand,
-		req.Competitors,
+		competitorNames,
 		req.PromptIDs,
 		req.LLMIDs,
 		req.StartTime,
 		req.EndTime,
 		req.Region,
+		competitorMap,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitive benchmark: "+err.Error())
@@ -644,4 +679,85 @@ func convertTimeSeriesToCache(timeSeries []models.PromptTimeSeriesDataPoint) []m
 		}
 	}
 	return result
+}
+
+// normalizeDomainForSource normalizes a citation source domain to include www. prefix
+// Example: "dev.to" -> "www.dev.to", "https://betterstack.com" -> "www.betterstack.com"
+func normalizeDomainForSource(domain string) string {
+	// Remove protocol if present
+	normalized := strings.TrimPrefix(domain, "http://")
+	normalized = strings.TrimPrefix(normalized, "https://")
+
+	// Remove path if present (everything after first /)
+	if idx := strings.Index(normalized, "/"); idx != -1 {
+		normalized = normalized[:idx]
+	}
+
+	// Remove port if present (everything after :)
+	if idx := strings.Index(normalized, ":"); idx != -1 {
+		normalized = normalized[:idx]
+	}
+
+	// Add www. prefix if not present
+	if !strings.HasPrefix(normalized, "www.") {
+		normalized = "www." + normalized
+	}
+
+	return normalized
+}
+
+// deriveDomainFromName derives a domain from a brand/competitor name
+// This is a simplified version for API layer
+func deriveDomainFromName(name string) string {
+	// If it already looks like a domain, normalize it
+	if strings.Contains(name, ".") {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		normalized = strings.TrimPrefix(normalized, "http://")
+		normalized = strings.TrimPrefix(normalized, "https://")
+		if idx := strings.Index(normalized, "/"); idx != -1 {
+			normalized = normalized[:idx]
+		}
+		if !strings.HasPrefix(normalized, "www.") {
+			return "www." + normalized
+		}
+		return normalized
+	}
+
+	// Clean the name
+	cleaned := strings.ToLower(strings.TrimSpace(name))
+	// Remove content in parentheses
+	for {
+		openIdx := strings.Index(cleaned, "(")
+		if openIdx == -1 {
+			break
+		}
+		closeIdx := strings.Index(cleaned[openIdx:], ")")
+		if closeIdx == -1 {
+			break
+		}
+		closeIdx += openIdx
+		cleaned = cleaned[:openIdx] + cleaned[closeIdx+1:]
+	}
+
+	// Extract first word
+	words := strings.Fields(cleaned)
+	if len(words) > 0 {
+		cleaned = words[0]
+	}
+
+	// Remove invalid characters
+	var result strings.Builder
+	for _, r := range cleaned {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			result.WriteRune(r)
+		}
+	}
+	cleaned = result.String()
+
+	// Special cases
+	if strings.Contains(cleaned, "visualstudio") || strings.Contains(cleaned, "vscode") {
+		return "www.code.visualstudio.com"
+	}
+
+	return "www." + cleaned + ".com"
 }

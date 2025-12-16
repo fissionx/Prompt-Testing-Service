@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -94,9 +95,9 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		return
 	}
 
-	// Validate that at least prompts or custom prompts are provided
-	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID or custom prompt must be provided")
+	// Validate that at least one prompt ID is provided
+	if len(req.PromptIDs) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID must be provided")
 		return
 	}
 
@@ -112,40 +113,6 @@ func (s *Server) bulkExecute(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Process custom prompts: save them to database and get their IDs
-	allPromptIDs := make([]string, 0, len(req.PromptIDs)+len(req.CustomPrompts))
-	allPromptIDs = append(allPromptIDs, req.PromptIDs...)
-
-	if len(req.CustomPrompts) > 0 {
-		for _, customPrompt := range req.CustomPrompts {
-			// Create prompt in database
-			promptType := models.PromptType(customPrompt.PromptType)
-			if promptType == "" {
-				promptType = models.PromptTypeCustom
-			}
-
-			prompt := &models.Prompt{
-				ID:         uuid.New().String(),
-				Template:   customPrompt.Template,
-				PromptType: promptType,
-				Category:   customPrompt.Category,
-				Brand:      req.Brand,
-				Generated:  false,
-				Enabled:    true,
-				CreatedAt:  time.Now(),
-				UpdatedAt:  time.Now(),
-			}
-
-			// Save prompt to database
-			if err := s.db.CreatePrompt(ctx, prompt); err != nil {
-				s.errorResponse(c, http.StatusInternalServerError, "Failed to save custom prompt: "+err.Error())
-				return
-			}
-
-			allPromptIDs = append(allPromptIDs, prompt.ID)
-		}
-	}
-
 	// Set default total runs if not specified
 	totalRuns := req.TotalRuns
 	if totalRuns == 0 {
@@ -158,7 +125,7 @@ func (s *Server) bulkExecute(c *gin.Context) {
 			ctx,
 			req.CampaignName,
 			req.Brand,
-			allPromptIDs,
+			req.PromptIDs,
 			req.LLMIDs,
 			req.Temperature,
 			req.ScheduleCron,
@@ -197,7 +164,7 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		ctx,
 		req.CampaignName,
 		req.Brand,
-		allPromptIDs,
+		req.PromptIDs,
 		req.LLMIDs,
 		req.Temperature,
 		totalRuns,
@@ -486,6 +453,157 @@ func (s *Server) listScheduledCampaigns(c *gin.Context) {
 		Success: true,
 		Data:    response,
 		Message: "Scheduled campaigns retrieved successfully",
+	})
+}
+
+// saveCustomPrompts handles POST /api/v1/geo/prompts/save
+// Stores custom prompts list along with promptIds from suggested prompts
+func (s *Server) saveCustomPrompts(c *gin.Context) {
+	var req models.SaveCustomPromptsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	if req.Brand == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+		return
+	}
+
+	// Validate that at least promptIds or customPrompts are provided
+	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID or custom prompt must be provided")
+		return
+	}
+
+	ctx := c.Request.Context()
+	savedPromptIDs := make([]string, 0, len(req.PromptIDs)+len(req.CustomPrompts))
+	createdCount := 0
+	existingCount := 0
+
+	// Add existing prompt IDs (validate they exist)
+	for _, promptID := range req.PromptIDs {
+		prompt, err := s.db.GetPrompt(ctx, promptID)
+		if err != nil || prompt == nil {
+			// Skip invalid prompt IDs but continue with others
+			continue
+		}
+		savedPromptIDs = append(savedPromptIDs, promptID)
+		existingCount++
+	}
+
+	// Create new custom prompts
+	if len(req.CustomPrompts) > 0 {
+		for _, customPrompt := range req.CustomPrompts {
+			// Create prompt in database
+			promptType := models.PromptType(customPrompt.PromptType)
+			if promptType == "" {
+				promptType = models.PromptTypeCustom
+			}
+
+			prompt := &models.Prompt{
+				ID:         uuid.New().String(),
+				Template:   customPrompt.Template,
+				PromptType: promptType,
+				Category:   customPrompt.Category,
+				Tags:       customPrompt.Tags,
+				Brand:      req.Brand,
+				Generated:  false,
+				Enabled:    true,
+				CreatedAt:  time.Now(),
+				UpdatedAt:  time.Now(),
+			}
+
+			// Save prompt to database
+			if err := s.db.CreatePrompt(ctx, prompt); err != nil {
+				s.errorResponse(c, http.StatusInternalServerError, "Failed to save custom prompt: "+err.Error())
+				return
+			}
+
+			savedPromptIDs = append(savedPromptIDs, prompt.ID)
+			createdCount++
+		}
+	}
+
+	response := models.SaveCustomPromptsResponse{
+		Brand:          req.Brand,
+		SavedPromptIDs: savedPromptIDs,
+		CreatedCount:   createdCount,
+		ExistingCount:  existingCount,
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: "Custom prompts saved successfully",
+	})
+}
+
+// deletePromptsByIDs handles DELETE /api/v1/geo/prompts
+// Deletes one or more prompts by IDs from the active collection
+func (s *Server) deletePromptsByIDs(c *gin.Context) {
+	var req models.DeletePromptsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	if len(req.PromptIDs) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	deletedCount := 0
+	failedCount := 0
+	deletedIDs := make([]string, 0)
+	failedIDs := make([]string, 0)
+
+	for _, id := range req.PromptIDs {
+		if err := s.db.DeletePrompt(ctx, id); err != nil {
+			failedCount++
+			failedIDs = append(failedIDs, id)
+			continue
+		}
+		deletedCount++
+		deletedIDs = append(deletedIDs, id)
+	}
+
+	response := models.DeletePromptsResponse{
+		DeletedCount: deletedCount,
+		FailedCount:  failedCount,
+	}
+
+	// Only include IDs if there are results
+	if len(deletedIDs) > 0 {
+		response.DeletedIDs = deletedIDs
+	}
+	if len(failedIDs) > 0 {
+		response.FailedIDs = failedIDs
+	}
+
+	// If all deletions failed, return error status
+	if deletedCount == 0 {
+		s.errorResponse(c, http.StatusNotFound, "No prompts were deleted. All prompt IDs were invalid or not found")
+		return
+	}
+
+	// If some deletions failed, return partial success with warning
+	if failedCount > 0 {
+		c.JSON(http.StatusOK, models.APIResponse{
+			Success: true,
+			Data:    response,
+			Message: fmt.Sprintf("Partially successful: %d deleted, %d failed", deletedCount, failedCount),
+		})
+		return
+	}
+
+	// All deletions succeeded
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: fmt.Sprintf("Successfully deleted %d prompt(s)", deletedCount),
 	})
 }
 

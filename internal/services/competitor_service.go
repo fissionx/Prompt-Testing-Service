@@ -48,9 +48,10 @@ func (s *CompetitorService) SuggestCompetitors(
 
 		// If we have suggested list cached, return it
 		if existing != nil && len(existing.SuggestedList) > 0 {
+			competitors := convertStringListToCompetitors(existing.SuggestedList)
 			return &models.SuggestCompetitorsResponse{
 				Brand:       brand,
-				Competitors: existing.SuggestedList,
+				Competitors: competitors,
 				Source:      "cached",
 				Message:     "Returning cached competitor suggestions",
 			}, nil
@@ -58,26 +59,29 @@ func (s *CompetitorService) SuggestCompetitors(
 	}
 
 	// Use LLM to suggest competitors
-	competitors, err := s.suggestCompetitorsWithLLM(ctx, brand, website, description, category)
+	competitorNames, err := s.suggestCompetitorsWithLLM(ctx, brand, website, description, category)
 	if err != nil {
 		return nil, fmt.Errorf("failed to suggest competitors: %w", err)
 	}
 
-	if len(competitors) == 0 {
+	if len(competitorNames) == 0 {
 		return &models.SuggestCompetitorsResponse{
 			Brand:       brand,
-			Competitors: []string{},
+			Competitors: []models.Competitor{},
 			Source:      "llm",
 			Message:     "No competitors could be identified. Please provide more details about your brand.",
 		}, nil
 	}
 
-	// Cache the suggestions for future use
+	// Convert competitor names to Competitor objects with derived domains
+	competitors := convertStringListToCompetitors(competitorNames)
+
+	// Cache the suggestions for future use (store as strings for backward compatibility)
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            uuid.New().String(),
 		Brand:         brand,
 		Competitors:   []string{},  // Not yet confirmed by user
-		SuggestedList: competitors, // LLM-suggested list
+		SuggestedList: competitorNames, // LLM-suggested list (as strings)
 		Source:        "suggested",
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -268,7 +272,7 @@ func extractCompetitorsFromText(text string) []string {
 func (s *CompetitorService) SaveCompetitors(
 	ctx context.Context,
 	brand string,
-	competitors []string,
+	competitors []models.Competitor,
 	source string,
 ) (*models.SaveCompetitorsResponse, error) {
 	if brand == "" {
@@ -304,11 +308,14 @@ func (s *CompetitorService) SaveCompetitors(
 		createdAt = time.Now()
 	}
 
+	// Convert Competitor objects to strings for storage (store as "name|domain" format to preserve domains)
+	competitorStrings := convertCompetitorsToStorageFormat(competitors)
+
 	// Create updated competitor list
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            id,
 		Brand:         brand,
-		Competitors:   competitors,
+		Competitors:   competitorStrings,
 		SuggestedList: suggestedList,
 		Source:        source,
 		CreatedAt:     createdAt,
@@ -345,16 +352,20 @@ func (s *CompetitorService) GetCompetitors(
 	if competitors == nil {
 		return &models.GetCompetitorsResponse{
 			Brand:       brand,
-			Competitors: []string{},
+			Competitors: []models.Competitor{},
 			Source:      "none",
 			UpdatedAt:   time.Now(),
 		}, nil
 	}
 
+	// Convert string lists to Competitor objects
+	competitorList := convertStringListToCompetitors(competitors.Competitors)
+	suggestedList := convertStringListToCompetitors(competitors.SuggestedList)
+
 	return &models.GetCompetitorsResponse{
 		Brand:         brand,
-		Competitors:   competitors.Competitors,
-		SuggestedList: competitors.SuggestedList,
+		Competitors:   competitorList,
+		SuggestedList: suggestedList,
 		Source:        competitors.Source,
 		UpdatedAt:     competitors.UpdatedAt,
 	}, nil
@@ -397,4 +408,179 @@ func (s *CompetitorService) GetCompetitorsForAnalytics(
 
 	// Return empty - let analytics auto-detect
 	return []string{}, nil
+}
+
+// convertStringListToCompetitors converts a list of competitor strings to Competitor objects
+// Supports both old format (just name) and new format (name|domain)
+func convertStringListToCompetitors(competitorStrings []string) []models.Competitor {
+	competitors := make([]models.Competitor, 0, len(competitorStrings))
+	for _, str := range competitorStrings {
+		var name, domain string
+		
+		// Check if it's in "name|domain" format
+		if idx := strings.Index(str, "|"); idx != -1 {
+			name = strings.TrimSpace(str[:idx])
+			domain = strings.TrimSpace(str[idx+1:])
+		} else {
+			// Old format: just the name, derive domain
+			name = str
+			domain = deriveCompetitorDomainFromName(name)
+		}
+		
+		// If domain is empty, derive it
+		if domain == "" {
+			domain = deriveCompetitorDomainFromName(name)
+		}
+		
+		competitors = append(competitors, models.Competitor{
+			Name:   name,
+			Domain: domain,
+		})
+	}
+	return competitors
+}
+
+// convertCompetitorsToStorageFormat converts Competitor objects to storage format (name|domain)
+func convertCompetitorsToStorageFormat(competitors []models.Competitor) []string {
+	strings := make([]string, 0, len(competitors))
+	for _, comp := range competitors {
+		// Store as "name|domain" format to preserve both
+		storageStr := comp.Name
+		if comp.Domain != "" {
+			storageStr = comp.Name + "|" + comp.Domain
+		}
+		strings = append(strings, storageStr)
+	}
+	return strings
+}
+
+// deriveCompetitorDomainFromName derives a domain from a competitor name
+// This is a simplified version of the dashboard service function
+func deriveCompetitorDomainFromName(competitorName string) string {
+	// If it already looks like a domain, normalize and return
+	if strings.Contains(competitorName, ".") {
+		normalized := strings.ToLower(strings.TrimSpace(competitorName))
+		// Remove protocol if present
+		normalized = strings.TrimPrefix(normalized, "http://")
+		normalized = strings.TrimPrefix(normalized, "https://")
+		// Remove path if present
+		if idx := strings.Index(normalized, "/"); idx != -1 {
+			normalized = normalized[:idx]
+		}
+		// Add www. if not present
+		if !strings.HasPrefix(normalized, "www.") {
+			return "www." + normalized
+		}
+		return normalized
+	}
+
+	// Clean the competitor name to extract core brand name
+	cleaned := cleanCompetitorNameForDomain(competitorName)
+
+	// Convert to lowercase and remove spaces
+	normalized := strings.ToLower(strings.TrimSpace(cleaned))
+
+	// Check if the cleaned name already looks like a domain (e.g., from special cases)
+	if strings.Contains(normalized, ".") {
+		// It's already a domain-like string, add www. prefix and .com suffix if needed
+		if !strings.HasPrefix(normalized, "www.") {
+			normalized = "www." + normalized
+		}
+		// Add .com if it doesn't already have a TLD
+		if !strings.HasSuffix(normalized, ".com") && !strings.HasSuffix(normalized, ".org") &&
+			!strings.HasSuffix(normalized, ".net") && !strings.HasSuffix(normalized, ".io") &&
+			!strings.HasSuffix(normalized, ".ai") && !strings.HasSuffix(normalized, ".co") {
+			normalized = normalized + ".com"
+		}
+		return normalized
+	}
+
+	// Remove spaces for single-word or multi-word names
+	normalized = strings.ReplaceAll(normalized, " ", "")
+
+	// Remove any remaining invalid characters for domain names
+	normalized = sanitizeDomainNameForCompetitor(normalized)
+
+	// Construct www.{name}.com
+	return "www." + normalized + ".com"
+}
+
+// cleanCompetitorNameForDomain removes parentheses, special characters, and extracts core brand name
+func cleanCompetitorNameForDomain(name string) string {
+	// Remove content in parentheses (e.g., "Windsurf (by Codeium)" -> "Windsurf")
+	cleaned := name
+	for {
+		openIdx := strings.Index(cleaned, "(")
+		if openIdx == -1 {
+			break
+		}
+		closeIdx := strings.Index(cleaned[openIdx:], ")")
+		if closeIdx == -1 {
+			break
+		}
+		closeIdx += openIdx
+		cleaned = cleaned[:openIdx] + cleaned[closeIdx+1:]
+	}
+
+	// Remove common suffixes like " (VS Code)", " - ", etc.
+	cleaned = strings.Split(cleaned, " - ")[0]
+	cleaned = strings.Split(cleaned, " | ")[0]
+	cleaned = strings.TrimSpace(cleaned)
+
+	// For multi-word names, try to extract the main brand name
+	// Special handling for known cases
+	cleaned = handleSpecialBrandNamesForDomain(cleaned)
+
+	// If it's a special case that returned a domain-like string, return as-is
+	if strings.Contains(cleaned, ".") {
+		return cleaned
+	}
+
+	// For simple names, extract the first word
+	words := strings.Fields(cleaned)
+	if len(words) >= 1 {
+		return words[0]
+	}
+
+	return strings.TrimSpace(cleaned)
+}
+
+// handleSpecialBrandNamesForDomain handles special cases for well-known brands
+func handleSpecialBrandNamesForDomain(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+
+	// Special cases for known brands
+	specialCases := map[string]string{
+		"visual studio code": "code.visualstudio",
+		"vs code":            "code.visualstudio",
+		"vscode":             "code.visualstudio",
+	}
+
+	if domain, ok := specialCases[name]; ok {
+		return domain
+	}
+
+	// Return the original name (will be processed further)
+	return name
+}
+
+// sanitizeDomainNameForCompetitor removes invalid characters for domain names
+func sanitizeDomainNameForCompetitor(name string) string {
+	var result strings.Builder
+	for _, r := range name {
+		// Allow alphanumeric, hyphens, and dots
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '.' {
+			result.WriteRune(r)
+		}
+	}
+	sanitized := result.String()
+
+	// Remove consecutive dots or hyphens
+	sanitized = strings.ReplaceAll(sanitized, "..", ".")
+	sanitized = strings.ReplaceAll(sanitized, "--", "-")
+
+	// Remove leading/trailing dots or hyphens
+	sanitized = strings.Trim(sanitized, ".-")
+
+	return sanitized
 }

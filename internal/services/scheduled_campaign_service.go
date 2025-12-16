@@ -406,6 +406,7 @@ func (m *ScheduledCampaignManager) cacheCompetitiveBenchmark(
 		startTime,
 		endTime,
 		"", // No region filter
+		nil, // No competitor map for auto-detected
 	)
 	if err != nil {
 		// Competitive benchmark may fail if no data, don't fail the whole caching
