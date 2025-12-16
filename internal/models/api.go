@@ -562,6 +562,18 @@ type DashboardOverviewRequest struct {
 	EndTime   *time.Time `json:"endTime" form:"endTime"`
 }
 
+// TopCompetitor represents a top competitor with name and domain
+type TopCompetitor struct {
+	Name   string `json:"name"`
+	Domain string `json:"domain"`
+}
+
+// TopCitationSource represents a top citation source with name and domain
+type TopCitationSource struct {
+	Name   string `json:"name"`
+	Domain string `json:"domain"`
+}
+
 // DashboardOverviewResponse represents the dashboard overview with key metrics
 type DashboardOverviewResponse struct {
 	Brand           string `json:"brand"`
@@ -583,10 +595,10 @@ type DashboardOverviewResponse struct {
 	TrendData []TrendDataPoint `json:"trendData"`
 
 	// Top Insights
-	TopPerformingPrompts []string `json:"topPerformingPrompts"`
-	TopCompetitors       []string `json:"topCompetitors"`
-	TopCitationSources   []string `json:"topCitationSources"`
-	RecommendationsCount int      `json:"recommendationsCount"`
+	TopPerformingPrompts []string            `json:"topPerformingPrompts"`
+	TopCompetitors       []TopCompetitor     `json:"topCompetitor"`
+	TopCitationSources   []TopCitationSource `json:"topCitationSources"`
+	RecommendationsCount int                 `json:"recommendationsCount"`
 
 	// Last Run Information
 	LastRunDate   *time.Time `json:"lastRunDate,omitempty"`

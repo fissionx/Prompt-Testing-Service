@@ -105,7 +105,7 @@ func (s *DashboardService) GetDashboardOverview(
 			competitorCounts[comp]++
 		}
 	}
-	response.TopCompetitors = getTopKeys(competitorCounts, 5)
+	response.TopCompetitors = getTopCompetitors(competitorCounts, 5)
 
 	// Get top citation sources
 	sourceCounts := make(map[string]int)
@@ -116,7 +116,7 @@ func (s *DashboardService) GetDashboardOverview(
 			}
 		}
 	}
-	response.TopCitationSources = getTopKeys(sourceCounts, 5)
+	response.TopCitationSources = getTopCitationSources(sourceCounts, 5)
 
 	// Get top performing prompts
 	response.TopPerformingPrompts = s.getTopPerformingPrompts(brandResponses)
@@ -807,6 +807,261 @@ func getTopKeys(m map[string]int, n int) []string {
 		result = append(result, sorted[i].Key)
 	}
 	return result
+}
+
+// getTopCompetitors returns top competitors with name and domain
+func getTopCompetitors(m map[string]int, n int) []models.TopCompetitor {
+	type kv struct {
+		Key   string
+		Value int
+	}
+	var sorted []kv
+	for k, v := range m {
+		sorted = append(sorted, kv{k, v})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Value > sorted[j].Value
+	})
+
+	var result []models.TopCompetitor
+	for i := 0; i < n && i < len(sorted); i++ {
+		competitorName := sorted[i].Key
+		domain := deriveCompetitorDomain(competitorName)
+		result = append(result, models.TopCompetitor{
+			Name:   competitorName,
+			Domain: domain,
+		})
+	}
+	return result
+}
+
+// getTopCitationSources returns top citation sources with name and domain
+func getTopCitationSources(m map[string]int, n int) []models.TopCitationSource {
+	type kv struct {
+		Key   string
+		Value int
+	}
+	var sorted []kv
+	for k, v := range m {
+		sorted = append(sorted, kv{k, v})
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Value > sorted[j].Value
+	})
+
+	var result []models.TopCitationSource
+	for i := 0; i < n && i < len(sorted); i++ {
+		domain := sorted[i].Key
+		name := extractSourceName(domain)
+		normalizedDomain := normalizeCitationDomain(domain)
+		result = append(result, models.TopCitationSource{
+			Name:   name,
+			Domain: normalizedDomain,
+		})
+	}
+	return result
+}
+
+// deriveCompetitorDomain derives a domain from a competitor name
+// Example: "windsurf" -> "www.windsurf.com", "Windsurf (by Codeium)" -> "www.windsurf.com"
+func deriveCompetitorDomain(competitorName string) string {
+	// If it already looks like a domain, normalize and return
+	if strings.Contains(competitorName, ".") {
+		normalized := strings.ToLower(strings.TrimSpace(competitorName))
+		// Remove protocol if present
+		normalized = strings.TrimPrefix(normalized, "http://")
+		normalized = strings.TrimPrefix(normalized, "https://")
+		// Remove path if present
+		if idx := strings.Index(normalized, "/"); idx != -1 {
+			normalized = normalized[:idx]
+		}
+		// Add www. if not present
+		if !strings.HasPrefix(normalized, "www.") {
+			return "www." + normalized
+		}
+		return normalized
+	}
+	
+	// Clean the competitor name to extract core brand name
+	cleaned := cleanCompetitorName(competitorName)
+	
+	// Convert to lowercase and remove spaces
+	normalized := strings.ToLower(strings.TrimSpace(cleaned))
+	
+	// Check if the cleaned name already looks like a domain (e.g., from special cases)
+	if strings.Contains(normalized, ".") {
+		// It's already a domain-like string, add www. prefix and .com suffix if needed
+		if !strings.HasPrefix(normalized, "www.") {
+			normalized = "www." + normalized
+		}
+		// Add .com if it doesn't already have a TLD
+		if !strings.HasSuffix(normalized, ".com") && !strings.HasSuffix(normalized, ".org") && 
+		   !strings.HasSuffix(normalized, ".net") && !strings.HasSuffix(normalized, ".io") &&
+		   !strings.HasSuffix(normalized, ".ai") && !strings.HasSuffix(normalized, ".co") {
+			normalized = normalized + ".com"
+		}
+		return normalized
+	}
+	
+	// Remove spaces for single-word or multi-word names
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	
+	// Remove any remaining invalid characters for domain names
+	normalized = sanitizeDomainName(normalized)
+	
+	// Construct www.{name}.com
+	return "www." + normalized + ".com"
+}
+
+// cleanCompetitorName removes parentheses, special characters, and extracts core brand name
+func cleanCompetitorName(name string) string {
+	// Remove content in parentheses (e.g., "Windsurf (by Codeium)" -> "Windsurf")
+	cleaned := name
+	for {
+		openIdx := strings.Index(cleaned, "(")
+		if openIdx == -1 {
+			break
+		}
+		closeIdx := strings.Index(cleaned[openIdx:], ")")
+		if closeIdx == -1 {
+			break
+		}
+		closeIdx += openIdx
+		cleaned = cleaned[:openIdx] + cleaned[closeIdx+1:]
+	}
+	
+	// Remove common prefixes/suffixes that might not be part of the domain
+	cleaned = strings.TrimSpace(cleaned)
+	
+	// Remove common suffixes like " (VS Code)", " - ", etc.
+	cleaned = strings.Split(cleaned, " - ")[0]
+	cleaned = strings.Split(cleaned, " | ")[0]
+	cleaned = strings.TrimSpace(cleaned)
+	
+	// For multi-word names, try to extract the main brand name
+	// Special handling for known cases
+	cleaned = handleSpecialBrandNames(cleaned)
+	
+	// If it's a special case that returned a domain-like string, return as-is
+	if strings.Contains(cleaned, ".") {
+		return cleaned
+	}
+	
+	// For simple names, extract the first word
+	// This handles cases like "Windsurf (by Codeium)" -> "Windsurf"
+	words := strings.Fields(cleaned)
+	if len(words) >= 1 {
+		return words[0]
+	}
+	
+	return strings.TrimSpace(cleaned)
+}
+
+// handleSpecialBrandNames handles special cases for well-known brands
+func handleSpecialBrandNames(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	
+	// Special cases for known brands
+	specialCases := map[string]string{
+		"visual studio code": "code.visualstudio",
+		"vs code":            "code.visualstudio",
+		"vscode":             "code.visualstudio",
+	}
+	
+	if domain, ok := specialCases[name]; ok {
+		return domain
+	}
+	
+	// For other multi-word names, try to extract the main identifier
+	// Usually the first word or first two words
+	words := strings.Fields(name)
+	if len(words) > 3 {
+		// Take first two words for very long names
+		return strings.Join(words[:2], "")
+	}
+	
+	// Return the original name (will be processed further)
+	return name
+}
+
+// sanitizeDomainName removes invalid characters for domain names
+func sanitizeDomainName(name string) string {
+	var result strings.Builder
+	for _, r := range name {
+		// Allow alphanumeric, hyphens, and dots
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '.' {
+			result.WriteRune(r)
+		}
+	}
+	sanitized := result.String()
+	
+	// Remove consecutive dots or hyphens
+	sanitized = strings.ReplaceAll(sanitized, "..", ".")
+	sanitized = strings.ReplaceAll(sanitized, "--", "-")
+	
+	// Remove leading/trailing dots or hyphens
+	sanitized = strings.Trim(sanitized, ".-")
+	
+	return sanitized
+}
+
+// normalizeCitationDomain normalizes a citation source domain to include www. prefix
+// Example: "qodo.ai" -> "www.qodo.ai", "https://betterstack.com" -> "www.betterstack.com"
+func normalizeCitationDomain(domain string) string {
+	// Remove protocol if present
+	normalized := strings.TrimPrefix(domain, "http://")
+	normalized = strings.TrimPrefix(normalized, "https://")
+	
+	// Remove path if present (everything after first /)
+	if idx := strings.Index(normalized, "/"); idx != -1 {
+		normalized = normalized[:idx]
+	}
+	
+	// Remove port if present (everything after :)
+	if idx := strings.Index(normalized, ":"); idx != -1 {
+		normalized = normalized[:idx]
+	}
+	
+	// Add www. prefix if not present
+	if !strings.HasPrefix(normalized, "www.") {
+		normalized = "www." + normalized
+	}
+	
+	return normalized
+}
+
+// extractSourceName extracts a readable name from a domain
+// Example: "betterstack.com" -> "betterstack", "https://www.example.com" -> "example"
+func extractSourceName(domain string) string {
+	// Remove protocol if present
+	domain = strings.TrimPrefix(domain, "http://")
+	domain = strings.TrimPrefix(domain, "https://")
+	
+	// Remove www. prefix if present
+	domain = strings.TrimPrefix(domain, "www.")
+	
+	// Remove path if present (everything after first /)
+	if idx := strings.Index(domain, "/"); idx != -1 {
+		domain = domain[:idx]
+	}
+	
+	// Remove port if present (everything after :)
+	if idx := strings.Index(domain, ":"); idx != -1 {
+		domain = domain[:idx]
+	}
+	
+	// Extract the main domain name (before first dot if it's a subdomain)
+	parts := strings.Split(domain, ".")
+	if len(parts) >= 2 {
+		// For domains like "subdomain.example.com", return "example"
+		// For domains like "example.com", return "example"
+		if len(parts) > 2 {
+			return parts[len(parts)-2]
+		}
+		return parts[0]
+	}
+	
+	return domain
 }
 
 func calculateMedian(values []float64) float64 {
