@@ -752,16 +752,22 @@ type TrendComparisonResponse struct {
 	Dates       []string         `json:"dates"`
 }
 
+// TrendValue represents a single data point in a trend
+type TrendValue struct {
+	Value float64 `json:"value"`
+	Date  string  `json:"date"` // Date string: actual date (daily), start of week (weekly), start of month (monthly)
+}
+
 // BrandTrendData represents trend data for a single brand
 type BrandTrendData struct {
-	Brand           string    `json:"brand"`
-	Domain          string    `json:"domain,omitempty"`
-	LogoURL         string    `json:"logoUrl,omitempty"`
-	FallbackLogoURL string    `json:"fallbackLogoUrl,omitempty"`
-	Values          []float64 `json:"values"`
-	IsMainBrand     bool      `json:"isMainBrand"`
-	CurrentValue    float64   `json:"currentValue"`
-	Change          float64   `json:"change"` // Percentage change
+	Brand           string       `json:"brand"`
+	Domain          string       `json:"domain,omitempty"`
+	LogoURL         string       `json:"logoUrl,omitempty"`
+	FallbackLogoURL string       `json:"fallbackLogoUrl,omitempty"`
+	Values          []TrendValue `json:"values"`
+	IsMainBrand     bool         `json:"isMainBrand"`
+	CurrentValue    float64      `json:"currentValue"`
+	Change          float64      `json:"change"` // Percentage change
 }
 
 // ExportRequest represents the request for data export

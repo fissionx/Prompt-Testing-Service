@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -78,8 +80,11 @@ func (s *DashboardService) GetDashboardOverview(
 		return response, nil
 	}
 
-	// Calculate metrics
-	metrics := s.calculateMetrics(brandResponses)
+	// Get competitors for ranking calculation
+	competitors := s.getCompetitorsForRanking(ctx, brand, brandResponses)
+	
+	// Calculate metrics with rankings
+	metrics := s.calculateMetricsWithRankings(ctx, brand, competitors, allResponses, startTime, endTime)
 	response.Visibility = metrics.visibility
 	response.Sentiment = metrics.sentiment
 	response.Position = metrics.position
@@ -195,6 +200,290 @@ func (s *DashboardService) calculateMetrics(responses []*models.Response) metric
 	}
 
 	return result
+}
+
+// getCompetitorsForRanking gets competitors for ranking calculation
+// First tries saved competitors, then falls back to auto-detection from responses
+func (s *DashboardService) getCompetitorsForRanking(ctx context.Context, brand string, brandResponses []*models.Response) []string {
+	// Try to get saved competitors first
+	savedCompetitors, err := s.db.GetBrandCompetitors(ctx, brand)
+	if err == nil && savedCompetitors != nil && len(savedCompetitors.Competitors) > 0 {
+		parsedCompetitors, _ := parseCompetitorStrings(savedCompetitors.Competitors)
+		return parsedCompetitors
+	}
+	
+	// Fall back to auto-detection from responses
+	competitorSet := make(map[string]bool)
+	for _, resp := range brandResponses {
+		for _, comp := range resp.CompetitorsMention {
+			normalized := strings.TrimSpace(comp)
+			if normalized != "" && !strings.EqualFold(normalized, brand) {
+				competitorSet[normalized] = true
+			}
+		}
+	}
+	
+	competitors := make([]string, 0, len(competitorSet))
+	for comp := range competitorSet {
+		competitors = append(competitors, comp)
+	}
+	
+	return competitors
+}
+
+// brandMetrics represents metrics for a single brand
+type brandMetrics struct {
+	brand          string
+	visibility     float64
+	sentiment      float64
+	position       float64
+	groundingRate  float64
+}
+
+// calculateMetricsWithRankings calculates metrics for the main brand and determines rankings
+func (s *DashboardService) calculateMetricsWithRankings(
+	ctx context.Context,
+	mainBrand string,
+	competitors []string,
+	allResponses []*models.Response,
+	startTime, endTime *time.Time,
+) metricsResult {
+	// Calculate base metrics for main brand
+	mainBrandResponses := make([]*models.Response, 0)
+	for _, resp := range allResponses {
+		if resp.Brand == mainBrand {
+			mainBrandResponses = append(mainBrandResponses, resp)
+		}
+	}
+	
+	baseMetrics := s.calculateMetrics(mainBrandResponses)
+	
+	// If no competitors, return base metrics without rankings
+	if len(competitors) == 0 {
+		return baseMetrics
+	}
+	
+	// Calculate metrics for all brands (main brand + competitors)
+	allBrands := append([]string{mainBrand}, competitors...)
+	brandMetricsMap := make(map[string]*brandMetrics)
+	
+	// Initialize metrics for all brands
+	for _, brand := range allBrands {
+		brandMetricsMap[brand] = &brandMetrics{brand: brand}
+	}
+	
+	// Filter responses by time if needed
+	var filteredResponses []*models.Response
+	for _, resp := range allResponses {
+		// Check if response matches time filter
+		if startTime != nil && resp.CreatedAt.Before(*startTime) {
+			continue
+		}
+		if endTime != nil && resp.CreatedAt.After(*endTime) {
+			continue
+		}
+		filteredResponses = append(filteredResponses, resp)
+	}
+	
+	// Aggregate metrics for each brand
+	// We'll use main brand's responses as the baseline for comparison
+	brandResponseCounts := make(map[string]int)
+	brandMentionCounts := make(map[string]int)
+	brandGroundingCounts := make(map[string]int)
+	brandPositionSums := make(map[string]float64)
+	brandPositionCounts := make(map[string]int)
+	brandSentimentSums := make(map[string]float64)
+	brandSentimentCounts := make(map[string]int)
+	
+	// Track which brands have full response data (not just mentions)
+	brandsWithFullData := make(map[string]bool)
+	
+	// First, collect metrics from actual responses (main brand and competitors if they have responses)
+	for _, resp := range filteredResponses {
+		if _, exists := brandMetricsMap[resp.Brand]; exists {
+			brandResponseCounts[resp.Brand]++
+			brandsWithFullData[resp.Brand] = true
+			
+			if resp.BrandMentioned {
+				brandMentionCounts[resp.Brand]++
+			}
+			if resp.InGroundingSources {
+				brandGroundingCounts[resp.Brand]++
+			}
+			if resp.BrandPosition > 0 {
+				brandPositionSums[resp.Brand] += float64(resp.BrandPosition)
+				brandPositionCounts[resp.Brand]++
+			}
+			if resp.Sentiment != "" {
+				brandSentimentSums[resp.Brand] += calculateSentimentScore(resp.Sentiment)
+				brandSentimentCounts[resp.Brand]++
+			}
+		}
+	}
+	
+	// For visibility ranking, count mentions of competitors in main brand's responses
+	// This gives us a fair comparison: how often each brand appears in the same set of responses
+	// Count filtered main brand responses
+	filteredMainBrandResponses := 0
+	for _, resp := range filteredResponses {
+		if resp.Brand == mainBrand {
+			filteredMainBrandResponses++
+		}
+	}
+	totalResponsesForComparison := filteredMainBrandResponses
+	if totalResponsesForComparison == 0 {
+		totalResponsesForComparison = len(filteredResponses)
+	}
+	
+	for _, resp := range filteredResponses {
+		// Count competitor mentions for visibility calculation
+		for _, comp := range resp.CompetitorsMention {
+			if _, exists := brandMetricsMap[comp]; exists {
+				// Count mention
+				brandMentionCounts[comp]++
+				// Count this as a response where competitor could appear (for visibility calculation)
+				if brandResponseCounts[comp] == 0 {
+					// Initialize if not already set from actual responses
+					brandResponseCounts[comp] = 0
+				}
+			}
+		}
+	}
+	
+	// Set response counts for competitors based on total responses (for fair visibility comparison)
+	for _, comp := range competitors {
+		if !brandsWithFullData[comp] {
+			// Competitor doesn't have its own responses, use total responses for comparison
+			brandResponseCounts[comp] = totalResponsesForComparison
+		}
+	}
+	
+	// Calculate metrics for each brand
+	var allBrandMetrics []*brandMetrics
+	for _, brand := range allBrands {
+		bm := brandMetricsMap[brand]
+		total := float64(brandResponseCounts[brand])
+		
+		if total > 0 {
+			bm.visibility = roundToTwo(float64(brandMentionCounts[brand]) / total * 100)
+			bm.groundingRate = roundToTwo(float64(brandGroundingCounts[brand]) / total * 100)
+			
+			if brandPositionCounts[brand] > 0 {
+				bm.position = roundToTwo(brandPositionSums[brand] / float64(brandPositionCounts[brand]))
+			}
+			
+			if brandSentimentCounts[brand] > 0 {
+				// Convert from -1 to 1 scale to 0 to 100 scale
+				bm.sentiment = roundToTwo((brandSentimentSums[brand]/float64(brandSentimentCounts[brand]) + 1) * 50)
+			}
+		}
+		
+		allBrandMetrics = append(allBrandMetrics, bm)
+	}
+	
+	// Calculate rankings for each metric
+	totalBrands := len(allBrandMetrics)
+	
+	// Visibility ranking (higher is better) - we can rank all brands
+	sort.Slice(allBrandMetrics, func(i, j int) bool {
+		return allBrandMetrics[i].visibility > allBrandMetrics[j].visibility
+	})
+	visibilityRank := s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.visibility }, true)
+	
+	// For other metrics, only rank if we have full data for at least 2 brands
+	brandsWithSentimentData := 0
+	brandsWithPositionData := 0
+	brandsWithGroundingData := 0
+	
+	for _, bm := range allBrandMetrics {
+		if bm.sentiment > 0 {
+			brandsWithSentimentData++
+		}
+		if bm.position > 0 {
+			brandsWithPositionData++
+		}
+		if bm.groundingRate > 0 {
+			brandsWithGroundingData++
+		}
+	}
+	
+	// Sentiment ranking (higher is better) - only if we have data for multiple brands
+	var sentimentRank int
+	if brandsWithSentimentData >= 2 {
+		sort.Slice(allBrandMetrics, func(i, j int) bool {
+			return allBrandMetrics[i].sentiment > allBrandMetrics[j].sentiment
+		})
+		sentimentRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.sentiment }, true)
+	}
+	
+	// Position ranking (lower is better) - only if we have data for multiple brands
+	var positionRank int
+	if brandsWithPositionData >= 2 {
+		sort.Slice(allBrandMetrics, func(i, j int) bool {
+			// Handle zero values - put them at the end
+			if allBrandMetrics[i].position == 0 && allBrandMetrics[j].position == 0 {
+				return false
+			}
+			if allBrandMetrics[i].position == 0 {
+				return false
+			}
+			if allBrandMetrics[j].position == 0 {
+				return true
+			}
+			return allBrandMetrics[i].position < allBrandMetrics[j].position
+		})
+		positionRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.position }, false)
+	}
+	
+	// Grounding rate ranking (higher is better) - only if we have data for multiple brands
+	var groundingRank int
+	if brandsWithGroundingData >= 2 {
+		sort.Slice(allBrandMetrics, func(i, j int) bool {
+			return allBrandMetrics[i].groundingRate > allBrandMetrics[j].groundingRate
+		})
+		groundingRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.groundingRate }, true)
+	}
+	
+	// Update base metrics with rankings
+	baseMetrics.visibility.Rank = visibilityRank
+	baseMetrics.visibility.TotalBrands = totalBrands
+	baseMetrics.sentiment.Rank = sentimentRank
+	baseMetrics.sentiment.TotalBrands = totalBrands
+	baseMetrics.position.Rank = positionRank
+	baseMetrics.position.TotalBrands = totalBrands
+	baseMetrics.grounding.Rank = groundingRank
+	baseMetrics.grounding.TotalBrands = totalBrands
+	
+	return baseMetrics
+}
+
+// findRank finds the rank of the main brand in a sorted list
+// higherIsBetter: true if higher values are better (visibility, sentiment), false if lower is better (position)
+func (s *DashboardService) findRank(
+	brandMetrics []*brandMetrics,
+	mainBrand string,
+	getValue func(*brandMetrics) float64,
+	higherIsBetter bool,
+) int {
+	for i, bm := range brandMetrics {
+		if bm.brand == mainBrand {
+			// Check for ties - if multiple brands have the same value, they share the same rank
+			mainBrandValue := getValue(bm)
+			rank := i + 1
+			
+			// Adjust for ties (count how many brands before this one have the same value)
+			for j := i - 1; j >= 0; j-- {
+				if getValue(brandMetrics[j]) == mainBrandValue {
+					rank = j + 1
+				} else {
+					break
+				}
+			}
+			
+			return rank
+		}
+	}
+	return 0
 }
 
 func (s *DashboardService) calculateTrendData(responses []*models.Response) []models.TrendDataPoint {
@@ -722,13 +1011,6 @@ func (s *DashboardService) GetTrendComparison(
 	}
 
 	// Group data by date and brand
-	dateFormat := "2006-01-02"
-	if granularity == "weekly" {
-		dateFormat = "2006-W02"
-	} else if granularity == "monthly" {
-		dateFormat = "2006-01"
-	}
-
 	brandDateData := make(map[string]map[string]*trendAggregator)
 	dateSet := make(map[string]bool)
 
@@ -738,7 +1020,17 @@ func (s *DashboardService) GetTrendComparison(
 
 	// Aggregate main brand data
 	for _, resp := range mainBrandResponses {
-		date := resp.CreatedAt.Format(dateFormat)
+		var date string
+		switch granularity {
+		case "daily":
+			date = resp.CreatedAt.Format("2006-01-02")
+		case "weekly":
+			date = s.formatISOWeek(resp.CreatedAt)
+		case "monthly":
+			date = resp.CreatedAt.Format("2006-01")
+		default:
+			date = resp.CreatedAt.Format("2006-01-02")
+		}
 		dateSet[date] = true
 
 		// Main brand
@@ -801,7 +1093,7 @@ func (s *DashboardService) GetTrendComparison(
 			IsMainBrand:     brand == mainBrand,
 		}
 
-		var values []float64
+		var trendValues []models.TrendValue
 		for _, date := range dates {
 			agg := brandDateData[brand][date]
 			var value float64
@@ -821,18 +1113,30 @@ func (s *DashboardService) GetTrendComparison(
 				}
 			}
 
-			values = append(values, roundToTwo(value))
+			// Convert date to appropriate format based on granularity
+			displayDate := s.convertDateForDisplay(date, granularity)
+			
+			trendValues = append(trendValues, models.TrendValue{
+				Value: roundToTwo(value),
+				Date:  displayDate,
+			})
 		}
 
-		trend.Values = values
-		if len(values) > 0 {
-			trend.CurrentValue = values[len(values)-1]
-			if len(values) > 1 && values[0] > 0 {
-				trend.Change = roundToTwo((values[len(values)-1] - values[0]) / values[0] * 100)
+		trend.Values = trendValues
+		if len(trendValues) > 0 {
+			trend.CurrentValue = trendValues[len(trendValues)-1].Value
+			if len(trendValues) > 1 && trendValues[0].Value > 0 {
+				trend.Change = roundToTwo((trendValues[len(trendValues)-1].Value - trendValues[0].Value) / trendValues[0].Value * 100)
 			}
 		}
 
 		trends = append(trends, trend)
+	}
+
+	// Convert dates to display format for the Dates array
+	displayDates := make([]string, len(dates))
+	for i, date := range dates {
+		displayDates[i] = s.convertDateForDisplay(date, granularity)
 	}
 
 	return &models.TrendComparisonResponse{
@@ -841,7 +1145,7 @@ func (s *DashboardService) GetTrendComparison(
 		Period:      period,
 		Granularity: granularity,
 		Trends:      trends,
-		Dates:       dates,
+		Dates:       displayDates,
 	}, nil
 }
 
@@ -1304,4 +1608,72 @@ func (s *DashboardService) getTopPerformingPrompts(responses []*models.Response)
 	}
 
 	return topPrompts
+}
+
+// formatISOWeek formats a time to ISO week format (e.g., "2025-W48")
+// ISO week: Week 1 is the week containing January 4th, weeks start on Monday
+func (s *DashboardService) formatISOWeek(t time.Time) string {
+	year, week := t.ISOWeek()
+	return fmt.Sprintf("%d-W%02d", year, week)
+}
+
+// convertDateForDisplay converts the date string to the appropriate display format
+// based on granularity:
+// - daily: returns the date as-is (already in "2006-01-02" format)
+// - weekly: converts "2006-W02" to the start date of that week (Monday) in "2006-01-02" format
+// - monthly: converts "2006-01" to "2006-01-01" (first day of month)
+func (s *DashboardService) convertDateForDisplay(dateStr, granularity string) string {
+	switch granularity {
+	case "daily":
+		// Already in correct format: "2006-01-02"
+		return dateStr
+		
+	case "weekly":
+		// Parse ISO week format: "2006-W02"
+		// Format: "2006-W02" where 02 is the week number
+		parts := strings.Split(dateStr, "-W")
+		if len(parts) != 2 {
+			return dateStr // Return as-is if format is unexpected
+		}
+		
+		yearStr := parts[0]
+		weekStr := parts[1]
+		
+		year, err := strconv.Atoi(yearStr)
+		if err != nil {
+			return dateStr
+		}
+		
+		week, err := strconv.Atoi(weekStr)
+		if err != nil {
+			return dateStr
+		}
+		
+		// Calculate the start date of the ISO week
+		// ISO week: Week 1 is the week containing January 4th
+		// Weeks start on Monday
+		jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, time.UTC)
+		
+		// Find the Monday of the week containing Jan 4 (this is week 1)
+		daysFromMonday := (int(jan4.Weekday()) + 6) % 7 // Convert Sunday=0 to Monday=0
+		week1Monday := jan4.AddDate(0, 0, -daysFromMonday)
+		
+		// Calculate the start date of the requested week
+		weekStart := week1Monday.AddDate(0, 0, (week-1)*7)
+		
+		return weekStart.Format("2006-01-02")
+		
+	case "monthly":
+		// Parse format: "2006-01"
+		parts := strings.Split(dateStr, "-")
+		if len(parts) != 2 {
+			return dateStr
+		}
+		
+		// Return first day of month: "2006-01-01"
+		return dateStr + "-01"
+		
+	default:
+		return dateStr
+	}
 }
