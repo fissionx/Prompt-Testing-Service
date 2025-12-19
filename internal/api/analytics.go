@@ -35,40 +35,44 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Try to get cached data first
-	query := models.AnalyticsCacheQuery{
-		Brand:     req.Brand,
-		StartTime: req.StartTime,
-		EndTime:   req.EndTime,
-	}
-
-	cachedData, err := s.db.GetCachedSourceAnalytics(ctx, query)
-	if err == nil && cachedData != nil {
-		// Normalize domains in cached data to ensure www. prefix
-		normalizedSources := make([]models.SourceInsight, len(cachedData.TopSources))
-		for i, source := range cachedData.TopSources {
-			normalizedSources[i] = source
-			normalizedSources[i].Domain = normalizeDomainForSource(source.Domain)
+	// Try to get cached data first (unless force refresh is requested)
+	var cachedData *models.CachedSourceAnalytics
+	if !req.ForceRefresh {
+		query := models.AnalyticsCacheQuery{
+			Brand:     req.Brand,
+			StartTime: req.StartTime,
+			EndTime:   req.EndTime,
 		}
 
-		// Return cached data with normalized domains
-		response := &models.SourceAnalyticsResponse{
-			Brand:           cachedData.Brand,
-			LogoURL:         cachedData.LogoURL,
-			FallbackLogoURL: cachedData.FallbackLogoURL,
-			Period:          cachedData.Period,
-			TopSources:      normalizedSources,
-			Recommendations: cachedData.Recommendations,
-			TotalSources:    cachedData.TotalSources,
-			TotalCitations:  cachedData.TotalCitations,
-		}
+		var err error
+		cachedData, err = s.db.GetCachedSourceAnalytics(ctx, query)
+		if err == nil && cachedData != nil {
+			// Normalize domains in cached data to ensure www. prefix
+			normalizedSources := make([]models.SourceInsight, len(cachedData.TopSources))
+			for i, source := range cachedData.TopSources {
+				normalizedSources[i] = source
+				normalizedSources[i].Domain = normalizeDomainForSource(source.Domain)
+			}
 
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: "Source analytics retrieved from cache",
-		})
-		return
+			// Return cached data with normalized domains
+			response := &models.SourceAnalyticsResponse{
+				Brand:           cachedData.Brand,
+				LogoURL:         cachedData.LogoURL,
+				FallbackLogoURL: cachedData.FallbackLogoURL,
+				Period:          cachedData.Period,
+				TopSources:      normalizedSources,
+				Recommendations: cachedData.Recommendations,
+				TotalSources:    cachedData.TotalSources,
+				TotalCitations:  cachedData.TotalCitations,
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Data:    response,
+				Message: "Source analytics retrieved from cache",
+			})
+			return
+		}
 	}
 
 	// Compute analytics if not cached
@@ -133,8 +137,8 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Try to get cached data first (only if no specific competitors are requested)
-	if len(req.Competitors) == 0 {
+	// Try to get cached data first (only if no specific competitors are requested and not forcing refresh)
+	if len(req.Competitors) == 0 && !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
 			Brand:     req.MainBrand,
 			StartTime: req.StartTime,
@@ -407,34 +411,38 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Try to get cached data first
-	query := models.AnalyticsCacheQuery{
-		Brand:     req.Brand,
-		StartTime: req.StartTime,
-		EndTime:   req.EndTime,
-	}
-
-	cachedData, err := s.db.GetCachedPromptPerformance(ctx, query)
-	if err == nil && cachedData != nil {
-		// Return cached data
-		response := &models.PromptPerformanceResponse{
-			Brand:                cachedData.Brand,
-			LogoURL:              cachedData.LogoURL,
-			FallbackLogoURL:      cachedData.FallbackLogoURL,
-			Period:               cachedData.Period,
-			Prompts:              cachedData.Prompts,
-			TopPerformers:        cachedData.TopPerformers,
-			LowPerformers:        cachedData.LowPerformers,
-			AvgEffectiveness:     cachedData.AvgEffectiveness,
-			TotalPromptsAnalyzed: cachedData.TotalPromptsAnalyzed,
+	// Try to get cached data first (unless force refresh is requested)
+	var cachedData *models.CachedPromptPerformance
+	if !req.ForceRefresh {
+		query := models.AnalyticsCacheQuery{
+			Brand:     req.Brand,
+			StartTime: req.StartTime,
+			EndTime:   req.EndTime,
 		}
 
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: "Prompt performance retrieved from cache",
-		})
-		return
+		var err error
+		cachedData, err = s.db.GetCachedPromptPerformance(ctx, query)
+		if err == nil && cachedData != nil {
+			// Return cached data
+			response := &models.PromptPerformanceResponse{
+				Brand:                cachedData.Brand,
+				LogoURL:              cachedData.LogoURL,
+				FallbackLogoURL:      cachedData.FallbackLogoURL,
+				Period:               cachedData.Period,
+				Prompts:              cachedData.Prompts,
+				TopPerformers:        cachedData.TopPerformers,
+				LowPerformers:        cachedData.LowPerformers,
+				AvgEffectiveness:     cachedData.AvgEffectiveness,
+				TotalPromptsAnalyzed: cachedData.TotalPromptsAnalyzed,
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Data:    response,
+				Message: "Prompt performance retrieved from cache",
+			})
+			return
+		}
 	}
 
 	// Compute prompt performance analytics if not cached

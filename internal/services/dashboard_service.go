@@ -104,15 +104,19 @@ func (s *DashboardService) GetDashboardOverview(
 	response.TrendData = s.calculateTrendData(brandResponses)
 
 	// Get top competitors
+	// Use a map to ensure deterministic counting (order doesn't matter for counting)
 	competitorCounts := make(map[string]int)
 	for _, resp := range brandResponses {
 		for _, comp := range resp.CompetitorsMention {
-			competitorCounts[comp]++
+			if comp != "" {
+				competitorCounts[comp]++
+			}
 		}
 	}
 	response.TopCompetitors = getTopCompetitors(competitorCounts, 5)
 
 	// Get top citation sources
+	// Use a map to ensure deterministic counting (order doesn't matter for counting)
 	sourceCounts := make(map[string]int)
 	for _, resp := range brandResponses {
 		for _, domain := range resp.GroundingDomains {
@@ -1189,8 +1193,13 @@ func getTopCompetitors(m map[string]int, n int) []models.TopCompetitor {
 	for k, v := range m {
 		sorted = append(sorted, kv{k, v})
 	}
+	// Sort by count (descending), then by name (ascending) for deterministic ordering
 	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Value > sorted[j].Value
+		if sorted[i].Value != sorted[j].Value {
+			return sorted[i].Value > sorted[j].Value
+		}
+		// Secondary sort: alphabetical by name for ties
+		return sorted[i].Key < sorted[j].Key
 	})
 
 	var result []models.TopCompetitor
@@ -1215,8 +1224,13 @@ func getTopCitationSources(m map[string]int, n int) []models.TopCitationSource {
 	for k, v := range m {
 		sorted = append(sorted, kv{k, v})
 	}
+	// Sort by count (descending), then by domain (ascending) for deterministic ordering
 	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Value > sorted[j].Value
+		if sorted[i].Value != sorted[j].Value {
+			return sorted[i].Value > sorted[j].Value
+		}
+		// Secondary sort: alphabetical by domain for ties
+		return sorted[i].Key < sorted[j].Key
 	})
 
 	var result []models.TopCitationSource

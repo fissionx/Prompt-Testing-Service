@@ -207,6 +207,7 @@ type GeneratePromptsRequest struct {
 	Domain      string `json:"domain,omitempty"`
 	Description string `json:"description,omitempty"`
 	Count       int    `json:"count,omitempty"`
+	LLMID       string `json:"llmId,omitempty"` // Optional LLM ID to use for generation (defaults to Google/Gemini if not provided)
 }
 
 // GeneratePromptsResponse represents the response with generated prompts
@@ -291,10 +292,11 @@ type BulkExecuteResponse struct {
 
 // GEOInsightsRequest represents the request for GEO insights/analytics
 type GEOInsightsRequest struct {
-	Brand      string     `json:"brand,omitempty"`
-	CampaignID string     `json:"campaignId,omitempty"`
-	StartTime  *time.Time `json:"startTime,omitempty"`
-	EndTime    *time.Time `json:"endTime,omitempty"`
+	Brand        string     `json:"brand,omitempty"`
+	CampaignID   string     `json:"campaignId,omitempty"`
+	StartTime    *time.Time `json:"startTime,omitempty"`
+	EndTime      *time.Time `json:"endTime,omitempty"`
+	ForceRefresh bool       `json:"forceRefresh,omitempty"` // Force re-computation even if cached
 }
 
 // GEOInsightsResponse represents comprehensive GEO analytics
@@ -380,13 +382,14 @@ type SourceAnalyticsResponse struct {
 
 // CompetitiveBenchmarkRequest represents request for competitive analysis
 type CompetitiveBenchmarkRequest struct {
-	MainBrand   string       `json:"mainBrand" binding:"required"`
-	Competitors []Competitor `json:"competitors,omitempty"`
-	PromptIDs   []string     `json:"promptIds,omitempty"`
-	LLMIDs      []string     `json:"llmIds,omitempty"`
-	StartTime   *time.Time   `json:"startTime,omitempty"`
-	EndTime     *time.Time   `json:"endTime,omitempty"`
-	Region      string       `json:"region,omitempty"`
+	MainBrand    string       `json:"mainBrand" binding:"required"`
+	Competitors  []Competitor `json:"competitors,omitempty"`
+	PromptIDs    []string     `json:"promptIds,omitempty"`
+	LLMIDs       []string     `json:"llmIds,omitempty"`
+	StartTime    *time.Time   `json:"startTime,omitempty"`
+	EndTime      *time.Time   `json:"endTime,omitempty"`
+	Region       string       `json:"region,omitempty"`
+	ForceRefresh bool         `json:"forceRefresh,omitempty"` // Force re-computation even if cached
 }
 
 // BrandPerformance represents comprehensive brand performance metrics
@@ -446,10 +449,11 @@ type PromptCompetitorMention struct {
 
 // SourceAnalyticsRequest represents request for source analytics
 type SourceAnalyticsRequest struct {
-	Brand     string     `json:"brand" binding:"required"`
-	StartTime *time.Time `json:"startTime,omitempty"`
-	EndTime   *time.Time `json:"endTime,omitempty"`
-	TopN      int        `json:"topN,omitempty"`
+	Brand        string     `json:"brand" binding:"required"`
+	StartTime    *time.Time `json:"startTime,omitempty"`
+	EndTime      *time.Time `json:"endTime,omitempty"`
+	TopN         int        `json:"topN,omitempty"`
+	ForceRefresh bool       `json:"forceRefresh,omitempty"` // Force re-computation even if cached
 }
 
 // PositionAnalyticsResponse represents position/ranking analytics
@@ -471,6 +475,7 @@ type PromptPerformanceRequest struct {
 	StartTime    *time.Time `json:"startTime,omitempty"`
 	EndTime      *time.Time `json:"endTime,omitempty"`
 	MinResponses int        `json:"minResponses,omitempty"`
+	ForceRefresh bool       `json:"forceRefresh,omitempty"` // Force re-computation even if cached
 }
 
 // PromptPerformanceResponse represents prompt performance analysis results
@@ -484,6 +489,9 @@ type PromptPerformanceResponse struct {
 	LowPerformers        []string            `json:"lowPerformers"`
 	AvgEffectiveness     float64             `json:"avgEffectiveness"`
 	TotalPromptsAnalyzed int                 `json:"totalPromptsAnalyzed"`
+	TotalPromptsFound    int                 `json:"totalPromptsFound,omitempty"`    // Total prompts found (before filtering)
+	FilteredOutCount     int                 `json:"filteredOutCount,omitempty"`     // Prompts filtered out due to minResponses
+	MinResponsesRequired int                 `json:"minResponsesRequired,omitempty"` // The minResponses threshold used
 }
 
 // PromptPerformance represents detailed performance metrics for a single prompt

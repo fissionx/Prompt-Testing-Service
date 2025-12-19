@@ -211,6 +211,16 @@ func (s *Server) execute(c *gin.Context) {
 		CreatedAt:    time.Now(),
 	}
 
+	// Store web search metadata (for ChatGPT/Gemini-like experience)
+	responseModel.WebSearchQueries = llmResponse.WebSearchQueries
+	responseModel.GroundingSources = llmResponse.GroundingSources
+	if llmResponse.SearchAnswer != "" {
+		responseModel.SearchAnswer = llmResponse.SearchAnswer
+	} else {
+		// If no SearchAnswer provided, use ResponseText as fallback
+		responseModel.SearchAnswer = llmResponse.Text
+	}
+
 	// Add GEO metrics if available
 	if geoAnalysis != nil {
 		responseModel.VisibilityScore = geoAnalysis.VisibilityScore
@@ -218,7 +228,6 @@ func (s *Server) execute(c *gin.Context) {
 		responseModel.InGroundingSources = geoAnalysis.InGroundingSources
 		responseModel.Sentiment = geoAnalysis.Sentiment
 		responseModel.CompetitorsMention = geoAnalysis.Competitors
-		responseModel.GroundingSources = llmResponse.GroundingSources
 		
 		// NEW: Extract position/ranking from response
 		if req.Brand != "" && geoAnalysis.BrandMentioned {

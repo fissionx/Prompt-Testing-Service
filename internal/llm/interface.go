@@ -56,7 +56,9 @@ type Response struct {
 	Model            string
 	Provider         string
 	Error            string
-	GroundingSources []string // NEW: Citation sources (URLs) from models that support grounding
+	GroundingSources []string // Citation sources (URLs) from models that support grounding
+	WebSearchQueries []string // Search queries used by the model (for ChatGPT/Gemini-like experience)
+	SearchAnswer     string   // Original search answer (before GEO analysis, if applicable)
 }
 
 // Registry manages LLM providers

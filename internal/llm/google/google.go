@@ -110,13 +110,15 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 		}
 	}
 
-	// Extract grounding metadata (sources/URLs)
+	// Extract grounding metadata (sources/URLs) and search queries
 	var groundingSources []string
+	var webSearchQueries []string
 	if len(result.Candidates) > 0 && result.Candidates[0].GroundingMetadata != nil {
 		metadata := result.Candidates[0].GroundingMetadata
 
 		if len(metadata.WebSearchQueries) > 0 {
-			log.Printf("Web Search Queries: %v", metadata.WebSearchQueries)
+			webSearchQueries = metadata.WebSearchQueries
+			log.Printf("Web Search Queries: %v", webSearchQueries)
 		}
 
 		if len(metadata.GroundingChunks) > 0 {
@@ -147,14 +149,17 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 		totalTokens = int(result.UsageMetadata.TotalTokenCount)
 	}
 
-	// If no brand specified, return just the search answer
+	// If no brand specified, return just the search answer with metadata
 	if config.Brand == "" {
 		return &llm.Response{
-			Text:       searchAnswer,
-			TokensUsed: totalTokens,
-			LatencyMs:  time.Since(startTime).Milliseconds(),
-			Model:      model,
-			Provider:   "google",
+			Text:             searchAnswer,
+			TokensUsed:       totalTokens,
+			LatencyMs:        time.Since(startTime).Milliseconds(),
+			Model:            model,
+			Provider:         "google",
+			GroundingSources: groundingSources,
+			WebSearchQueries: webSearchQueries,
+			SearchAnswer:     searchAnswer,
 		}, nil
 	}
 
@@ -252,6 +257,8 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 			Model:            model,
 			Provider:         "google",
 			GroundingSources: groundingSources,
+			WebSearchQueries: webSearchQueries,
+			SearchAnswer:     searchAnswer,
 		}, nil
 	}
 
@@ -271,7 +278,7 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 		totalTokens += int(geoResult.UsageMetadata.TotalTokenCount)
 	}
 
-	// Return the GEO JSON response
+	// Return the GEO JSON response with all metadata
 	return &llm.Response{
 		Text:             geoText,
 		TokensUsed:       totalTokens,
@@ -279,6 +286,8 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 		Model:            model,
 		Provider:         "google",
 		GroundingSources: groundingSources,
+		WebSearchQueries: webSearchQueries,
+		SearchAnswer:     searchAnswer, // Store original search answer before GEO analysis
 	}, nil
 }
 

@@ -30,6 +30,21 @@ func (s *Server) generatePrompts(c *gin.Context) {
 		req.Count = 20
 	}
 
+	// Get LLM config if LLMID is provided
+	var llmConfig *models.LLMConfig
+	if req.LLMID != "" {
+		config, err := s.llmService.GetLLM(c.Request.Context(), req.LLMID)
+		if err != nil {
+			s.errorResponse(c, http.StatusNotFound, "LLM not found: "+err.Error())
+			return
+		}
+		if !config.Enabled {
+			s.errorResponse(c, http.StatusBadRequest, "LLM is disabled")
+			return
+		}
+		llmConfig = config
+	}
+
 	// Create prompt generation service
 	promptGenService := services.NewPromptGenerationService(s.db, s.llmRegistry)
 
@@ -42,6 +57,7 @@ func (s *Server) generatePrompts(c *gin.Context) {
 		req.Domain,
 		req.Description,
 		req.Count,
+		llmConfig,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to generate prompts: "+err.Error())
@@ -206,38 +222,42 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Try to get cached data first
-	query := models.AnalyticsCacheQuery{
-		CampaignID: req.CampaignID,
-		Brand:      req.Brand,
-		StartTime:  req.StartTime,
-		EndTime:    req.EndTime,
-	}
-
-	cachedData, err := s.db.GetCachedGEOInsights(ctx, query)
-	if err == nil && cachedData != nil {
-		// Return cached data
-		response := &models.GEOInsightsResponse{
-			Brand:                 cachedData.Brand,
-			LogoURL:               cachedData.LogoURL,
-			FallbackLogoURL:       cachedData.FallbackLogoURL,
-			AverageVisibility:     cachedData.AverageVisibility,
-			MentionRate:           cachedData.MentionRate,
-			GroundingRate:         cachedData.GroundingRate,
-			SentimentBreakdown:    cachedData.SentimentBreakdown,
-			TopCompetitors:        cachedData.TopCompetitors,
-			PerformanceByLLM:      cachedData.PerformanceByLLM,
-			PerformanceByCategory: cachedData.PerformanceByCategory,
-			Trends:                cachedData.Trends,
-			TotalResponses:        cachedData.TotalResponses,
+	// Try to get cached data first (unless force refresh is requested)
+	var cachedData *models.CachedGEOInsights
+	if !req.ForceRefresh {
+		query := models.AnalyticsCacheQuery{
+			CampaignID: req.CampaignID,
+			Brand:      req.Brand,
+			StartTime:  req.StartTime,
+			EndTime:    req.EndTime,
 		}
 
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: "GEO insights retrieved from cache",
-		})
-		return
+		var err error
+		cachedData, err = s.db.GetCachedGEOInsights(ctx, query)
+		if err == nil && cachedData != nil {
+			// Return cached data
+			response := &models.GEOInsightsResponse{
+				Brand:                 cachedData.Brand,
+				LogoURL:               cachedData.LogoURL,
+				FallbackLogoURL:       cachedData.FallbackLogoURL,
+				AverageVisibility:     cachedData.AverageVisibility,
+				MentionRate:           cachedData.MentionRate,
+				GroundingRate:         cachedData.GroundingRate,
+				SentimentBreakdown:    cachedData.SentimentBreakdown,
+				TopCompetitors:        cachedData.TopCompetitors,
+				PerformanceByLLM:      cachedData.PerformanceByLLM,
+				PerformanceByCategory: cachedData.PerformanceByCategory,
+				Trends:                cachedData.Trends,
+				TotalResponses:        cachedData.TotalResponses,
+			}
+
+			c.JSON(http.StatusOK, models.APIResponse{
+				Success: true,
+				Data:    response,
+				Message: "GEO insights retrieved from cache",
+			})
+			return
+		}
 	}
 
 	// Create analytics service

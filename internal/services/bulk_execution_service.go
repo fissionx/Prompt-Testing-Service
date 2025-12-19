@@ -195,6 +195,18 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 		CreatedAt:    time.Now(),
 	}
 
+	// Store web search metadata (for ChatGPT/Gemini-like experience)
+	responseModel.WebSearchQueries = response.WebSearchQueries
+	responseModel.GroundingSources = response.GroundingSources
+
+	// Store original search answer (before GEO analysis, if applicable)
+	if response.SearchAnswer != "" {
+		responseModel.SearchAnswer = response.SearchAnswer
+	} else {
+		// If no SearchAnswer provided, use ResponseText as fallback
+		responseModel.SearchAnswer = response.Text
+	}
+
 	// Parse GEO metrics if brand was provided
 	if brand != "" {
 		geoAnalysis := parseGEOAnalysis(response.Text)
@@ -206,12 +218,11 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 			responseModel.InGroundingSources = geo.InGroundingSources
 			responseModel.Sentiment = geo.Sentiment
 			responseModel.CompetitorsMention = geo.Competitors
-			responseModel.GroundingSources = response.GroundingSources
 
 			// Extract position/ranking from the search_answer text
 			searchAnswer := geoAnalysis.SearchAnswer
 			if searchAnswer == "" {
-				searchAnswer = response.Text
+				searchAnswer = responseModel.SearchAnswer // Use stored search answer
 			}
 
 			if geo.BrandMentioned {

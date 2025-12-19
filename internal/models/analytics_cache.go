@@ -122,21 +122,21 @@ type ListScheduledCampaignsRequest struct {
 
 // ScheduledCampaignDetail represents a scheduled campaign with full details
 type ScheduledCampaignDetail struct {
-	ID           string              `json:"id"`
-	CampaignName string              `json:"campaignName"`
-	Brand        string              `json:"brand"`
-	Prompts      []PromptDetail      `json:"prompts"`      // Full prompt details
-	LLMs         []LLMDetail         `json:"llms"`         // Full LLM details
-	Temperature  float64             `json:"temperature"`
-	ScheduleCron string              `json:"scheduleCron"`
-	ScheduleDesc string              `json:"scheduleDescription"` // Human-readable schedule
-	Status       string              `json:"status"`
-	TotalRuns    int                 `json:"totalRuns"`
-	RunCount     int                 `json:"runCount"`
-	LastRunAt    *time.Time          `json:"lastRunAt,omitempty"`
-	NextRunAt    *time.Time          `json:"nextRunAt,omitempty"`
-	CreatedAt    time.Time           `json:"createdAt"`
-	UpdatedAt    time.Time           `json:"updatedAt"`
+	ID           string         `json:"id"`
+	CampaignName string         `json:"campaignName"`
+	Brand        string         `json:"brand"`
+	Prompts      []PromptDetail `json:"prompts"` // Full prompt details
+	LLMs         []LLMDetail    `json:"llms"`    // Full LLM details
+	Temperature  float64        `json:"temperature"`
+	ScheduleCron string         `json:"scheduleCron"`
+	ScheduleDesc string         `json:"scheduleDescription"` // Human-readable schedule
+	Status       string         `json:"status"`
+	TotalRuns    int            `json:"totalRuns"`
+	RunCount     int            `json:"runCount"`
+	LastRunAt    *time.Time     `json:"lastRunAt,omitempty"`
+	NextRunAt    *time.Time     `json:"nextRunAt,omitempty"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
 }
 
 // PromptDetail represents prompt details for scheduled campaign

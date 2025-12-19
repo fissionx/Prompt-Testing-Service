@@ -487,6 +487,11 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 		// Regional Fields
 		"region":   response.Region,
 		"language": response.Language,
+
+		// Web Search Metadata (for ChatGPT/Gemini-like experience)
+		"web_search_queries": response.WebSearchQueries,
+		"web_search_calls":   response.WebSearchCalls,
+		"search_answer":      response.SearchAnswer,
 	}
 
 	if response.Metadata != nil {

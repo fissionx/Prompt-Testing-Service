@@ -100,6 +100,8 @@ func (s *Server) setupRoutes() {
 	api.DELETE("/llms", s.deleteAllLLMs)
 
 	api.GET("/prompts", s.listPrompts)
+	// More specific routes must come before generic :id routes
+	api.GET("/prompts/:id/responses", s.getPromptResponses)
 	api.GET("/prompts/:id", s.getPrompt)
 	api.POST("/prompts", s.createPrompt)
 	api.PUT("/prompts/:id", s.updatePrompt)
@@ -116,6 +118,7 @@ func (s *Server) setupRoutes() {
 	api.POST("/search", s.search)
 
 	api.GET("/responses", s.listResponses)
+	api.GET("/brand/:brand/prompts/responses", s.getBrandPromptsWithLatestResponses)
 
 	api.POST("/execute", s.execute)
 

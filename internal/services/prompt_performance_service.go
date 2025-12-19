@@ -67,10 +67,13 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 
 	// Calculate performance metrics for each prompt
 	var promptPerformances []models.PromptPerformance
+	filteredCount := 0
+	totalPrompts := len(promptData)
 
 	for promptID, data := range promptData {
 		// Skip prompts with insufficient data
 		if len(data.responses) < minResponses {
+			filteredCount++
 			continue
 		}
 
@@ -78,6 +81,7 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		prompt, err := s.db.GetPrompt(ctx, promptID)
 		if err != nil || prompt == nil {
 			// Skip if prompt not found
+			filteredCount++
 			continue
 		}
 
@@ -128,6 +132,9 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		LowPerformers:        lowPerformers,
 		AvgEffectiveness:     avgEffectiveness,
 		TotalPromptsAnalyzed: len(promptPerformances),
+		TotalPromptsFound:    totalPrompts,
+		FilteredOutCount:     filteredCount,
+		MinResponsesRequired: minResponses,
 	}, nil
 }
 

@@ -10,6 +10,11 @@ import (
 
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/llm/anthropic"
+	"github.com/fissionx/gego/internal/llm/google"
+	"github.com/fissionx/gego/internal/llm/ollama"
+	"github.com/fissionx/gego/internal/llm/openai"
+	"github.com/fissionx/gego/internal/llm/perplexity"
 	"github.com/fissionx/gego/internal/models"
 )
 
@@ -30,7 +35,8 @@ func NewPromptGenerationService(database db.Database, registry *llm.Registry) *P
 }
 
 // GeneratePromptsForBrand generates prompts for a brand, reusing existing ones where possible
-func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, website, category, domain, description string, count int) ([]models.Prompt, int, int, error) {
+// llmConfig is optional - if not provided, defaults to Google/Gemini
+func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, website, category, domain, description string, count int, llmConfig *models.LLMConfig) ([]models.Prompt, int, int, error) {
 	if count <= 0 {
 		count = 20
 	}
@@ -55,7 +61,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	}
 
 	// Step 2: Get or derive brand profile (determines domain/category if not provided)
-	brandProfile, err := s.getOrCreateBrandProfile(ctx, brand, website, category, domain, description, websiteContent)
+	brandProfile, err := s.getOrCreateBrandProfile(ctx, brand, website, category, domain, description, websiteContent, llmConfig)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to get brand profile: %w", err)
 	}
@@ -105,7 +111,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 			fmt.Printf("♻️  Found %d generic prompts, generating %d more to reach %d total\n", existingCount, needToGenerate, count)
 
 			// Generate additional prompts
-			newPromptTexts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, needToGenerate, existingPrompts)
+			newPromptTexts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, needToGenerate, existingPrompts, llmConfig)
 			if err != nil {
 				// If generation fails, return what we have
 				fmt.Printf("⚠️  Failed to generate additional prompts: %v. Returning %d existing prompts.\n", err, existingCount)
@@ -137,7 +143,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	}
 
 	// Step 4: No library exists, generate new prompts with enriched context
-	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, count, nil)
+	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, count, nil, llmConfig)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to generate prompts: %w", err)
 	}
@@ -176,7 +182,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 }
 
 // getOrCreateBrandProfile gets existing profile or derives one using LLM
-func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, brand, website, category, domain, description string, websiteContent *WebsiteContent) (*models.BrandProfile, error) {
+func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, brand, website, category, domain, description string, websiteContent *WebsiteContent, llmConfig *models.LLMConfig) (*models.BrandProfile, error) {
 	// Check if profile already exists
 	profile, err := s.db.GetBrandProfile(ctx, brand)
 	if err != nil {
@@ -212,7 +218,7 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 	}
 
 	// Otherwise, derive domain/category using LLM with enriched context
-	derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description, websiteContent)
+	derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description, websiteContent, llmConfig)
 	if err != nil {
 		// Fallback to defaults if derivation fails
 		derivedDomain = "general"
@@ -235,16 +241,53 @@ func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, b
 	return profile, nil
 }
 
-// deriveBrandMetadata uses LLM to derive domain and category for a brand
-func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand, description string, websiteContent *WebsiteContent) (string, string, error) {
-	// Get an LLM for metadata derivation
-	provider, ok := s.llmRegistry.Get("google")
-	if !ok {
-		providers := s.llmRegistry.List()
-		if len(providers) == 0 {
-			return "", "", fmt.Errorf("no LLM providers available")
+// createProviderFromConfig creates an LLM provider instance from LLMConfig
+func (s *PromptGenerationService) createProviderFromConfig(llmConfig *models.LLMConfig) (llm.Provider, error) {
+	if llmConfig == nil {
+		// Default to Google/Gemini if no LLM config provided
+		provider, ok := s.llmRegistry.Get("google")
+		if !ok {
+			// Fallback to any available provider
+			providers := s.llmRegistry.List()
+			if len(providers) == 0 {
+				return nil, fmt.Errorf("no LLM providers available")
+			}
+			provider, _ = s.llmRegistry.Get(providers[0])
 		}
-		provider, _ = s.llmRegistry.Get(providers[0])
+		return provider, nil
+	}
+
+	// Create provider with specific API key from config
+	var provider llm.Provider
+	switch llmConfig.Provider {
+	case "openai":
+		provider = openai.New(llmConfig.APIKey, llmConfig.BaseURL)
+	case "anthropic":
+		provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
+	case "ollama":
+		provider = ollama.New(llmConfig.BaseURL)
+	case "google":
+		provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
+	case "perplexity":
+		provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
+	default:
+		return nil, fmt.Errorf("unknown LLM provider: %s", llmConfig.Provider)
+	}
+
+	return provider, nil
+}
+
+// deriveBrandMetadata uses LLM to derive domain and category for a brand
+func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand, description string, websiteContent *WebsiteContent, llmConfig *models.LLMConfig) (string, string, error) {
+	// Create provider from config
+	provider, err := s.createProviderFromConfig(llmConfig)
+	if err != nil {
+		return "", "", err
+	}
+
+	var model string
+	if llmConfig != nil {
+		model = llmConfig.Model
 	}
 
 	// Build rich context from available sources
@@ -304,6 +347,7 @@ Examples of BAD (too specific) categories:
 Choose the BROADEST category that accurately describes what this organization does.`, brandContext)
 
 	response, err := provider.Generate(ctx, derivationPrompt, llm.Config{
+		Model:       model,
 		Temperature: 0.3, // Low temperature for consistent categorization
 		MaxTokens:   200,
 	})
@@ -489,16 +533,16 @@ func calculatePromptTypeDistribution(total int) map[string]int {
 }
 
 // generateNewPrompts generates new prompts using an LLM
-func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, websiteContent *WebsiteContent, count int, existingPrompts []models.Prompt) ([]string, error) {
-	// Get a capable LLM for generation (prefer Google for latest info)
-	provider, ok := s.llmRegistry.Get("google")
-	if !ok {
-		// Fallback to any available provider
-		providers := s.llmRegistry.List()
-		if len(providers) == 0 {
-			return nil, fmt.Errorf("no LLM providers available")
-		}
-		provider, _ = s.llmRegistry.Get(providers[0])
+func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, websiteContent *WebsiteContent, count int, existingPrompts []models.Prompt, llmConfig *models.LLMConfig) ([]string, error) {
+	// Create provider from config
+	provider, err := s.createProviderFromConfig(llmConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var model string
+	if llmConfig != nil {
+		model = llmConfig.Model
 	}
 
 	// Build the generation prompt
@@ -592,7 +636,7 @@ Generate exactly %d questions in this format:`, count, brandInfo, existingText, 
 		distribution["what"], distribution["how"], distribution["comparison"], distribution["top_best"], distribution["brand"], count)
 
 	response, err := provider.Generate(ctx, generationPrompt, llm.Config{
-		Model:       "",
+		Model:       model,
 		Temperature: 0.9, // High creativity for diverse prompts
 		MaxTokens:   4096,
 	})

@@ -96,6 +96,11 @@ type Response struct {
 	// Enhanced source analytics
 	GroundingDomains []string `json:"groundingDomains,omitempty" bson:"grounding_domains,omitempty"`
 
+	// Web Search Metadata (for ChatGPT/Gemini-like experience)
+	WebSearchQueries []string               `json:"webSearchQueries,omitempty" bson:"web_search_queries,omitempty"` // Search queries used by the model
+	WebSearchCalls  []WebSearchCallDetails `json:"webSearchCalls,omitempty" bson:"web_search_calls,omitempty"`       // Detailed search call information
+	SearchAnswer     string                 `json:"searchAnswer,omitempty" bson:"search_answer,omitempty"`           // Original search answer before GEO analysis
+
 	// Time-series support
 	Week    string `json:"week,omitempty" bson:"week,omitempty"`
 	Month   string `json:"month,omitempty" bson:"month,omitempty"`
@@ -177,4 +182,13 @@ type BrandCompetitors struct {
 	Source        string    `json:"source" bson:"source"`                // "suggested", "custom", or "mixed"
 	CreatedAt     time.Time `json:"createdAt" bson:"created_at"`
 	UpdatedAt     time.Time `json:"updatedAt" bson:"updated_at"`
+}
+
+// WebSearchCallDetails represents detailed information about a web search call
+type WebSearchCallDetails struct {
+	Query       string    `json:"query" bson:"query"`             // The search query used
+	Status      string    `json:"status" bson:"status"`           // Status: "completed", "in_progress", "failed"
+	Sources     []string  `json:"sources" bson:"sources"`         // URLs found in this search
+	ResultCount int       `json:"resultCount" bson:"result_count"` // Number of results
+	Timestamp   time.Time `json:"timestamp" bson:"timestamp"`      // When the search was performed
 }
