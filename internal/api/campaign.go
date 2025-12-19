@@ -41,7 +41,8 @@ func (s *Server) deletePromptsByBrand(c *gin.Context) {
 }
 
 // getBrandPrompts handles GET /api/v1/geo/prompts?brand=X
-// Returns all prompts for a brand with available LLMs
+// Returns only saved/finalized active prompts for a brand (not suggested prompts)
+// Only prompts that have been saved via /api/v1/geo/prompts/save are returned
 func (s *Server) getBrandPrompts(c *gin.Context) {
 	brand := c.Query("brand")
 	if brand == "" {
@@ -51,17 +52,23 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Get ALL prompts for this brand from the prompts collection
-	allPrompts, err := s.db.ListPrompts(ctx, nil)
+	// Get only enabled prompts for this brand (saved/finalized prompts)
+	// Suggested prompts are typically not enabled or don't have the brand set properly
+	enabled := true
+	allPrompts, err := s.db.ListPrompts(ctx, &enabled)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to list prompts: "+err.Error())
 		return
 	}
 
-	// Filter prompts for this brand (case-insensitive)
+	// Filter prompts for this brand (case-insensitive) and ensure they are enabled
+	// Only return prompts that are active (enabled) and associated with the brand
 	var brandPrompts []models.PromptDetail
 	for _, prompt := range allPrompts {
-		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) {
+		// Only include prompts that:
+		// 1. Have the brand set and match (case-insensitive)
+		// 2. Are enabled (active/finalized prompts)
+		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
 			brandPrompts = append(brandPrompts, models.PromptDetail{
 				ID:         prompt.ID,
 				Template:   prompt.Template,

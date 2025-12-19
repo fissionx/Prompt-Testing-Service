@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -501,13 +502,33 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 	createdCount := 0
 	existingCount := 0
 
-	// Add existing prompt IDs (validate they exist)
+	// First, disable all existing prompts for this brand (they will be replaced by the saved ones)
+	// This ensures only prompts saved via this endpoint are active
+	allBrandPrompts, _ := s.db.ListPrompts(ctx, nil)
+	for _, prompt := range allBrandPrompts {
+		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, req.Brand) {
+			prompt.Enabled = false
+			_ = s.db.UpdatePrompt(ctx, prompt)
+		}
+	}
+
+	// Add existing prompt IDs (validate they exist and mark them as saved/finalized)
 	for _, promptID := range req.PromptIDs {
 		prompt, err := s.db.GetPrompt(ctx, promptID)
 		if err != nil || prompt == nil {
 			// Skip invalid prompt IDs but continue with others
 			continue
 		}
+
+		// Mark prompt as saved/finalized: ensure it's enabled and has the brand set
+		prompt.Enabled = true
+		prompt.Brand = req.Brand
+		prompt.UpdatedAt = time.Now()
+		if err := s.db.UpdatePrompt(ctx, prompt); err != nil {
+			// Log error but continue
+			continue
+		}
+
 		savedPromptIDs = append(savedPromptIDs, promptID)
 		existingCount++
 	}
