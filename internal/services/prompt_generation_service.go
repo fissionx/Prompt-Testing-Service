@@ -725,7 +725,7 @@ func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts [
 			Domain:     domain,
 			Brand:      brand,
 			Generated:  true,
-			Enabled:    true,
+			Enabled:    false, // Generated prompts are suggestions - only enabled when saved via /save API
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now(),
 		}
