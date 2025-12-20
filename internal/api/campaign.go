@@ -62,6 +62,12 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 	}
 	forceRefresh := c.Query("forceRefresh") == "true"
 
+	s.getBrandPromptsResponse(c, brand, website, category, domain, description, count, forceRefresh)
+}
+
+// getBrandPromptsResponse is a helper function that builds and returns the prompts response
+// This is used by both GET and POST/DELETE endpoints to ensure consistent response format
+func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, category, domain, description string, count int, forceRefresh bool) {
 	ctx := c.Request.Context()
 
 	// Get active and suggested prompts
@@ -112,8 +118,8 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 			for _, suggested := range suggestResponse.Prompts {
 				if !activePromptIDMap[suggested.ID] {
 					filteredSuggested = append(filteredSuggested, suggested)
-		}
-	}
+				}
+			}
 
 			response.SuggestedPrompts = filteredSuggested
 			response.LLMDetails = suggestResponse.LLMDetails

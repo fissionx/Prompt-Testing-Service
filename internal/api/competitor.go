@@ -13,6 +13,7 @@ import (
 // Adds new competitors to the existing list (does not replace)
 // UI can send just the new competitor(s) to add - backend will merge with existing list
 // Deduplicates automatically to prevent adding the same competitor twice
+// Returns the same response format as GET /api/v1/geo/competitors?brand=X
 func (s *Server) saveCompetitors(c *gin.Context) {
 	var req models.SaveCompetitorsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -32,7 +33,7 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	response, err := s.competitorService.SaveCompetitors(
+	_, err := s.competitorService.SaveCompetitors(
 		ctx,
 		req.Brand,
 		req.Competitors,
@@ -43,11 +44,8 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    response,
-		Message: response.Message,
-	})
+	// Return the updated competitors list in the same format as GET endpoint
+	s.getCompetitorsResponse(c, req.Brand, "", "", "", false)
 }
 
 // getCompetitors handles GET /api/v1/geo/competitors
@@ -65,6 +63,12 @@ func (s *Server) getCompetitors(c *gin.Context) {
 	category := c.Query("category")
 	forceRefresh := c.Query("forceRefresh") == "true"
 
+	s.getCompetitorsResponse(c, brand, website, description, category, forceRefresh)
+}
+
+// getCompetitorsResponse is a helper function that builds and returns the competitors response
+// This is used by both GET and POST/DELETE endpoints to ensure consistent response format
+func (s *Server) getCompetitorsResponse(c *gin.Context, brand, website, description, category string, forceRefresh bool) {
 	ctx := c.Request.Context()
 
 	// Get saved competitors
@@ -153,6 +157,7 @@ func (s *Server) getCompetitors(c *gin.Context) {
 // Supports two modes:
 // 1. Delete all competitors: DELETE /api/v1/geo/competitors?brand=Apple
 // 2. Delete individual competitor: DELETE /api/v1/geo/competitors?brand=Apple&name=Samsung
+// Returns the same response format as GET /api/v1/geo/competitors?brand=X
 func (s *Server) deleteCompetitors(c *gin.Context) {
 	brand := c.Query("brand")
 	if brand == "" {
@@ -165,7 +170,7 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 
 	// If name is provided, delete individual competitor
 	if competitorName != "" {
-		response, err := s.competitorService.DeleteCompetitorByName(ctx, brand, competitorName)
+		_, err := s.competitorService.DeleteCompetitorByName(ctx, brand, competitorName)
 		if err != nil {
 			// Check if it's a "not found" error
 			if strings.Contains(err.Error(), "not found") {
@@ -176,11 +181,8 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: response.Message,
-		})
+		// Return the updated competitors list in the same format as GET endpoint
+		s.getCompetitorsResponse(c, brand, "", "", "", false)
 		return
 	}
 
@@ -191,8 +193,6 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Message: "All competitors moved to suggested list successfully",
-	})
+	// Return the updated competitors list in the same format as GET endpoint
+	s.getCompetitorsResponse(c, brand, "", "", "", false)
 }

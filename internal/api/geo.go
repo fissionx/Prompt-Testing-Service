@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -490,6 +489,7 @@ func (s *Server) listScheduledCampaigns(c *gin.Context) {
 // saveCustomPrompts handles POST /api/v1/geo/prompts/save
 // Accepts both promptIds from suggested prompts and custom prompts
 // Moves prompts from suggested list to active list
+// Returns the same response format as GET /api/v1/geo/prompts?brand=X
 func (s *Server) saveCustomPrompts(c *gin.Context) {
 	var req models.SaveCustomPromptsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -519,7 +519,7 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 		source = "suggested"
 	}
 
-	response, err := s.brandPromptService.SavePrompts(
+	_, err := s.brandPromptService.SavePrompts(
 		ctx,
 		req.Brand,
 		req.PromptIDs,
@@ -531,19 +531,8 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 		return
 	}
 
-	// Convert to SaveCustomPromptsResponse for backward compatibility
-	customResponse := models.SaveCustomPromptsResponse{
-		Brand:          response.Brand,
-		SavedPromptIDs: response.SavedPromptIDs,
-		CreatedCount:   response.CreatedCount,
-		ExistingCount:  response.ExistingCount,
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    customResponse,
-		Message: "Prompts saved successfully",
-	})
+	// Return the updated prompts list in the same format as GET endpoint
+	s.getBrandPromptsResponse(c, req.Brand, "", "", "", "", 20, false)
 }
 
 // deletePromptsByIDs handles DELETE /api/v1/geo/prompts
@@ -552,43 +541,32 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 //   - Query parameters: ?brand=X&id=Y (single prompt)
 //   - JSON body: { "promptIds": ["id1", "id2"] } with ?brand=X (multiple prompts)
 //   - Query parameter only: ?brand=X (delete all prompts for brand)
+//
+// Returns the same response format as GET /api/v1/geo/prompts?brand=X
 func (s *Server) deletePromptsByIDs(c *gin.Context) {
 	brand := c.Query("brand")
 	promptID := c.Query("id") // Individual prompt ID to delete
 
+	if brand == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required. Provide either 'id' query parameter or 'promptIds' in request body")
+		return
+	}
+
 	ctx := c.Request.Context()
 
 	// If brand is provided without prompt ID, check if we should delete all
-	if brand != "" && promptID == "" {
+	if promptID == "" {
 		// Try to parse JSON body (optional - won't fail if empty)
 		var req models.DeletePromptsRequest
 		if err := c.ShouldBindJSON(&req); err == nil && len(req.PromptIDs) > 0 {
 			// Multiple prompt IDs from body
 			deletedCount := 0
-			failedCount := 0
-			deletedIDs := make([]string, 0)
-			failedIDs := make([]string, 0)
-
 			for _, id := range req.PromptIDs {
 				if err := s.brandPromptService.DeletePrompt(ctx, brand, id); err != nil {
-					failedCount++
-					failedIDs = append(failedIDs, id)
+					// Continue with other IDs even if one fails
 					continue
 				}
 				deletedCount++
-				deletedIDs = append(deletedIDs, id)
-			}
-
-			response := models.DeletePromptsResponse{
-				DeletedCount: deletedCount,
-				FailedCount:  failedCount,
-			}
-
-			if len(deletedIDs) > 0 {
-				response.DeletedIDs = deletedIDs
-			}
-			if len(failedIDs) > 0 {
-				response.FailedIDs = failedIDs
 			}
 
 			if deletedCount == 0 {
@@ -596,20 +574,8 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 				return
 			}
 
-			if failedCount > 0 {
-				c.JSON(http.StatusOK, models.APIResponse{
-					Success: true,
-					Data:    response,
-					Message: fmt.Sprintf("Partially successful: %d deleted and moved to suggested, %d failed", deletedCount, failedCount),
-				})
-				return
-			}
-
-			c.JSON(http.StatusOK, models.APIResponse{
-				Success: true,
-				Data:    response,
-				Message: fmt.Sprintf("Successfully deleted %d prompt(s) and moved to suggested list", deletedCount),
-			})
+			// Return the updated prompts list in the same format as GET endpoint
+			s.getBrandPromptsResponse(c, brand, "", "", "", "", 20, false)
 			return
 		}
 
@@ -619,36 +585,19 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 			return
 		}
 
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data: models.DeletePromptsResponse{
-				DeletedCount: 0, // Count not available, but operation succeeded
-			},
-			Message: fmt.Sprintf("All prompts for brand %s have been moved to suggested list", brand),
-		})
+		// Return the updated prompts list in the same format as GET endpoint
+		s.getBrandPromptsResponse(c, brand, "", "", "", "", 20, false)
 		return
 	}
 
 	// Delete single prompt by ID from query parameter
-	if brand != "" && promptID != "" {
-		if err := s.brandPromptService.DeletePrompt(ctx, brand, promptID); err != nil {
-			s.errorResponse(c, http.StatusNotFound, "Failed to delete prompt: "+err.Error())
-			return
-		}
-
-		c.JSON(http.StatusOK, models.APIResponse{
-			Success: true,
-			Data: models.DeletePromptsResponse{
-				DeletedCount: 1,
-				DeletedIDs:   []string{promptID},
-			},
-			Message: fmt.Sprintf("Successfully deleted prompt %s and moved to suggested list", promptID),
-		})
+	if err := s.brandPromptService.DeletePrompt(ctx, brand, promptID); err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to delete prompt: "+err.Error())
 		return
 	}
 
-	// Invalid request - need either brand+id or brand+body
-	s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required. Provide either 'id' query parameter or 'promptIds' in request body")
+	// Return the updated prompts list in the same format as GET endpoint
+	s.getBrandPromptsResponse(c, brand, "", "", "", "", 20, false)
 }
 
 // cronToDescription converts a cron expression to human-readable text
