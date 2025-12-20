@@ -1,12 +1,12 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
@@ -41,8 +41,8 @@ func (s *Server) deletePromptsByBrand(c *gin.Context) {
 }
 
 // getBrandPrompts handles GET /api/v1/geo/prompts?brand=X
-// Returns only saved/finalized active prompts for a brand (not suggested prompts)
-// Only prompts that have been saved via /api/v1/geo/prompts/save are returned
+// Returns both active prompts and suggested prompts for a brand
+// If website parameter is provided, it will also fetch suggestions and filter out already active prompts
 func (s *Server) getBrandPrompts(c *gin.Context) {
 	brand := c.Query("brand")
 	if brand == "" {
@@ -50,66 +50,82 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 		return
 	}
 
+	website := c.Query("website")
+	category := c.Query("category")
+	domain := c.Query("domain")
+	description := c.Query("description")
+	count := 20 // Default count
+	if countStr := c.Query("count"); countStr != "" {
+		if parsed, err := strconv.Atoi(countStr); err == nil && parsed > 0 {
+			count = parsed
+		}
+	}
+	forceRefresh := c.Query("forceRefresh") == "true"
+
 	ctx := c.Request.Context()
 
-	// Get only enabled prompts for this brand (saved/finalized prompts)
-	// Suggested prompts are typically not enabled or don't have the brand set properly
-	enabled := true
-	allPrompts, err := s.db.ListPrompts(ctx, &enabled)
+	// Get active and suggested prompts
+	response, err := s.brandPromptService.GetPrompts(ctx, brand)
 	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to list prompts: "+err.Error())
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompts: "+err.Error())
 		return
 	}
 
-	// Filter prompts for this brand (case-insensitive) and ensure they are enabled
-	// Only return prompts that are active (enabled) and associated with the brand
-	var brandPrompts []models.PromptDetail
-	for _, prompt := range allPrompts {
-		// Only include prompts that:
-		// 1. Have the brand set and match (case-insensitive)
-		// 2. Are enabled (active/finalized prompts)
-		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
-			brandPrompts = append(brandPrompts, models.PromptDetail{
-				ID:         prompt.ID,
-				Template:   prompt.Template,
-				PromptType: prompt.PromptType,
-				Category:   prompt.Category,
-			})
+	// If website is provided, ensure we get suggestions (from cache or LLM)
+	// When prompts are empty, automatically generate prompts using LLM and cache them
+	if website != "" {
+		// Check if we need fresh suggestions (empty prompts list)
+		needsFreshSuggestions := len(response.ActivePrompts) == 0 && len(response.SuggestedPrompts) == 0
+		
+		// Only force refresh if:
+		// 1. Explicitly requested via forceRefresh parameter, OR
+		// 2. We need fresh suggestions (empty prompts list)
+		// Otherwise, use cached suggestions if available
+		shouldForceRefresh := forceRefresh || needsFreshSuggestions
+
+		suggestResponse, err := s.brandPromptService.SuggestPrompts(
+			ctx,
+			brand,
+			website,
+			category,
+			domain,
+			description,
+			count,
+			shouldForceRefresh, // Use cache if available, only force refresh when needed
+		)
+		if err != nil {
+			// If suggestion fails and we have no suggestions, return error
+			if len(response.SuggestedPrompts) == 0 {
+				s.errorResponse(c, http.StatusInternalServerError,
+					"Failed to get prompt suggestions: "+err.Error())
+				return
+			}
+			// Otherwise, fall back to existing SuggestedPrompts from database
+		} else {
+			// Filter the suggestions to exclude already active prompts
+			activePromptIDMap := make(map[string]bool)
+			for _, active := range response.ActivePrompts {
+				activePromptIDMap[active.ID] = true
+			}
+
+			var filteredSuggested []models.PromptDetail
+			for _, suggested := range suggestResponse.Prompts {
+				if !activePromptIDMap[suggested.ID] {
+					filteredSuggested = append(filteredSuggested, suggested)
 		}
 	}
 
-	// Get all enabled LLMs
-	allLLMs, _ := s.db.ListLLMs(ctx, nil)
-	var llms []models.LLMDetail
-	for _, llm := range allLLMs {
-		if llm.Enabled {
-			llms = append(llms, models.LLMDetail{
-				ID:       llm.ID,
-				Name:     llm.Name,
-				Provider: llm.Provider,
-				Model:    llm.Model,
-			})
+			response.SuggestedPrompts = filteredSuggested
+			response.LLMDetails = suggestResponse.LLMDetails
+
+			// When active prompts list is empty, ensure we have suggestions
+			if len(response.ActivePrompts) == 0 && len(response.SuggestedPrompts) == 0 && len(suggestResponse.Prompts) > 0 {
+				response.SuggestedPrompts = suggestResponse.Prompts
+			}
 		}
 	}
 
-	// Build response
-	response := map[string]interface{}{
-		"brand":   brand,
-		"prompts": brandPrompts,
-		"llms":    llms,
-		"total":   len(brandPrompts),
-	}
-
-	message := "Prompts retrieved successfully"
-	if len(brandPrompts) == 0 {
-		message = "No prompts found for this brand. Generate prompts first using /geo/prompts/generate"
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    response,
-		Message: message,
-	})
+	s.successResponse(c, response)
 }
 
 // SaveAndExecutePromptsRequest represents the request to save and execute prompts
@@ -219,34 +235,67 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		return
 	}
 
-	if _, err := s.db.DeletePromptsByBrand(ctx, req.Brand); err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to clear existing prompts: "+err.Error())
+	// Use BrandPromptService to properly manage prompts and preserve suggested prompts
+	// First, delete all active prompts (but preserve suggested prompts in BrandPrompts record)
+	if err := s.brandPromptService.DeleteAllPrompts(ctx, req.Brand); err != nil {
+		// If no BrandPrompts record exists, that's okay - we'll create one
+		fmt.Printf("Warning: failed to delete existing prompts: %v\n", err)
+	}
+
+	// Prepare prompt IDs and custom prompts for SavePrompts
+	var promptIDsFromSuggested []string
+	var customPromptsToSave []models.CustomPrompt
+
+	// Separate existing prompts (by ID) from new custom prompts
+	for _, seed := range seeds {
+		if seed.SourcePromptID != "" {
+			// This is an existing prompt ID - check if it exists
+			prompt, err := s.db.GetPrompt(ctx, seed.SourcePromptID)
+			if err == nil && prompt != nil {
+				// Use existing prompt - will be moved to active by SavePrompts
+				promptIDsFromSuggested = append(promptIDsFromSuggested, seed.SourcePromptID)
+			} else {
+				// Prompt doesn't exist, create it as custom
+				customPromptsToSave = append(customPromptsToSave, models.CustomPrompt{
+					Template:   seed.Template,
+					PromptType: string(seed.PromptType),
+					Category:   seed.Category,
+					Tags:       seed.Tags,
+				})
+			}
+		} else {
+			// This is a new custom prompt
+			customPromptsToSave = append(customPromptsToSave, models.CustomPrompt{
+				Template:   seed.Template,
+				PromptType: string(seed.PromptType),
+				Category:   seed.Category,
+				Tags:       seed.Tags,
+			})
+		}
+	}
+
+	// Use BrandPromptService to save prompts properly (preserves suggested prompts)
+	// This ensures the BrandPrompts record is properly maintained
+	source := "custom"
+	if len(promptIDsFromSuggested) > 0 && len(customPromptsToSave) > 0 {
+		source = "mixed"
+	} else if len(promptIDsFromSuggested) > 0 {
+		source = "suggested"
+	}
+
+	saveResponse, err := s.brandPromptService.SavePrompts(
+		ctx,
+		req.Brand,
+		promptIDsFromSuggested,
+		customPromptsToSave,
+		source,
+	)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to save prompts: "+err.Error())
 		return
 	}
 
-	allPromptIDs := make([]string, 0, len(seeds))
-	for _, seed := range seeds {
-		newPrompt := &models.Prompt{
-			ID:         uuid.New().String(),
-			Template:   seed.Template,
-			PromptType: seed.PromptType,
-			Category:   seed.Category,
-			Tags:       seed.Tags,
-			Brand:      req.Brand,
-			Generated:  seed.Generated,
-			Enabled:    true,
-			SourceID:   seed.SourcePromptID,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
-		}
-
-		if err := s.db.CreatePrompt(ctx, newPrompt); err != nil {
-			s.errorResponse(c, http.StatusInternalServerError, "Failed to save prompt: "+err.Error())
-			return
-		}
-
-		allPromptIDs = append(allPromptIDs, newPrompt.ID)
-	}
+	allPromptIDs := saveResponse.SavedPromptIDs
 
 	// Set defaults
 	if req.CampaignName == "" {

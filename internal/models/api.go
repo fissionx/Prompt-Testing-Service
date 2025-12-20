@@ -820,6 +820,15 @@ type SuggestCompetitorsResponse struct {
 	Competitors []Competitor `json:"competitors"`
 	Source      string       `json:"source"` // "cached", "computed", "responses"
 	Message     string       `json:"message,omitempty"`
+	LLMDetails  *LLMDetails  `json:"llmDetails,omitempty"` // Information about the LLM used for suggestions
+}
+
+// LLMDetails represents information about the LLM used for competitor suggestions
+type LLMDetails struct {
+	ID       string `json:"id"`       // LLM ID
+	Name     string `json:"name"`     // LLM name
+	Provider string `json:"provider"` // Provider name (e.g., "openai", "google")
+	Model    string `json:"model"`    // Model name
 }
 
 // SaveCompetitorsRequest represents the request to save user-defined competitors
@@ -838,6 +847,14 @@ type SaveCompetitorsResponse struct {
 	Message     string       `json:"message"`
 }
 
+// DeleteCompetitorResponse represents the response after deleting a competitor
+type DeleteCompetitorResponse struct {
+	Brand       string       `json:"brand"`
+	DeletedName string       `json:"deletedName"`
+	Competitors []Competitor `json:"competitors"` // Updated list after deletion
+	Message     string       `json:"message"`
+}
+
 // GetCompetitorsResponse represents the response with brand's saved competitors
 type GetCompetitorsResponse struct {
 	Brand         string       `json:"brand"`
@@ -845,4 +862,32 @@ type GetCompetitorsResponse struct {
 	SuggestedList []Competitor `json:"suggestedList,omitempty"` // Original suggestions for reference
 	Source        string       `json:"source"`
 	UpdatedAt     time.Time    `json:"updatedAt"`
+	LLMDetails    *LLMDetails  `json:"llmDetails,omitempty"` // Information about the LLM used for suggestions
+}
+
+// GetPromptsResponse represents the response with brand's active and suggested prompts
+type GetPromptsResponse struct {
+	Brand            string         `json:"brand"`
+	ActivePrompts    []PromptDetail `json:"activePrompts"`
+	SuggestedPrompts []PromptDetail `json:"suggestedPrompts,omitempty"`
+	Source           string         `json:"source"`
+	UpdatedAt        time.Time      `json:"updatedAt"`
+	LLMDetails       *LLMDetails    `json:"llmDetails,omitempty"` // Information about the LLM used for suggestions
+}
+
+// SuggestPromptsResponse represents the response with suggested prompts
+type SuggestPromptsResponse struct {
+	Brand      string         `json:"brand"`
+	Prompts    []PromptDetail `json:"prompts"`
+	Source     string         `json:"source"` // "cached", "llm"
+	Message    string         `json:"message,omitempty"`
+	LLMDetails *LLMDetails    `json:"llmDetails,omitempty"` // Information about the LLM used for suggestions
+}
+
+// SavePromptsResponse represents the response after saving prompts
+type SavePromptsResponse struct {
+	Brand          string   `json:"brand"`
+	SavedPromptIDs []string `json:"savedPromptIds"` // All prompt IDs (both existing and newly created)
+	CreatedCount   int      `json:"createdCount"`   // Number of new prompts created
+	ExistingCount  int      `json:"existingCount"`  // Number of existing prompt IDs provided
 }

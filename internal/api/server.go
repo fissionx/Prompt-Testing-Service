@@ -30,6 +30,7 @@ type Server struct {
 	dashboardService            *services.DashboardService
 	exportService               *services.ExportService
 	competitorService           *services.CompetitorService
+	brandPromptService          *services.BrandPromptService
 	llmRegistry                 *llm.Registry
 	router                      *gin.Engine
 	corsOrigin                  string
@@ -79,6 +80,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		dashboardService:            services.NewDashboardService(database),
 		exportService:               services.NewExportService(database),
 		competitorService:           services.NewCompetitorService(database, llmRegistry),
+		brandPromptService:          services.NewBrandPromptService(database, llmRegistry),
 		llmRegistry:                 llmRegistry,
 		router:                      router,
 		corsOrigin:                  corsOrigin,
@@ -156,7 +158,6 @@ func (s *Server) setupRoutes() {
 		geo.POST("/export", s.exportData)
 
 		// Competitor Management
-		geo.GET("/competitors/suggest", s.suggestCompetitors)
 		geo.POST("/competitors", s.saveCompetitors)
 		geo.GET("/competitors", s.getCompetitors)
 		geo.DELETE("/competitors", s.deleteCompetitors)

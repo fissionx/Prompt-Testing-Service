@@ -28,6 +28,7 @@ const (
 	collBrandProfiles    = "brand_profiles"
 	collBrandLogos       = "brand_logos"
 	collBrandCompetitors = "brand_competitors"
+	collBrandPrompts     = "brand_prompts"
 	collGEOCampaigns     = "geo_campaigns"
 )
 
@@ -1151,6 +1152,50 @@ func (m *MongoDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandComp
 	}
 
 	return competitorsList, nil
+}
+
+// SaveBrandPrompts saves or updates brand prompts
+func (m *MongoDB) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error {
+	now := time.Now()
+	if prompts.CreatedAt.IsZero() {
+		prompts.CreatedAt = now
+	}
+	prompts.UpdatedAt = now
+
+	doc := bson.M{
+		"_id":                  prompts.ID,
+		"brand":                prompts.Brand,
+		"active_prompt_ids":    prompts.ActivePromptIDs,
+		"suggested_prompt_ids": prompts.SuggestedPromptIDs,
+		"source":               prompts.Source,
+		"created_at":           prompts.CreatedAt,
+		"updated_at":           prompts.UpdatedAt,
+	}
+
+	// Upsert by brand - one prompt list per brand
+	opts := options.Replace().SetUpsert(true)
+	_, err := m.database.Collection(collBrandPrompts).ReplaceOne(
+		ctx,
+		bson.M{"brand": prompts.Brand},
+		doc,
+		opts,
+	)
+
+	return err
+}
+
+// GetBrandPrompts retrieves prompts for a specific brand
+func (m *MongoDB) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
+	var prompts models.BrandPrompts
+	err := m.database.Collection(collBrandPrompts).FindOne(ctx, bson.M{"brand": brand}).Decode(&prompts)
+	if err == mongo.ErrNoDocuments {
+		return nil, nil // Not found - not an error
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get brand prompts: %w", err)
+	}
+
+	return &prompts, nil
 }
 
 // SaveGEOCampaign saves or updates a GEO campaign

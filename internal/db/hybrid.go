@@ -360,6 +360,14 @@ func (h *HybridDB) GetBrandCompetitors(ctx context.Context, brand string) (*mode
 	return h.nosqlDB.GetBrandCompetitors(ctx, brand)
 }
 
+func (h *HybridDB) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error {
+	return h.nosqlDB.SaveBrandPrompts(ctx, prompts)
+}
+
+func (h *HybridDB) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
+	return h.nosqlDB.GetBrandPrompts(ctx, brand)
+}
+
 func (h *HybridDB) DeleteBrandCompetitors(ctx context.Context, brand string) error {
 	return h.nosqlDB.DeleteBrandCompetitors(ctx, brand)
 }

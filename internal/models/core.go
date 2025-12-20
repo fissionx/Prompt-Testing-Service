@@ -184,6 +184,17 @@ type BrandCompetitors struct {
 	UpdatedAt     time.Time `json:"updatedAt" bson:"updated_at"`
 }
 
+// BrandPrompts represents a brand's prompt list (both suggested and active)
+type BrandPrompts struct {
+	ID            string    `json:"id" bson:"_id"`
+	Brand         string    `json:"brand" bson:"brand"`
+	ActivePromptIDs []string `json:"activePromptIds" bson:"active_prompt_ids"` // Active prompt IDs (enabled prompts)
+	SuggestedPromptIDs []string `json:"suggestedPromptIds" bson:"suggested_prompt_ids"` // Suggested prompt IDs (cached from LLM)
+	Source        string    `json:"source" bson:"source"`                // "suggested", "custom", or "mixed"
+	CreatedAt     time.Time `json:"createdAt" bson:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" bson:"updated_at"`
+}
+
 // WebSearchCallDetails represents detailed information about a web search call
 type WebSearchCallDetails struct {
 	Query       string    `json:"query" bson:"query"`             // The search query used

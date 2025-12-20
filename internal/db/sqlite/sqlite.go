@@ -529,6 +529,16 @@ func (s *SQLite) GetBrandCompetitors(ctx context.Context, brand string) (*models
 	return nil, fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
 }
 
+// SaveBrandPrompts - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error {
+	return fmt.Errorf("brand prompts operations not supported in SQLite-only mode")
+}
+
+// GetBrandPrompts - Not implemented in SQLite (use MongoDB/Hybrid)
+func (s *SQLite) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
+	return nil, fmt.Errorf("brand prompts operations not supported in SQLite-only mode")
+}
+
 // DeleteBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
 func (s *SQLite) DeleteBrandCompetitors(ctx context.Context, brand string) error {
 	return fmt.Errorf("brand competitors operations not supported in SQLite-only mode")

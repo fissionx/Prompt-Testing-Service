@@ -30,7 +30,10 @@ func NewCompetitorService(database db.Database, llmRegistry *llm.Registry) *Comp
 }
 
 // SuggestCompetitors suggests competitors for a brand using LLM
-// Returns cached suggestions if available, otherwise uses LLM to generate suggestions
+// Returns cached suggestions if available (deterministic), otherwise uses LLM to generate and cache suggestions
+// First request: Uses LLM and caches results
+// Subsequent requests: Returns cached suggestions (unless forceRefresh=true)
+// Automatically tries all enabled LLMs until one works
 func (s *CompetitorService) SuggestCompetitors(
 	ctx context.Context,
 	brand string,
@@ -40,13 +43,17 @@ func (s *CompetitorService) SuggestCompetitors(
 	forceRefresh bool,
 ) (*models.SuggestCompetitorsResponse, error) {
 	// Check if we already have cached suggestions (unless force refresh)
+	var existing *models.BrandCompetitors
+	var err error
+	
 	if !forceRefresh {
-		existing, err := s.db.GetBrandCompetitors(ctx, brand)
+		existing, err = s.db.GetBrandCompetitors(ctx, brand)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing competitors: %w", err)
 		}
 
-		// If we have suggested list cached, return it
+		// If we have suggested list cached, return it (deterministic behavior)
+		// Note: LLM details not available for cached responses
 		if existing != nil && len(existing.SuggestedList) > 0 {
 			competitors := convertStringListToCompetitors(existing.SuggestedList)
 			return &models.SuggestCompetitorsResponse{
@@ -54,12 +61,21 @@ func (s *CompetitorService) SuggestCompetitors(
 				Competitors: competitors,
 				Source:      "cached",
 				Message:     "Returning cached competitor suggestions",
+				LLMDetails:  nil, // LLM details not available for cached responses
 			}, nil
+		}
+	} else {
+		// Even if force refresh, we need to get existing record to preserve saved competitors
+		existing, err = s.db.GetBrandCompetitors(ctx, brand)
+		if err != nil {
+			// Log error but continue - we'll create a new record
+			fmt.Printf("Warning: failed to check existing competitors when caching: %v\n", err)
 		}
 	}
 
-	// Use LLM to suggest competitors
-	competitorNames, err := s.suggestCompetitorsWithLLM(ctx, brand, website, description, category)
+	// Use LLM to suggest competitors (first request or force refresh)
+	// Tries all enabled LLMs until one works
+	competitorNames, llmDetails, err := s.suggestCompetitorsWithLLM(ctx, brand, website, description, category)
 	if err != nil {
 		return nil, fmt.Errorf("failed to suggest competitors: %w", err)
 	}
@@ -70,6 +86,7 @@ func (s *CompetitorService) SuggestCompetitors(
 			Competitors: []models.Competitor{},
 			Source:      "llm",
 			Message:     "No competitors could be identified. Please provide more details about your brand.",
+			LLMDetails:  llmDetails,
 		}, nil
 	}
 
@@ -77,13 +94,37 @@ func (s *CompetitorService) SuggestCompetitors(
 	competitors := convertStringListToCompetitors(competitorNames)
 
 	// Cache the suggestions for future use (store as strings for backward compatibility)
+	// Preserve existing saved competitors if they exist
+	var savedCompetitors []string
+	var id string
+	var createdAt time.Time
+	var source string
+
+	if existing != nil {
+		// Preserve existing saved competitors and metadata
+		savedCompetitors = existing.Competitors
+		id = existing.ID
+		createdAt = existing.CreatedAt
+		// Keep existing source if competitors are saved, otherwise mark as suggested
+		if len(savedCompetitors) > 0 {
+			source = existing.Source
+		} else {
+			source = "suggested"
+		}
+	} else {
+		// New record
+		id = uuid.New().String()
+		createdAt = time.Now()
+		source = "suggested"
+	}
+
 	brandCompetitors := &models.BrandCompetitors{
-		ID:            uuid.New().String(),
+		ID:            id,
 		Brand:         brand,
-		Competitors:   []string{},  // Not yet confirmed by user
-		SuggestedList: competitorNames, // LLM-suggested list (as strings)
-		Source:        "suggested",
-		CreatedAt:     time.Now(),
+		Competitors:   savedCompetitors, // Preserve existing saved competitors
+		SuggestedList: competitorNames,  // LLM-suggested list (as strings) - cache for deterministic behavior
+		Source:        source,
+		CreatedAt:     createdAt,
 		UpdatedAt:     time.Now(),
 	}
 
@@ -97,27 +138,77 @@ func (s *CompetitorService) SuggestCompetitors(
 		Competitors: competitors,
 		Source:      "llm",
 		Message:     fmt.Sprintf("Found %d competitors for %s", len(competitors), brand),
+		LLMDetails:  llmDetails,
 	}, nil
 }
 
 // suggestCompetitorsWithLLM uses LLM to suggest competitors based on brand info
+// Tries all enabled LLMs in the system until one works successfully
+// Returns results from the first working LLM along with LLM details
 func (s *CompetitorService) suggestCompetitorsWithLLM(
 	ctx context.Context,
 	brand string,
 	website string,
 	description string,
 	category string,
-) ([]string, error) {
-	// Get an LLM provider (prefer Google for latest info)
-	provider, ok := s.llmRegistry.Get("google")
-	if !ok {
-		// Fallback to any available provider
-		providers := s.llmRegistry.List()
-		if len(providers) == 0 {
-			return nil, fmt.Errorf("no LLM providers available")
-		}
-		provider, _ = s.llmRegistry.Get(providers[0])
+) ([]string, *models.LLMDetails, error) {
+	// Get all enabled LLMs from the database
+	enabled := true
+	llms, err := s.db.ListLLMs(ctx, &enabled)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get enabled LLMs: %w", err)
 	}
+
+	if len(llms) == 0 {
+		return nil, nil, fmt.Errorf("no enabled LLMs found in the system")
+	}
+
+	// Try each LLM until one works
+	var lastErr error
+	for _, llmConfig := range llms {
+		// Get the provider from registry using the provider name
+		provider, ok := s.llmRegistry.Get(llmConfig.Provider)
+	if !ok {
+			fmt.Printf("Warning: LLM provider '%s' not found in registry for LLM %s, trying next...\n", llmConfig.Provider, llmConfig.Name)
+			continue
+		}
+
+		// Try to get suggestions with this LLM
+		competitorNames, err := s.tryLLMForSuggestions(ctx, provider, llmConfig, brand, website, description, category)
+		if err == nil && len(competitorNames) > 0 {
+			// Success! Return the results with LLM details
+			llmDetails := &models.LLMDetails{
+				ID:       llmConfig.ID,
+				Name:     llmConfig.Name,
+				Provider: llmConfig.Provider,
+				Model:    llmConfig.Model,
+			}
+			return competitorNames, llmDetails, nil
+		}
+
+		// This LLM failed, log and try next
+		if err != nil {
+			fmt.Printf("Warning: LLM %s (%s) failed: %v, trying next...\n", llmConfig.Name, llmConfig.Provider, err)
+			lastErr = err
+		} else {
+			fmt.Printf("Warning: LLM %s (%s) returned empty results, trying next...\n", llmConfig.Name, llmConfig.Provider)
+		}
+	}
+
+	// All LLMs failed
+	return nil, nil, fmt.Errorf("all enabled LLMs failed. Last error: %w", lastErr)
+}
+
+// tryLLMForSuggestions attempts to get competitor suggestions from a specific LLM
+func (s *CompetitorService) tryLLMForSuggestions(
+	ctx context.Context,
+	provider llm.Provider,
+	llmConfig *models.LLMConfig,
+	brand string,
+	website string,
+	description string,
+	category string,
+) ([]string, error) {
 
 	// Scrape website if provided to enrich context
 	var websiteContent *WebsiteContent
@@ -198,20 +289,34 @@ Example response format:
 RESPOND NOW:`, brandContext)
 
 	// Call LLM
-	config := llm.Config{
+	llmConfigStruct := llm.Config{
 		Temperature: 0.3, // Lower temperature for more focused results
 		MaxTokens:   500,
 	}
 
-	response, err := provider.Generate(ctx, prompt, config)
+	// Use model from LLM config if available
+	if llmConfig.Model != "" {
+		llmConfigStruct.Model = llmConfig.Model
+	}
+
+	response, err := provider.Generate(ctx, prompt, llmConfigStruct)
 	if err != nil {
 		return nil, fmt.Errorf("LLM generation failed: %w", err)
+	}
+
+	// Check for errors in response
+	if response.Error != "" {
+		return nil, fmt.Errorf("LLM returned error: %s", response.Error)
 	}
 
 	// Parse the JSON response
 	competitors, err := parseCompetitorResponse(response.Text)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
+	}
+
+	if len(competitors) == 0 {
+		return nil, fmt.Errorf("LLM returned empty competitor list")
 	}
 
 	return competitors, nil
@@ -268,18 +373,19 @@ func extractCompetitorsFromText(text string) []string {
 	return competitors
 }
 
-// SaveCompetitors saves user-defined competitors for a brand
+// SaveCompetitors adds new competitors to the existing list for a brand (does not replace)
+// Deduplicates competitors by name (case-insensitive) to prevent duplicates
 func (s *CompetitorService) SaveCompetitors(
 	ctx context.Context,
 	brand string,
-	competitors []models.Competitor,
+	newCompetitors []models.Competitor,
 	source string,
 ) (*models.SaveCompetitorsResponse, error) {
 	if brand == "" {
 		return nil, fmt.Errorf("brand is required")
 	}
 
-	if len(competitors) == 0 {
+	if len(newCompetitors) == 0 {
 		return nil, fmt.Errorf("at least one competitor is required")
 	}
 
@@ -288,34 +394,60 @@ func (s *CompetitorService) SaveCompetitors(
 		source = "custom"
 	}
 
-	// Check if we have existing data
+	// Get existing data
 	existing, err := s.db.GetBrandCompetitors(ctx, brand)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing competitors: %w", err)
 	}
 
 	var suggestedList []string
+	var existingCompetitors []models.Competitor
 	var id string
 	var createdAt time.Time
+	var existingSource string
 
 	if existing != nil {
-		// Preserve suggested list and creation time
+		// Preserve suggested list, existing competitors, and metadata
 		suggestedList = existing.SuggestedList
+		existingCompetitors = convertStringListToCompetitors(existing.Competitors)
 		id = existing.ID
 		createdAt = existing.CreatedAt
+		existingSource = existing.Source
+		// Keep existing source if it's not empty, otherwise use new source
+		if existingSource != "" && existingSource != "suggested" {
+			source = existingSource
+		}
 	} else {
 		id = uuid.New().String()
 		createdAt = time.Now()
 	}
 
-	// Convert Competitor objects to strings for storage (store as "name|domain" format to preserve domains)
-	competitorStrings := convertCompetitorsToStorageFormat(competitors)
+	// Build a map of existing competitor names (case-insensitive) for deduplication
+	existingNames := make(map[string]bool)
+	for _, comp := range existingCompetitors {
+		name := strings.ToLower(strings.TrimSpace(comp.Name))
+		existingNames[name] = true
+	}
 
-	// Create updated competitor list
+	// Merge new competitors with existing ones, avoiding duplicates
+	addedCount := 0
+	for _, newComp := range newCompetitors {
+		newName := strings.ToLower(strings.TrimSpace(newComp.Name))
+		if !existingNames[newName] {
+			existingCompetitors = append(existingCompetitors, newComp)
+			existingNames[newName] = true
+			addedCount++
+		}
+	}
+
+	// Convert merged competitor list to storage format
+	allCompetitorStrings := convertCompetitorsToStorageFormat(existingCompetitors)
+
+	// Save the merged competitor list
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            id,
 		Brand:         brand,
-		Competitors:   competitorStrings,
+		Competitors:   allCompetitorStrings,
 		SuggestedList: suggestedList,
 		Source:        source,
 		CreatedAt:     createdAt,
@@ -326,12 +458,23 @@ func (s *CompetitorService) SaveCompetitors(
 		return nil, fmt.Errorf("failed to save competitors: %w", err)
 	}
 
+	// Build response message
+	var message string
+	if addedCount == 0 {
+		message = fmt.Sprintf("No new competitors added. All %d competitor(s) already exist for %s", len(newCompetitors), brand)
+	} else if addedCount < len(newCompetitors) {
+		skipped := len(newCompetitors) - addedCount
+		message = fmt.Sprintf("Added %d new competitor(s) to %s. %d competitor(s) were already in the list", addedCount, brand, skipped)
+	} else {
+		message = fmt.Sprintf("Successfully added %d competitor(s) to %s", addedCount, brand)
+	}
+
 	return &models.SaveCompetitorsResponse{
 		Brand:       brand,
-		Competitors: competitors,
+		Competitors: existingCompetitors, // Return the full merged list
 		Source:      source,
 		SavedAt:     brandCompetitors.UpdatedAt,
-		Message:     fmt.Sprintf("Successfully saved %d competitors for %s", len(competitors), brand),
+		Message:     message,
 	}, nil
 }
 
@@ -371,7 +514,9 @@ func (s *CompetitorService) GetCompetitors(
 	}, nil
 }
 
-// DeleteCompetitors deletes saved competitors for a brand
+// DeleteCompetitors moves all competitors from the competitors list to suggestedList
+// This preserves the data and makes the suggestedList reliable
+// The existing suggestedList is preserved and competitors are added to it (no duplicates)
 func (s *CompetitorService) DeleteCompetitors(
 	ctx context.Context,
 	brand string,
@@ -380,7 +525,161 @@ func (s *CompetitorService) DeleteCompetitors(
 		return fmt.Errorf("brand is required")
 	}
 
-	return s.db.DeleteBrandCompetitors(ctx, brand)
+	// Get existing data
+	existing, err := s.db.GetBrandCompetitors(ctx, brand)
+	if err != nil {
+		return fmt.Errorf("failed to get existing competitors: %w", err)
+	}
+
+	if existing == nil {
+		// No competitors found, nothing to do
+		return nil
+	}
+
+	// Convert to Competitor objects
+	existingCompetitors := convertStringListToCompetitors(existing.Competitors)
+	existingSuggestedList := convertStringListToCompetitors(existing.SuggestedList)
+
+	// If no competitors to move, just return
+	if len(existingCompetitors) == 0 {
+		return nil
+	}
+
+	// Build a map of existing suggested competitor names (case-insensitive) for deduplication
+	suggestedNames := make(map[string]bool)
+	for _, suggested := range existingSuggestedList {
+		name := strings.ToLower(strings.TrimSpace(suggested.Name))
+		suggestedNames[name] = true
+	}
+
+	// Add all competitors to suggestedList (avoiding duplicates)
+	updatedSuggestedList := existingSuggestedList
+	for _, comp := range existingCompetitors {
+		compNameLower := strings.ToLower(strings.TrimSpace(comp.Name))
+		if !suggestedNames[compNameLower] {
+			updatedSuggestedList = append(updatedSuggestedList, comp)
+			suggestedNames[compNameLower] = true
+		}
+	}
+
+	// Convert updated suggestedList to storage format
+	updatedSuggestedStrings := convertCompetitorsToStorageFormat(updatedSuggestedList)
+
+	// Update the record: clear competitors list, update suggestedList
+	brandCompetitors := &models.BrandCompetitors{
+		ID:            existing.ID,
+		Brand:         existing.Brand,
+		Competitors:   []string{}, // Clear competitors list
+		SuggestedList: updatedSuggestedStrings, // Add all competitors to suggestedList
+		Source:        existing.Source,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     time.Now(),
+	}
+
+	if err := s.db.SaveBrandCompetitors(ctx, brandCompetitors); err != nil {
+		return fmt.Errorf("failed to update competitors: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteCompetitorByName deletes a specific competitor by name from a brand's list
+// Returns the updated competitor list and a message indicating success
+func (s *CompetitorService) DeleteCompetitorByName(
+	ctx context.Context,
+	brand string,
+	competitorName string,
+) (*models.DeleteCompetitorResponse, error) {
+	if brand == "" {
+		return nil, fmt.Errorf("brand is required")
+	}
+
+	if competitorName == "" {
+		return nil, fmt.Errorf("competitor name is required")
+	}
+
+	// Get existing competitors
+	existing, err := s.db.GetBrandCompetitors(ctx, brand)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing competitors: %w", err)
+	}
+
+	if existing == nil {
+		return nil, fmt.Errorf("no competitors found for brand: %s", brand)
+	}
+
+	// Convert existing competitors to Competitor objects
+	existingCompetitors := convertStringListToCompetitors(existing.Competitors)
+	existingSuggestedList := convertStringListToCompetitors(existing.SuggestedList)
+
+	// Find and remove the competitor (case-insensitive match)
+	competitorNameLower := strings.ToLower(strings.TrimSpace(competitorName))
+	var deletedCompetitor *models.Competitor
+	found := false
+	updatedCompetitors := make([]models.Competitor, 0, len(existingCompetitors))
+
+	for _, comp := range existingCompetitors {
+		compNameLower := strings.ToLower(strings.TrimSpace(comp.Name))
+		if compNameLower == competitorNameLower {
+			found = true
+			// Save the deleted competitor info to add back to suggestedList (make a copy)
+			compCopy := comp
+			deletedCompetitor = &compCopy
+			// Skip this competitor (don't add it to updated list)
+			continue
+		}
+		updatedCompetitors = append(updatedCompetitors, comp)
+	}
+
+	if !found {
+		return nil, fmt.Errorf("competitor '%s' not found in the list for brand: %s", competitorName, brand)
+	}
+
+	// Add deleted competitor back to suggestedList (if not already present)
+	updatedSuggestedList := existingSuggestedList
+	if deletedCompetitor != nil {
+		// Check if it's already in suggestedList (case-insensitive)
+		alreadyInSuggested := false
+		deletedNameLower := strings.ToLower(strings.TrimSpace(deletedCompetitor.Name))
+		for _, suggested := range existingSuggestedList {
+			suggestedNameLower := strings.ToLower(strings.TrimSpace(suggested.Name))
+			if suggestedNameLower == deletedNameLower {
+				alreadyInSuggested = true
+				break
+			}
+		}
+
+		// Add to suggestedList if not already present
+		if !alreadyInSuggested {
+			updatedSuggestedList = append(existingSuggestedList, *deletedCompetitor)
+		}
+	}
+
+	// Convert updated lists back to storage format
+	updatedCompetitorStrings := convertCompetitorsToStorageFormat(updatedCompetitors)
+	updatedSuggestedStrings := convertCompetitorsToStorageFormat(updatedSuggestedList)
+
+	// Update the brand competitors record
+	brandCompetitors := &models.BrandCompetitors{
+		ID:            existing.ID,
+		Brand:         existing.Brand,
+		Competitors:   updatedCompetitorStrings,
+		SuggestedList: updatedSuggestedStrings, // Add deleted competitor back to suggestedList
+		Source:        existing.Source,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     time.Now(),
+	}
+
+	if err := s.db.SaveBrandCompetitors(ctx, brandCompetitors); err != nil {
+		return nil, fmt.Errorf("failed to update competitors: %w", err)
+	}
+
+	return &models.DeleteCompetitorResponse{
+		Brand:       brand,
+		DeletedName: competitorName,
+		Competitors: updatedCompetitors,
+		Message:     fmt.Sprintf("Successfully deleted competitor '%s' from %s", competitorName, brand),
+	}, nil
 }
 
 // GetCompetitorsForAnalytics gets the competitor list to use for analytics
