@@ -221,10 +221,30 @@ func (s *Server) execute(c *gin.Context) {
 		responseModel.SearchAnswer = llmResponse.Text
 	}
 
+	// Always extract domains from grounding sources (even if JSON parsing fails)
+	if len(llmResponse.GroundingSources) > 0 {
+		responseModel.GroundingDomains = services.ExtractDomainsFromSources(llmResponse.GroundingSources)
+		
+		// Check if brand appears in grounding sources (even if JSON parsing fails)
+		if req.Brand != "" {
+			brandLower := strings.ToLower(req.Brand)
+			brandDomain := strings.ReplaceAll(brandLower, " ", "")
+			for _, source := range llmResponse.GroundingSources {
+				sourceLower := strings.ToLower(source)
+				if strings.Contains(sourceLower, brandDomain) ||
+					strings.Contains(sourceLower, strings.ReplaceAll(brandLower, ".", "")) {
+					responseModel.InGroundingSources = true
+					break
+				}
+			}
+		}
+	}
+
 	// Add GEO metrics if available
 	if geoAnalysis != nil {
 		responseModel.VisibilityScore = geoAnalysis.VisibilityScore
 		responseModel.BrandMentioned = geoAnalysis.BrandMentioned
+		// Override InGroundingSources from JSON if available (more accurate)
 		responseModel.InGroundingSources = geoAnalysis.InGroundingSources
 		responseModel.Sentiment = geoAnalysis.Sentiment
 		responseModel.CompetitorsMention = geoAnalysis.Competitors
@@ -235,10 +255,12 @@ func (s *Server) execute(c *gin.Context) {
 			responseModel.BrandPosition = position
 			responseModel.TotalBrandsListed = totalBrands
 		}
-		
-		// NEW: Extract domains from grounding sources
-		if len(llmResponse.GroundingSources) > 0 {
-			responseModel.GroundingDomains = services.ExtractDomainsFromSources(llmResponse.GroundingSources)
+	} else if req.Brand != "" {
+		// If JSON parsing failed, still try to extract basic metrics from response text
+		responseTextLower := strings.ToLower(responseModel.ResponseText)
+		brandLower := strings.ToLower(req.Brand)
+		if strings.Contains(responseTextLower, brandLower) {
+			responseModel.BrandMentioned = true
 		}
 	}
 	

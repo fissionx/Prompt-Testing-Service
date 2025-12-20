@@ -1,9 +1,12 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -11,10 +14,56 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// BrandPromptsWithLatestResponse represents a prompt with its latest response
-type BrandPromptsWithLatestResponse struct {
-	Prompt   *models.Prompt   `json:"prompt"`
-	Response *models.Response `json:"response,omitempty"`
+// SimplifiedBrandPromptResponse represents a simplified prompt response for chatbot use
+type SimplifiedBrandPromptResponse struct {
+	// Response content in markdown format (search_answer only)
+	Response string `json:"response"`
+
+	// Prompt information
+	Prompt struct {
+		ID         string     `json:"id"`
+		Template   string     `json:"template"`
+		PromptType string     `json:"promptType,omitempty"`
+		Category   string     `json:"category,omitempty"`
+		Domain     string     `json:"domain,omitempty"`
+		Brand      string     `json:"brand,omitempty"`
+		Tags       []string   `json:"tags,omitempty"`
+		CreatedAt  time.Time  `json:"createdAt"`
+	} `json:"prompt"`
+
+	// LLM information
+	LLM struct {
+		ID          string  `json:"id"`
+		Name        string  `json:"name"`
+		Provider    string  `json:"provider"`
+		Model       string  `json:"model"`
+		Temperature float64 `json:"temperature,omitempty"`
+	} `json:"llm"`
+
+	// Related information (GEO analysis, sources, etc.)
+	Analysis struct {
+		VisibilityScore    int      `json:"visibilityScore,omitempty"`
+		BrandMentioned     bool     `json:"brandMentioned,omitempty"`
+		InGroundingSources bool     `json:"inGroundingSources,omitempty"`
+		Sentiment          string   `json:"sentiment,omitempty"`
+		BrandPosition      int      `json:"brandPosition,omitempty"`
+		TotalBrandsListed  int      `json:"totalBrandsListed,omitempty"`
+		CompetitorsMention []string `json:"competitorsMention,omitempty"`
+	} `json:"analysis"`
+
+	// Grounding sources
+	Sources struct {
+		GroundingSources []string `json:"groundingSources,omitempty"`
+		GroundingDomains []string `json:"groundingDomains,omitempty"`
+		WebSearchQueries []string `json:"webSearchQueries,omitempty"`
+	} `json:"sources"`
+
+	// Metadata
+	Metadata struct {
+		TokensUsed int       `json:"tokensUsed,omitempty"`
+		LatencyMs  int64     `json:"latencyMs,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
+	} `json:"metadata"`
 }
 
 // getBrandPromptsWithLatestResponses handles GET /api/v1/brand/:brand/prompts
@@ -50,8 +99,8 @@ func (s *Server) getBrandPromptsWithLatestResponses(c *gin.Context) {
 		}
 	}
 
-	// For each prompt, get the latest response
-	result := make([]BrandPromptsWithLatestResponse, 0)
+	// For each prompt, get the latest response and build simplified structure
+	result := make([]SimplifiedBrandPromptResponse, 0)
 	for promptID, responses := range brandResponses {
 		// Sort responses by created_at descending to get the latest
 		sort.Slice(responses, func(i, j int) bool {
@@ -65,38 +114,143 @@ func (s *Server) getBrandPromptsWithLatestResponses(c *gin.Context) {
 			continue
 		}
 
-		// Get the latest response
-		var latestResponse *models.Response
+		// Build simplified response
+		simplified := SimplifiedBrandPromptResponse{}
+
+		// Populate prompt information
+		simplified.Prompt.ID = prompt.ID
+		simplified.Prompt.Template = prompt.Template
+		simplified.Prompt.PromptType = string(prompt.PromptType)
+		simplified.Prompt.Category = prompt.Category
+		simplified.Prompt.Domain = prompt.Domain
+		simplified.Prompt.Brand = prompt.Brand
+		simplified.Prompt.Tags = prompt.Tags
+		simplified.Prompt.CreatedAt = prompt.CreatedAt
+
+		// Get the latest response if available
 		if len(responses) > 0 {
-			latestResponse = responses[0]
+			latest := responses[0]
+
+			// Extract search_answer from response
+			// Priority: SearchAnswer field > extract from ResponseText (if it's JSON) > ResponseText as fallback
+			searchAnswer := latest.SearchAnswer
+			if searchAnswer == "" {
+				// Try to extract search_answer from ResponseText if it's JSON
+				searchAnswer = extractSearchAnswerFromJSON(latest.ResponseText)
+				if searchAnswer == "" {
+					// Fallback to ResponseText if no search_answer found
+					searchAnswer = latest.ResponseText
+				}
+			}
+
+			// Clean up: remove \n characters and normalize whitespace
+			searchAnswer = cleanMarkdownResponse(searchAnswer)
+			simplified.Response = searchAnswer
+
+			// Populate LLM information
+			simplified.LLM.ID = latest.LLMID
+			simplified.LLM.Name = latest.LLMName
+			simplified.LLM.Provider = latest.LLMProvider
+			simplified.LLM.Model = latest.LLMModel
+			simplified.LLM.Temperature = latest.Temperature
+
+			// Populate analysis information
+			simplified.Analysis.VisibilityScore = latest.VisibilityScore
+			simplified.Analysis.BrandMentioned = latest.BrandMentioned
+			simplified.Analysis.InGroundingSources = latest.InGroundingSources
+			simplified.Analysis.Sentiment = latest.Sentiment
+			simplified.Analysis.BrandPosition = latest.BrandPosition
+			simplified.Analysis.TotalBrandsListed = latest.TotalBrandsListed
+			simplified.Analysis.CompetitorsMention = latest.CompetitorsMention
+
+			// Populate sources
+			simplified.Sources.GroundingSources = latest.GroundingSources
+			simplified.Sources.GroundingDomains = latest.GroundingDomains
+			simplified.Sources.WebSearchQueries = latest.WebSearchQueries
+
+			// Populate metadata
+			simplified.Metadata.TokensUsed = latest.TokensUsed
+			simplified.Metadata.LatencyMs = latest.LatencyMs
+			simplified.Metadata.CreatedAt = latest.CreatedAt
+		} else {
+			// No response available, set empty response
+			simplified.Response = ""
 		}
 
-		result = append(result, BrandPromptsWithLatestResponse{
-			Prompt:   prompt,
-			Response: latestResponse,
-		})
+		result = append(result, simplified)
 	}
 
-	// Sort by prompt created_at descending
+	// Sort by response created_at descending (most recent first)
 	sort.Slice(result, func(i, j int) bool {
-		if result[i].Response != nil && result[j].Response != nil {
-			return result[i].Response.CreatedAt.After(result[j].Response.CreatedAt)
+		if result[i].Metadata.CreatedAt.IsZero() && result[j].Metadata.CreatedAt.IsZero() {
+			return result[i].Prompt.CreatedAt.After(result[j].Prompt.CreatedAt)
 		}
-		if result[i].Response != nil {
-			return true
-		}
-		if result[j].Response != nil {
+		if result[i].Metadata.CreatedAt.IsZero() {
 			return false
 		}
-		return result[i].Prompt.CreatedAt.After(result[j].Prompt.CreatedAt)
+		if result[j].Metadata.CreatedAt.IsZero() {
+			return true
+		}
+		return result[i].Metadata.CreatedAt.After(result[j].Metadata.CreatedAt)
 	})
 
 	s.successResponse(c, result)
 }
 
+// SimplifiedPromptResponse represents a simplified response structure for chatbot use
+type SimplifiedPromptResponse struct {
+	// Response content in markdown format
+	Response string `json:"response"`
+
+	// Prompt information
+	Prompt struct {
+		ID         string     `json:"id"`
+		Template   string     `json:"template"`
+		PromptType string     `json:"promptType,omitempty"`
+		Category   string     `json:"category,omitempty"`
+		Domain     string     `json:"domain,omitempty"`
+		Brand      string     `json:"brand,omitempty"`
+		Tags       []string   `json:"tags,omitempty"`
+		CreatedAt  time.Time  `json:"createdAt"`
+	} `json:"prompt"`
+
+	// LLM information
+	LLM struct {
+		ID       string  `json:"id"`
+		Name     string  `json:"name"`
+		Provider string  `json:"provider"`
+		Model    string  `json:"model"`
+		Temperature float64 `json:"temperature,omitempty"`
+	} `json:"llm"`
+
+	// Related information (GEO analysis, sources, etc.)
+	Analysis struct {
+		VisibilityScore    int      `json:"visibilityScore,omitempty"`
+		BrandMentioned     bool     `json:"brandMentioned,omitempty"`
+		InGroundingSources bool     `json:"inGroundingSources,omitempty"`
+		Sentiment          string   `json:"sentiment,omitempty"`
+		BrandPosition      int      `json:"brandPosition,omitempty"`
+		TotalBrandsListed  int      `json:"totalBrandsListed,omitempty"`
+		CompetitorsMention []string `json:"competitorsMention,omitempty"`
+	} `json:"analysis"`
+
+	// Grounding sources
+	Sources struct {
+		GroundingSources []string `json:"groundingSources,omitempty"`
+		GroundingDomains []string `json:"groundingDomains,omitempty"`
+		WebSearchQueries []string `json:"webSearchQueries,omitempty"`
+	} `json:"sources"`
+
+	// Metadata
+	Metadata struct {
+		TokensUsed int   `json:"tokensUsed,omitempty"`
+		LatencyMs  int64 `json:"latencyMs,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
+	} `json:"metadata"`
+}
+
 // getPromptResponses handles GET /api/v1/prompts/:id/responses
-// Returns the complete LLM response including all metadata for a specific prompt
-// Returns the latest response by default, or all responses if ?all=true
+// Returns the latest response in a simplified markdown format for chatbot use
 func (s *Server) getPromptResponses(c *gin.Context) {
 	promptID := c.Param("id")
 	if promptID == "" {
@@ -106,10 +260,7 @@ func (s *Server) getPromptResponses(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Check if we should return all responses or just the latest
-	all := c.Query("all") == "true"
-
-	// Get the prompt to verify it exists
+	// Get the prompt
 	prompt, err := s.db.GetPrompt(ctx, promptID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Prompt not found: "+err.Error())
@@ -128,37 +279,160 @@ func (s *Server) getPromptResponses(c *gin.Context) {
 		return
 	}
 
-	// Sort by created_at descending
+	// Sort by created_at descending to get the latest
 	sort.Slice(responses, func(i, j int) bool {
 		return responses[i].CreatedAt.After(responses[j].CreatedAt)
 	})
 
-	// Prepare response data
-	type PromptResponseData struct {
-		Prompt    *models.Prompt    `json:"prompt"`
-		Responses []*models.Response `json:"responses"`
-		Latest    *models.Response   `json:"latest,omitempty"`
-		Total     int                `json:"total"`
+	// If no responses found, return empty response
+	if len(responses) == 0 {
+		emptyResponse := SimplifiedPromptResponse{
+			Response: "",
+		}
+		emptyResponse.Prompt.ID = prompt.ID
+		emptyResponse.Prompt.Template = prompt.Template
+		emptyResponse.Prompt.PromptType = string(prompt.PromptType)
+		emptyResponse.Prompt.Category = prompt.Category
+		emptyResponse.Prompt.Domain = prompt.Domain
+		emptyResponse.Prompt.Brand = prompt.Brand
+		emptyResponse.Prompt.Tags = prompt.Tags
+		emptyResponse.Prompt.CreatedAt = prompt.CreatedAt
+		s.successResponse(c, emptyResponse)
+		return
 	}
 
-	data := PromptResponseData{
-		Prompt:    prompt,
-		Responses: responses,
-		Total:     len(responses),
-	}
+	// Get the latest response
+	latest := responses[0]
 
-	if len(responses) > 0 {
-		data.Latest = responses[0]
-	}
-
-	// If all=true, return all responses, otherwise return just the latest
-	if !all {
-		data.Responses = []*models.Response{}
-		if data.Latest != nil {
-			data.Responses = []*models.Response{data.Latest}
+	// Extract search_answer from response
+	// Priority: SearchAnswer field > extract from ResponseText (if it's JSON) > ResponseText as fallback
+	searchAnswer := latest.SearchAnswer
+	if searchAnswer == "" {
+		// Try to extract search_answer from ResponseText if it's JSON
+		searchAnswer = extractSearchAnswerFromJSON(latest.ResponseText)
+		if searchAnswer == "" {
+			// Fallback to ResponseText if no search_answer found
+			searchAnswer = latest.ResponseText
 		}
 	}
 
-	s.successResponse(c, data)
+	// Clean up: remove \n characters and normalize whitespace
+	searchAnswer = cleanMarkdownResponse(searchAnswer)
+
+	// Build simplified response
+	result := SimplifiedPromptResponse{
+		Response: searchAnswer, // Markdown format response (search_answer only)
+	}
+
+	// Populate prompt information
+	result.Prompt.ID = prompt.ID
+	result.Prompt.Template = prompt.Template
+	result.Prompt.PromptType = string(prompt.PromptType)
+	result.Prompt.Category = prompt.Category
+	result.Prompt.Domain = prompt.Domain
+	result.Prompt.Brand = prompt.Brand
+	result.Prompt.Tags = prompt.Tags
+	result.Prompt.CreatedAt = prompt.CreatedAt
+
+	// Populate LLM information
+	result.LLM.ID = latest.LLMID
+	result.LLM.Name = latest.LLMName
+	result.LLM.Provider = latest.LLMProvider
+	result.LLM.Model = latest.LLMModel
+	result.LLM.Temperature = latest.Temperature
+
+	// Populate analysis information
+	result.Analysis.VisibilityScore = latest.VisibilityScore
+	result.Analysis.BrandMentioned = latest.BrandMentioned
+	result.Analysis.InGroundingSources = latest.InGroundingSources
+	result.Analysis.Sentiment = latest.Sentiment
+	result.Analysis.BrandPosition = latest.BrandPosition
+	result.Analysis.TotalBrandsListed = latest.TotalBrandsListed
+	result.Analysis.CompetitorsMention = latest.CompetitorsMention
+
+	// Populate sources
+	result.Sources.GroundingSources = latest.GroundingSources
+	result.Sources.GroundingDomains = latest.GroundingDomains
+	result.Sources.WebSearchQueries = latest.WebSearchQueries
+
+	// Populate metadata
+	result.Metadata.TokensUsed = latest.TokensUsed
+	result.Metadata.LatencyMs = latest.LatencyMs
+	result.Metadata.CreatedAt = latest.CreatedAt
+
+	s.successResponse(c, result)
+}
+
+// extractSearchAnswerFromJSON extracts search_answer from JSON string
+func extractSearchAnswerFromJSON(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	// Try to parse as JSON
+	var jsonData map[string]interface{}
+	
+	// Clean up markdown code blocks if present
+	cleanedText := strings.TrimSpace(text)
+	jsonBlockRegex := regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")
+	if matches := jsonBlockRegex.FindStringSubmatch(cleanedText); len(matches) > 1 {
+		cleanedText = strings.TrimSpace(matches[1])
+	} else {
+		// Try simple prefix/suffix removal
+		cleanedText = strings.TrimPrefix(cleanedText, "```json")
+		cleanedText = strings.TrimPrefix(cleanedText, "```")
+		cleanedText = strings.TrimSuffix(cleanedText, "```")
+		cleanedText = strings.TrimSpace(cleanedText)
+	}
+
+	// Try to find JSON object in the text if it's mixed with other content
+	if !strings.HasPrefix(cleanedText, "{") {
+		jsonStartIdx := strings.Index(cleanedText, "{")
+		jsonEndIdx := strings.LastIndex(cleanedText, "}")
+		if jsonStartIdx != -1 && jsonEndIdx != -1 && jsonEndIdx > jsonStartIdx {
+			cleanedText = cleanedText[jsonStartIdx : jsonEndIdx+1]
+		}
+	}
+
+	// Try to parse JSON
+	if err := json.Unmarshal([]byte(cleanedText), &jsonData); err != nil {
+		// Not valid JSON, return empty
+		return ""
+	}
+
+	// Extract search_answer field
+	if searchAnswer, ok := jsonData["search_answer"].(string); ok {
+		return searchAnswer
+	}
+
+	return ""
+}
+
+// cleanMarkdownResponse cleans up markdown response by removing \n and normalizing whitespace
+func cleanMarkdownResponse(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	// Replace \n with spaces
+	text = strings.ReplaceAll(text, "\\n", " ")
+	
+	// Replace actual newlines with spaces
+	text = strings.ReplaceAll(text, "\n", " ")
+	
+	// Replace \r\n with spaces
+	text = strings.ReplaceAll(text, "\r\n", " ")
+	
+	// Replace \r with spaces
+	text = strings.ReplaceAll(text, "\r", " ")
+	
+	// Replace multiple spaces with single space
+	spaceRegex := regexp.MustCompile(`\s+`)
+	text = spaceRegex.ReplaceAllString(text, " ")
+	
+	// Trim leading/trailing whitespace
+	text = strings.TrimSpace(text)
+	
+	return text
 }
 

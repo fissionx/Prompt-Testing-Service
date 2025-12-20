@@ -129,6 +129,17 @@ func (s *Server) bulkExecute(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// Force refresh all analytics cache for this brand to ensure data consistency
+	// This ensures that after bulk execution, all analytics APIs will fetch fresh data
+	go func() {
+		bgCtx := context.Background()
+		_ = s.db.DeleteCachedGEOInsightsByBrand(bgCtx, req.Brand)
+		_ = s.db.DeleteCachedSourceAnalyticsByBrand(bgCtx, req.Brand)
+		_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(bgCtx, req.Brand)
+		_ = s.db.DeleteCachedPromptPerformanceByBrand(bgCtx, req.Brand)
+		_ = s.db.DeleteCachedPromptTimeSeriesByBrand(bgCtx, req.Brand)
+	}()
+
 	// Set default total runs if not specified
 	totalRuns := req.TotalRuns
 	if totalRuns == 0 {

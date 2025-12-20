@@ -115,13 +115,16 @@ func (s *DashboardService) GetDashboardOverview(
 	}
 	response.TopCompetitors = getTopCompetitors(competitorCounts, 5)
 
-	// Get top citation sources
+	// Get top citation sources - filter by OpenAI model only
 	// Use a map to ensure deterministic counting (order doesn't matter for counting)
 	sourceCounts := make(map[string]int)
 	for _, resp := range brandResponses {
-		for _, domain := range resp.GroundingDomains {
-			if domain != "" {
-				sourceCounts[domain]++
+		// Only count citations from OpenAI models
+		if resp.LLMProvider == "openai" {
+			for _, domain := range resp.GroundingDomains {
+				if domain != "" {
+					sourceCounts[domain]++
+				}
 			}
 		}
 	}
@@ -1495,22 +1498,14 @@ func calculateMedian(values []float64) float64 {
 
 // setLastRunInfo sets the lastRunDate and lastRunStatus for the dashboard response
 func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, response *models.DashboardOverviewResponse) {
-	// First, check if there's a running GEO campaign for this brand (most accurate)
-	runningCampaign, err := s.db.GetRunningGEOCampaignByBrand(ctx, brand)
-	if err == nil && runningCampaign != nil {
-		response.LastRunStatus = "running"
-		response.LastRunDate = &runningCampaign.CreatedAt
-		return
-	}
-
 	// Fetch responses for the brand (without time filter) to get the true last run date
 	allFilter := shared.ResponseFilter{
 		Limit: 1000, // Fetch enough to find the most recent one
 	}
 	allResponses, err := s.db.ListResponses(ctx, allFilter)
+	var lastRunDate *time.Time
 	if err == nil {
 		// Find the most recent response for this brand
-		var lastRunDate *time.Time
 		for _, resp := range allResponses {
 			if resp.Brand == brand {
 				if lastRunDate == nil || resp.CreatedAt.After(*lastRunDate) {
@@ -1523,21 +1518,78 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 		}
 	}
 
-	// Check if there's a running scheduled campaign for this brand
+	// First, check if there's a running GEO campaign for this brand
+	// The query filters for status="running" AND completed_at=null
+	runningCampaign, err := s.db.GetRunningGEOCampaignByBrand(ctx, brand)
+	if err == nil && runningCampaign != nil {
+		// Double-check: if CompletedAt is set, it's not actually running
+		if runningCampaign.CompletedAt == nil {
+			// Additional check: if we have responses more recent than campaign creation,
+			// and campaign has been running for more than 5 minutes, it's likely completed
+			// but status wasn't updated (stuck campaign)
+			if lastRunDate != nil && lastRunDate.After(runningCampaign.CreatedAt) {
+				// Check if campaign has been "running" for more than 5 minutes
+				// and we have responses after campaign start - likely completed
+				timeSinceCampaign := time.Since(runningCampaign.CreatedAt)
+				if timeSinceCampaign > 5*time.Minute {
+					// Campaign likely completed but status wasn't updated
+					// Use last response date and mark as completed
+					response.LastRunStatus = "completed"
+					return
+				}
+			}
+			// Campaign is actively running
+			response.LastRunStatus = "running"
+			response.LastRunDate = &runningCampaign.CreatedAt
+			return
+		}
+		// If CompletedAt is set, the campaign completed - fall through to set completed status
+	}
+
+	// Check if there's a scheduled campaign for this brand
 	scheduledCampaign, err := s.db.GetScheduledCampaignByBrand(ctx, brand)
 	if err == nil && scheduledCampaign != nil {
-		// Check if the campaign status is "running"
+		// Check if the campaign status is "running" (actively executing)
 		if scheduledCampaign.Status == "running" {
+			// Similar check: if we have responses more recent than campaign start,
+			// and it's been running for more than 5 minutes, it's likely completed
+			if lastRunDate != nil && scheduledCampaign.LastRunAt != nil {
+				if lastRunDate.After(*scheduledCampaign.LastRunAt) {
+					timeSinceLastRun := time.Since(*scheduledCampaign.LastRunAt)
+					if timeSinceLastRun > 5*time.Minute {
+						// Likely completed but status not updated
+						response.LastRunStatus = "completed"
+						return
+					}
+				}
+			}
 			response.LastRunStatus = "running"
 			// Update lastRunDate to campaign's created time if it's more recent
 			if response.LastRunDate == nil || scheduledCampaign.CreatedAt.After(*response.LastRunDate) {
 				response.LastRunDate = &scheduledCampaign.CreatedAt
 			}
+			// Also check LastRunAt if available (more accurate for scheduled campaigns)
+			if scheduledCampaign.LastRunAt != nil {
+				if response.LastRunDate == nil || scheduledCampaign.LastRunAt.After(*response.LastRunDate) {
+					response.LastRunDate = scheduledCampaign.LastRunAt
+				}
+			}
 			return
+		}
+		// If scheduled campaign exists but is "active", use its LastRunAt as the last run date
+		// but status should be "completed" (the campaign is active but last execution completed)
+		if scheduledCampaign.Status == "active" && scheduledCampaign.LastRunAt != nil {
+			if response.LastRunDate == nil || scheduledCampaign.LastRunAt.After(*response.LastRunDate) {
+				response.LastRunDate = scheduledCampaign.LastRunAt
+			}
 		}
 	}
 
-	// Default to completed if no running campaign
+	// Default to completed if no running campaign found
+	// This means either:
+	// 1. No campaigns exist
+	// 2. All campaigns have completed (have CompletedAt set)
+	// 3. All campaigns have status != "running"
 	if response.LastRunDate != nil {
 		response.LastRunStatus = "completed"
 	}

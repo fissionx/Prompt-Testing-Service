@@ -225,6 +225,12 @@ func (m *MongoDB) DeleteCachedGEOInsights(ctx context.Context, id string) error 
 	return err
 }
 
+// DeleteCachedGEOInsightsByBrand deletes all cached GEO insights for a brand
+func (m *MongoDB) DeleteCachedGEOInsightsByBrand(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collCachedGEOInsights).DeleteMany(ctx, bson.M{"brand": brand})
+	return err
+}
+
 // SaveCachedSourceAnalytics saves or updates cached source analytics
 func (m *MongoDB) SaveCachedSourceAnalytics(ctx context.Context, analytics *models.CachedSourceAnalytics) error {
 	now := time.Now()
@@ -278,6 +284,12 @@ func (m *MongoDB) GetCachedSourceAnalytics(ctx context.Context, query models.Ana
 // DeleteCachedSourceAnalytics deletes cached source analytics by ID
 func (m *MongoDB) DeleteCachedSourceAnalytics(ctx context.Context, id string) error {
 	_, err := m.database.Collection(collCachedSourceAnalytics).DeleteOne(ctx, bson.M{"_id": id})
+	return err
+}
+
+// DeleteCachedSourceAnalyticsByBrand deletes all cached source analytics for a brand
+func (m *MongoDB) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collCachedSourceAnalytics).DeleteMany(ctx, bson.M{"brand": brand})
 	return err
 }
 
@@ -337,6 +349,12 @@ func (m *MongoDB) DeleteCachedCompetitiveBenchmark(ctx context.Context, id strin
 	return err
 }
 
+// DeleteCachedCompetitiveBenchmarkByBrand deletes all cached competitive benchmark for a brand
+func (m *MongoDB) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collCachedCompetitiveBenchmark).DeleteMany(ctx, bson.M{"main_brand": brand})
+	return err
+}
+
 // SaveCachedPromptPerformance saves or updates cached prompt performance
 func (m *MongoDB) SaveCachedPromptPerformance(ctx context.Context, performance *models.CachedPromptPerformance) error {
 	now := time.Now()
@@ -390,6 +408,12 @@ func (m *MongoDB) GetCachedPromptPerformance(ctx context.Context, query models.A
 // DeleteCachedPromptPerformance deletes cached prompt performance by ID
 func (m *MongoDB) DeleteCachedPromptPerformance(ctx context.Context, id string) error {
 	_, err := m.database.Collection(collCachedPromptPerformance).DeleteOne(ctx, bson.M{"_id": id})
+	return err
+}
+
+// DeleteCachedPromptPerformanceByBrand deletes all cached prompt performance for a brand
+func (m *MongoDB) DeleteCachedPromptPerformanceByBrand(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collCachedPromptPerformance).DeleteMany(ctx, bson.M{"brand": brand})
 	return err
 }
 
@@ -557,5 +581,11 @@ func (m *MongoDB) GetCachedPromptTimeSeries(ctx context.Context, query models.An
 // DeleteCachedPromptTimeSeries deletes cached prompt time series by ID
 func (m *MongoDB) DeleteCachedPromptTimeSeries(ctx context.Context, id string) error {
 	_, err := m.database.Collection(collCachedPromptTimeSeries).DeleteOne(ctx, bson.M{"_id": id})
+	return err
+}
+
+// DeleteCachedPromptTimeSeriesByBrand deletes all cached prompt time series for a brand
+func (m *MongoDB) DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brand string) error {
+	_, err := m.database.Collection(collCachedPromptTimeSeries).DeleteMany(ctx, bson.M{"brand": brand})
 	return err
 }

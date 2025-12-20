@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/fissionx/gego/internal/db"
@@ -35,6 +37,21 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		minResponses = 3 // Minimum responses to have meaningful data
 	}
 
+	// First, get ALL active prompts for this brand (not just those with responses)
+	enabled := true
+	allPrompts, err := s.db.ListPrompts(ctx, &enabled)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to get active prompts for this brand
+	var brandPrompts []*models.Prompt
+	for _, prompt := range allPrompts {
+		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
+			brandPrompts = append(brandPrompts, prompt)
+		}
+	}
+
 	// Fetch all responses for the brand
 	filter := shared.ResponseFilter{
 		StartTime: startTime,
@@ -65,45 +82,79 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		promptData[resp.PromptID].responses = append(promptData[resp.PromptID].responses, resp)
 	}
 
-	// Calculate performance metrics for each prompt
+	// Calculate performance metrics for ALL active prompts (including those with 0 responses)
 	var promptPerformances []models.PromptPerformance
 	filteredCount := 0
-	totalPrompts := len(promptData)
+	totalActivePrompts := len(brandPrompts)
 
-	for promptID, data := range promptData {
-		// Skip prompts with insufficient data
+	// Process all active prompts for the brand
+	for _, prompt := range brandPrompts {
+		data, hasResponses := promptData[prompt.ID]
+		
+		if !hasResponses {
+			// Prompt has no responses - create performance entry with zero metrics
+			perf := models.PromptPerformance{
+				PromptID:            prompt.ID,
+				PromptText:          prompt.Template,
+				PromptType:          string(prompt.PromptType),
+				Category:            prompt.Category,
+				AvgVisibility:       0,
+				AvgPosition:         0,
+				MentionRate:         0,
+				TopPositionRate:     0,
+				AvgSentiment:        0,
+				TotalResponses:      0,
+				BrandMentions:       0,
+				EffectivenessScore:  0,
+				EffectivenessGrade:  "N/A",
+				Status:              "no_data",
+				Recommendation:      "No responses yet. Run this prompt to collect performance data.",
+			}
+			promptPerformances = append(promptPerformances, perf)
+			continue
+		}
+
+		// Prompt has responses - check if it meets minimum threshold
 		if len(data.responses) < minResponses {
+			// Include prompts with fewer than minResponses but show them with a note
+			perf := s.calculatePromptPerformance(prompt, data.responses)
+			perf.Status = "insufficient_data"
+			perf.Recommendation = fmt.Sprintf("Only %d response(s) available (minimum %d recommended for accurate analysis). Run more executions to get better insights.", len(data.responses), minResponses)
+			promptPerformances = append(promptPerformances, perf)
 			filteredCount++
 			continue
 		}
 
-		// Get prompt details
-		prompt, err := s.db.GetPrompt(ctx, promptID)
-		if err != nil || prompt == nil {
-			// Skip if prompt not found
-			filteredCount++
-			continue
-		}
-
+		// Prompt has sufficient data
 		perf := s.calculatePromptPerformance(prompt, data.responses)
 		promptPerformances = append(promptPerformances, perf)
 	}
 
-	// Sort by effectiveness score (highest first)
+	// Sort by effectiveness score (highest first), then by total responses
 	sort.Slice(promptPerformances, func(i, j int) bool {
-		return promptPerformances[i].EffectivenessScore > promptPerformances[j].EffectivenessScore
+		if promptPerformances[i].EffectivenessScore != promptPerformances[j].EffectivenessScore {
+			return promptPerformances[i].EffectivenessScore > promptPerformances[j].EffectivenessScore
+		}
+		return promptPerformances[i].TotalResponses > promptPerformances[j].TotalResponses
 	})
 
-	// Calculate summary statistics
-	avgEffectiveness := 0.0
-	if len(promptPerformances) > 0 {
-		for _, perf := range promptPerformances {
-			avgEffectiveness += perf.EffectivenessScore
+	// Calculate summary statistics (only for prompts with data)
+	var promptsWithData []models.PromptPerformance
+	for _, perf := range promptPerformances {
+		if perf.TotalResponses > 0 {
+			promptsWithData = append(promptsWithData, perf)
 		}
-		avgEffectiveness /= float64(len(promptPerformances))
 	}
 
-	// Identify top and low performers
+	avgEffectiveness := 0.0
+	if len(promptsWithData) > 0 {
+		for _, perf := range promptsWithData {
+			avgEffectiveness += perf.EffectivenessScore
+		}
+		avgEffectiveness /= float64(len(promptsWithData))
+	}
+
+	// Identify top and low performers (only from prompts with sufficient data)
 	var topPerformers, lowPerformers []string
 	for _, perf := range promptPerformances {
 		if perf.Status == "high_performer" {
@@ -132,7 +183,7 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		LowPerformers:        lowPerformers,
 		AvgEffectiveness:     avgEffectiveness,
 		TotalPromptsAnalyzed: len(promptPerformances),
-		TotalPromptsFound:    totalPrompts,
+		TotalPromptsFound:    totalActivePrompts,
 		FilteredOutCount:     filteredCount,
 		MinResponsesRequired: minResponses,
 	}, nil

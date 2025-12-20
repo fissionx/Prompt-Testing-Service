@@ -1244,10 +1244,14 @@ func (m *MongoDB) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCam
 }
 
 // GetRunningGEOCampaignByBrand retrieves the most recent running GEO campaign for a brand
+// A campaign is considered "running" only if:
+// 1. Status is "running" AND
+// 2. CompletedAt is nil (not set) - meaning it hasn't completed yet
 func (m *MongoDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error) {
 	filter := bson.M{
-		"brand":  brand,
-		"status": "running",
+		"brand":        brand,
+		"status":       "running",
+		"completed_at": nil, // Only return campaigns that haven't completed
 	}
 
 	opts := options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})

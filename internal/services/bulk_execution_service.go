@@ -209,12 +209,30 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 
 	// Parse GEO metrics if brand was provided
 	if brand != "" {
+		// Always extract domains from grounding sources (even if JSON parsing fails)
+		if len(response.GroundingSources) > 0 {
+			responseModel.GroundingDomains = ExtractDomainsFromSources(response.GroundingSources)
+
+			// Check if brand appears in grounding sources (even if JSON parsing fails)
+			brandLower := strings.ToLower(brand)
+			brandDomain := strings.ReplaceAll(brandLower, " ", "")
+			for _, source := range response.GroundingSources {
+				sourceLower := strings.ToLower(source)
+				if strings.Contains(sourceLower, brandDomain) ||
+					strings.Contains(sourceLower, strings.ReplaceAll(brandLower, ".", "")) {
+					responseModel.InGroundingSources = true
+					break
+				}
+			}
+		}
+
 		geoAnalysis := parseGEOAnalysis(response.Text)
 		if geoAnalysis != nil {
 			// Access nested GEOAnalysis struct
 			geo := geoAnalysis.GEOAnalysis
 			responseModel.VisibilityScore = geo.VisibilityScore
 			responseModel.BrandMentioned = geo.BrandMentioned
+			// Override InGroundingSources from JSON if available (more accurate)
 			responseModel.InGroundingSources = geo.InGroundingSources
 			responseModel.Sentiment = geo.Sentiment
 			responseModel.CompetitorsMention = geo.Competitors
@@ -230,10 +248,12 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 				responseModel.BrandPosition = position
 				responseModel.TotalBrandsListed = totalBrands
 			}
-
-			// Extract domains from grounding sources
-			if len(response.GroundingSources) > 0 {
-				responseModel.GroundingDomains = ExtractDomainsFromSources(response.GroundingSources)
+		} else {
+			// If JSON parsing failed, still try to extract basic metrics from response text
+			responseTextLower := strings.ToLower(responseModel.ResponseText)
+			brandLower := strings.ToLower(brand)
+			if strings.Contains(responseTextLower, brandLower) {
+				responseModel.BrandMentioned = true
 			}
 		}
 	}
@@ -267,20 +287,48 @@ func (s *BulkExecutionService) getPrompts(ctx context.Context, promptIDs []strin
 
 // getLLMs fetches LLM configs by IDs
 func (s *BulkExecutionService) getLLMs(ctx context.Context, llmIDs []string) ([]*models.LLMConfig, error) {
+	if len(llmIDs) == 0 {
+		return nil, fmt.Errorf("no LLM IDs provided")
+	}
+
 	llmService := NewLLMService(s.db)
 	var llms []*models.LLMConfig
+	var notFound []string
+	var disabled []string
+
 	for _, id := range llmIDs {
 		llmConfig, err := llmService.GetLLM(ctx, id)
 		if err != nil {
+			notFound = append(notFound, id)
+			log.Printf("LLM %s not found: %v", id, err)
 			continue
 		}
-		if llmConfig.Enabled {
-			llms = append(llms, llmConfig)
+		if !llmConfig.Enabled {
+			disabled = append(disabled, fmt.Sprintf("%s (%s)", id, llmConfig.Name))
+			log.Printf("LLM %s (%s) is disabled", id, llmConfig.Name)
+			continue
 		}
+		llms = append(llms, llmConfig)
 	}
+
 	if len(llms) == 0 {
-		return nil, fmt.Errorf("no valid enabled LLMs found")
+		var errorMsg strings.Builder
+		errorMsg.WriteString("no valid enabled LLMs found")
+		if len(notFound) > 0 {
+			errorMsg.WriteString(fmt.Sprintf(". Not found: %v", notFound))
+		}
+		if len(disabled) > 0 {
+			errorMsg.WriteString(fmt.Sprintf(". Disabled: %v", disabled))
+		}
+		return nil, fmt.Errorf("%s", errorMsg.String())
 	}
+
+	// Log warning if some LLMs were skipped
+	if len(notFound) > 0 || len(disabled) > 0 {
+		log.Printf("Warning: %d LLMs skipped (not found: %d, disabled: %d), using %d enabled LLMs",
+			len(notFound)+len(disabled), len(notFound), len(disabled), len(llms))
+	}
+
 	return llms, nil
 }
 
@@ -303,6 +351,10 @@ type GEOAnalysisResult struct {
 
 // parseGEOAnalysis extracts and parses JSON from the LLM response
 func parseGEOAnalysis(text string) *GEOAnalysisResult {
+	if text == "" {
+		return nil
+	}
+
 	// Clean up the response - remove markdown code blocks if present
 	cleanedText := strings.TrimSpace(text)
 
@@ -324,19 +376,34 @@ func parseGEOAnalysis(text string) *GEOAnalysisResult {
 		jsonEndIdx := strings.LastIndex(cleanedText, "}")
 		if jsonStartIdx != -1 && jsonEndIdx != -1 && jsonEndIdx > jsonStartIdx {
 			cleanedText = cleanedText[jsonStartIdx : jsonEndIdx+1]
+		} else {
+			// If no JSON found, return nil
+			log.Printf("⚠️ No JSON object found in response text")
+			return nil
 		}
+	}
+
+	// Validate that we have a non-empty JSON string
+	if cleanedText == "" || cleanedText == "{}" {
+		log.Printf("⚠️ Empty or invalid JSON string")
+		return nil
 	}
 
 	var result GEOAnalysisResult
 	if err := json.Unmarshal([]byte(cleanedText), &result); err != nil {
 		log.Printf("❌ Failed to parse GEO analysis JSON: %v", err)
+		log.Printf("Cleaned text length: %d chars", len(cleanedText))
 		log.Printf("Cleaned text (first 500 chars): %s", truncateForLog(cleanedText, 500))
+		if len(cleanedText) > 500 {
+			log.Printf("Cleaned text (last 200 chars): %s", truncateForLog(cleanedText[len(cleanedText)-200:], 200))
+		}
 		return nil
 	}
 
-	log.Printf("✅ Parsed GEO: Score=%d, Mentioned=%v, Sentiment=%s, Competitors=%v",
+	log.Printf("✅ Parsed GEO: Score=%d, Mentioned=%v, InSources=%v, Sentiment=%s, Competitors=%v",
 		result.GEOAnalysis.VisibilityScore,
 		result.GEOAnalysis.BrandMentioned,
+		result.GEOAnalysis.InGroundingSources,
 		result.GEOAnalysis.Sentiment,
 		result.GEOAnalysis.Competitors)
 
