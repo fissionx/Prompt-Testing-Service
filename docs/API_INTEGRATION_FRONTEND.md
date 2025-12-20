@@ -56,6 +56,8 @@ All APIs follow a consistent response format:
 4. [Prompt APIs](#4-prompt-apis)
    - [Generate Prompts](#41-generate-prompts)
    - [Get Prompts by Brand](#42-get-prompts-by-brand)
+   - [Save Prompts](#43-save-prompts)
+   - [Delete Prompts](#44-delete-prompts)
 5. [Execution APIs](#5-execution-apis)
    - [Execute Bulk Campaign](#51-execute-bulk-campaign)
    - [Delete All Campaigns](#52-delete-all-campaigns)
@@ -327,15 +329,21 @@ GET /api/v1/geo/competitors/suggest?brand=Cursor&website=https://cursor.com
 
 **Endpoint:** `POST /api/v1/geo/competitors`
 
-**Purpose:** Save user-selected competitors for future analytics and benchmarking.
+**Purpose:** Save user-selected competitors for future analytics and benchmarking. Returns the updated competitors list in the same format as GET endpoint, eliminating the need for a separate GET request.
 
 **Request Body:**
 ```json
 {
   "brand": "Cursor",
   "competitors": [
-    "GitHub Copilot",
-    "Codeium"
+    {
+      "name": "GitHub Copilot",
+      "domain": "github.com"
+    },
+    {
+      "name": "Codeium",
+      "domain": "codeium.com"
+    }
   ],
   "source": "suggested"
 }
@@ -343,30 +351,51 @@ GET /api/v1/geo/competitors/suggest?brand=Cursor&website=https://cursor.com
 
 **Field Descriptions:**
 - `brand` (string, required) - Your brand name
-- `competitors` (array, required) - List of competitor names to save
-- `source` (string, required) - Source of competitors: `suggested`, `manual`, or `mixed`
+- `competitors` (array, required) - List of competitor objects with `name` and optional `domain`
+- `source` (string, optional) - Source of competitors: `suggested`, `custom`, or `mixed`
 
-**Response (200 OK):**
+**Response (200 OK):** Returns the same format as `GET /api/v1/geo/competitors?brand=X`
 ```json
 {
   "success": true,
+  "message": "Competitors retrieved successfully",
   "data": {
     "brand": "Cursor",
     "competitors": [
-      "GitHub Copilot",
-      "Codeium"
+      {
+        "name": "GitHub Copilot",
+        "domain": "github.com"
+      },
+      {
+        "name": "Codeium",
+        "domain": "codeium.com"
+      }
+    ],
+    "suggestedList": [
+      {
+        "name": "GitHub Copilot",
+        "domain": "github.com"
+      },
+      {
+        "name": "Codeium",
+        "domain": "codeium.com"
+      },
+      {
+        "name": "Tabnine",
+        "domain": "tabnine.com"
+      }
     ],
     "source": "suggested",
-    "savedAt": "2024-01-01T00:00:00Z",
-    "message": "Successfully saved 2 competitors for Cursor"
+    "updatedAt": "2024-01-01T00:00:00Z"
   }
 }
 ```
 
 **UI Use Case:**
 - Save button after competitor selection
-- Show success toast: "2 competitors saved successfully"
+- Use the returned `data.competitors` to update the UI immediately without calling GET endpoint
 - Automatically used in competitive analytics
+- Display both saved competitors and suggested list from the response
 
 ---
 
@@ -427,30 +456,61 @@ GET /api/v1/geo/competitors?brand=Cursor
 
 **Endpoint:** `DELETE /api/v1/geo/competitors`
 
-**Purpose:** Delete all saved competitors for a brand.
+**Purpose:** Delete competitors for a brand. Supports two modes: delete individual competitor or delete all competitors. Returns the updated competitors list in the same format as GET endpoint, eliminating the need for a separate GET request.
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `brand` | string | Yes | Brand name to delete competitors for |
+| `name` | string | No | Specific competitor name to delete (if omitted, deletes all) |
 
-**Example Request:**
+**Example Requests:**
+
+Delete individual competitor:
+```
+DELETE /api/v1/geo/competitors?brand=Cursor&name=GitHub%20Copilot
+```
+
+Delete all competitors:
 ```
 DELETE /api/v1/geo/competitors?brand=Cursor
 ```
 
-**Response (200 OK):**
+**Response (200 OK):** Returns the same format as `GET /api/v1/geo/competitors?brand=X`
 ```json
 {
   "success": true,
-  "message": "Successfully deleted all competitors for Cursor"
+  "message": "Competitors retrieved successfully",
+  "data": {
+    "brand": "Cursor",
+    "competitors": [
+      {
+        "name": "Codeium",
+        "domain": "codeium.com"
+      }
+    ],
+    "suggestedList": [
+      {
+        "name": "GitHub Copilot",
+        "domain": "github.com"
+      },
+      {
+        "name": "Codeium",
+        "domain": "codeium.com"
+      }
+    ],
+    "source": "suggested",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
 }
 ```
 
 **UI Use Case:**
-- "Clear all competitors" button with confirmation dialog
-- Show in settings or competitor management page
+- "Delete" button next to individual competitors (use `name` parameter)
+- "Clear all competitors" button with confirmation dialog (omit `name` parameter)
+- Use the returned `data.competitors` to update the UI immediately without calling GET endpoint
+- When all competitors are deleted, the `competitors` array will be empty
 
 ---
 
@@ -538,13 +598,19 @@ DELETE /api/v1/geo/competitors?brand=Cursor
 
 **Endpoint:** `GET /api/v1/geo/prompts`
 
-**Purpose:** Retrieve all generated prompts for a specific brand.
+**Purpose:** Retrieve active and suggested prompts for a specific brand.
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `brand` | string | Yes | Brand name to get prompts for |
+| `website` | string | No | Website URL (if provided, fetches suggestions and filters out active prompts) |
+| `category` | string | No | Category filter |
+| `domain` | string | No | Domain filter |
+| `description` | string | No | Brand description |
+| `count` | number | No | Number of suggestions to fetch (default: 20) |
+| `forceRefresh` | boolean | No | Force refresh suggestions (default: false) |
 
 **Example Request:**
 ```
@@ -557,57 +623,228 @@ GET /api/v1/geo/prompts?brand=Cursor
   "success": true,
   "data": {
     "brand": "Cursor",
-    "prompts": [
+    "activePrompts": [
       {
         "id": "28bf8648-cb51-45df-a8fa-fadc8140c95a",
         "template": "What are the best AI coding assistants for developers?",
         "promptType": "comparison",
         "category": "AI coding",
-        "reused": true,
-        "createdAt": "2024-01-01T00:00:00Z"
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
       },
       {
         "id": "uuid-2",
         "template": "Which code completion tool should I choose?",
         "promptType": "recommendation",
         "category": "AI coding",
-        "reused": false,
-        "createdAt": "2024-01-01T00:00:00Z"
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
       }
     ],
-    "total": 25,
-    "promptsByType": {
-      "comparison": [...],
-      "recommendation": [...],
-      "informational": [...]
-    },
-    "typeCounts": {
-      "comparison": 10,
-      "recommendation": 8,
-      "informational": 7
+    "suggestedPrompts": [
+      {
+        "id": "uuid-3",
+        "template": "Compare AI coding assistants",
+        "promptType": "comparison",
+        "category": "AI coding",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "source": "suggested",
+    "updatedAt": "2024-01-01T00:00:00Z",
+    "llmDetails": {
+      "id": "uuid",
+      "name": "GPT-4",
+      "provider": "openai",
+      "model": "gpt-4"
     }
   }
 }
 ```
 
+**Field Descriptions:**
+- `activePrompts` (array) - Currently active/saved prompts for the brand
+- `suggestedPrompts` (array) - Suggested prompts that are not yet active (filtered to exclude active ones)
+- `source` (string) - Source of prompts: `suggested`, `custom`, or `mixed`
+- `updatedAt` (timestamp) - Last update time
+- `llmDetails` (object, optional) - Information about LLM used for suggestions
+
 **UI Integration:**
-- ✅ Display as searchable/filterable list
+- ✅ Display `activePrompts` as the main list
+- ✅ Show `suggestedPrompts` in a separate section or as "Add more" suggestions
 - ✅ Group by `promptType` using tabs or accordion
-- ✅ Show `reused` badge (green for reused, blue for new)
 - ✅ Use `id` for selection in bulk execution
-- ✅ Display `typeCounts` in summary cards
+- ✅ Display both lists with clear separation
 
 **UI Example:**
 ```
 ┌────────────────────────────────────────────┐
-│ Prompts for Cursor (25 total)             │
-│ [Comparison: 10] [Recommendation: 8]       │
+│ Active Prompts for Cursor (2)             │
 ├────────────────────────────────────────────┤
-│ ☑ What are the best AI coding...  [Reused]│
-│ ☐ Which code completion tool...   [New]   │
-│ ☐ How does Cursor compare to...   [Reused]│
+│ ☑ What are the best AI coding...          │
+│ ☑ Which code completion tool...           │
+├────────────────────────────────────────────┤
+│ Suggested Prompts (1)                      │
+├────────────────────────────────────────────┤
+│ ☐ Compare AI coding assistants            │
+│    [Add to Active]                         │
 └────────────────────────────────────────────┘
 ```
+
+---
+
+## 4.3 Save Prompts
+
+**Endpoint:** `POST /api/v1/geo/prompts/save`
+
+**Purpose:** Save prompts for a brand. Accepts both existing prompt IDs from suggested prompts and custom prompts. Moves prompts from suggested list to active list. Returns the updated prompts list in the same format as GET endpoint, eliminating the need for a separate GET request.
+
+**Request Body:**
+```json
+{
+  "brand": "Cursor",
+  "promptIds": ["28bf8648-cb51-45df-a8fa-fadc8140c95a"],
+  "customPrompts": [
+    {
+      "template": "What are the features of Cursor?",
+      "promptType": "informational",
+      "category": "AI coding",
+      "tags": ["features", "product"]
+    }
+  ],
+  "source": "mixed"
+}
+```
+
+**Field Descriptions:**
+- `brand` (string, required) - Brand name
+- `promptIds` (array, optional) - Array of existing prompt IDs from suggested prompts
+- `customPrompts` (array, optional) - Array of custom prompt objects to create
+  - `template` (string, required) - The prompt text
+  - `promptType` (string, optional) - Type: `comparison`, `recommendation`, `informational`, `custom`
+  - `category` (string, optional) - Category classification
+  - `tags` (array, optional) - Array of tags
+- `source` (string, optional) - Source: `suggested`, `custom`, or `mixed`
+
+**Response (200 OK):** Returns the same format as `GET /api/v1/geo/prompts?brand=X`
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "activePrompts": [
+      {
+        "id": "28bf8648-cb51-45df-a8fa-fadc8140c95a",
+        "template": "What are the best AI coding assistants for developers?",
+        "promptType": "comparison",
+        "category": "AI coding",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      },
+      {
+        "id": "new-uuid",
+        "template": "What are the features of Cursor?",
+        "promptType": "informational",
+        "category": "AI coding",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "suggestedPrompts": [...],
+    "source": "mixed",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**UI Use Case:**
+- Save button after selecting prompts from suggestions or adding custom prompts
+- Use the returned `data.activePrompts` to update the UI immediately
+- Use the returned `data.suggestedPrompts` to update the suggested list (removed prompts will no longer appear)
+
+---
+
+## 4.4 Delete Prompts
+
+**Endpoint:** `DELETE /api/v1/geo/prompts`
+
+**Purpose:** Delete prompts from the active list. Supports three modes: delete single prompt by ID, delete multiple prompts by IDs, or delete all prompts for a brand. Deleted prompts are moved back to the suggested list. Returns the updated prompts list in the same format as GET endpoint, eliminating the need for a separate GET request.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `brand` | string | Yes | Brand name |
+| `id` | string | No | Single prompt ID to delete (if provided, deletes only that prompt) |
+
+**Request Body (Optional):** For deleting multiple prompts
+```json
+{
+  "promptIds": ["id1", "id2", "id3"]
+}
+```
+
+**Example Requests:**
+
+Delete single prompt:
+```
+DELETE /api/v1/geo/prompts?brand=Cursor&id=28bf8648-cb51-45df-a8fa-fadc8140c95a
+```
+
+Delete multiple prompts:
+```
+DELETE /api/v1/geo/prompts?brand=Cursor
+Content-Type: application/json
+
+{
+  "promptIds": ["id1", "id2", "id3"]
+}
+```
+
+Delete all prompts for a brand:
+```
+DELETE /api/v1/geo/prompts?brand=Cursor
+```
+
+**Response (200 OK):** Returns the same format as `GET /api/v1/geo/prompts?brand=X`
+```json
+{
+  "success": true,
+  "data": {
+    "brand": "Cursor",
+    "activePrompts": [
+      {
+        "id": "uuid-2",
+        "template": "Which code completion tool should I choose?",
+        "promptType": "recommendation",
+        "category": "AI coding",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "suggestedPrompts": [
+      {
+        "id": "28bf8648-cb51-45df-a8fa-fadc8140c95a",
+        "template": "What are the best AI coding assistants for developers?",
+        "promptType": "comparison",
+        "category": "AI coding",
+        "createdAt": "2024-01-01T00:00:00Z",
+        "updatedAt": "2024-01-01T00:00:00Z"
+      }
+    ],
+    "source": "suggested",
+    "updatedAt": "2024-01-01T00:00:00Z"
+  }
+}
+```
+
+**UI Use Case:**
+- Delete button next to individual prompts (use `id` query parameter)
+- Bulk delete selected prompts (use request body with `promptIds` array)
+- "Clear all prompts" button (omit both `id` and request body)
+- Use the returned `data.activePrompts` to update the UI immediately
+- Deleted prompts will appear in `suggestedPrompts` array
 
 ---
 
@@ -1762,27 +1999,54 @@ Advanced features and analytics:
 
 **Endpoint:** `POST /api/v1/geo/competitors`
 
-**Purpose:** Save user-selected competitors for analytics.
+**Purpose:** Save user-selected competitors for analytics. Returns the updated competitors list in the same format as GET endpoint.
 
 **Request Body:**
 ```json
 {
   "brand": "Cursor",
-  "competitors": ["VS Code", "GitHub Copilot", "Tabnine"],
+  "competitors": [
+    {
+      "name": "VS Code",
+      "domain": "code.visualstudio.com"
+    },
+    {
+      "name": "GitHub Copilot",
+      "domain": "github.com"
+    },
+    {
+      "name": "Tabnine",
+      "domain": "tabnine.com"
+    }
+  ],
   "source": "suggested"
 }
 ```
 
-**Response:**
+**Response:** Returns the same format as `GET /api/v1/geo/competitors?brand=X`
 ```json
 {
   "success": true,
+  "message": "Competitors retrieved successfully",
   "data": {
     "brand": "Cursor",
-    "competitors": ["VS Code", "GitHub Copilot", "Tabnine"],
+    "competitors": [
+      {
+        "name": "VS Code",
+        "domain": "code.visualstudio.com"
+      },
+      {
+        "name": "GitHub Copilot",
+        "domain": "github.com"
+      },
+      {
+        "name": "Tabnine",
+        "domain": "tabnine.com"
+      }
+    ],
+    "suggestedList": [...],
     "source": "suggested",
-    "savedAt": "2024-01-01T00:00:00Z",
-    "message": "Successfully saved 3 competitors for Cursor"
+    "updatedAt": "2024-01-01T00:00:00Z"
   }
 }
 ```
@@ -1897,7 +2161,18 @@ For questions or issues:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2025-11-30 
+**Document Version:** 1.1  
+**Last Updated:** 2025-01-XX 
 **API Version:** v1
+
+## Recent Updates
+
+### v1.1 (2025-01-XX)
+- ✅ **POST/DELETE endpoints now return updated lists**: POST and DELETE endpoints for competitors and prompts now return the same response format as their respective GET endpoints. This eliminates the need for frontend applications to make separate GET requests after mutations.
+  - `POST /api/v1/geo/competitors` returns updated competitors list
+  - `DELETE /api/v1/geo/competitors` returns updated competitors list (supports both individual and bulk deletion)
+  - `POST /api/v1/geo/prompts/save` returns updated prompts list
+  - `DELETE /api/v1/geo/prompts` returns updated prompts list (supports single, multiple, and bulk deletion)
+- ✅ Updated response structures to match actual API implementation
+- ✅ Added comprehensive documentation for prompt save and delete endpoints
 
