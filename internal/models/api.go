@@ -564,7 +564,7 @@ type PromptTimeSeriesOverview struct {
 	LLMBreakdown map[string]PromptLLMStats `json:"llmBreakdown"`
 
 	// Top competitors mentioned in responses
-	TopCompetitors []string `json:"topCompetitors"`
+	TopCompetitors []TopCompetitor `json:"topCompetitors"`
 }
 
 // PromptLLMStats contains stats for a specific LLM

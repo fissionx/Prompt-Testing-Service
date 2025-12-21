@@ -21,14 +21,14 @@ type SimplifiedBrandPromptResponse struct {
 
 	// Prompt information
 	Prompt struct {
-		ID         string     `json:"id"`
-		Template   string     `json:"template"`
-		PromptType string     `json:"promptType,omitempty"`
-		Category   string     `json:"category,omitempty"`
-		Domain     string     `json:"domain,omitempty"`
-		Brand      string     `json:"brand,omitempty"`
-		Tags       []string   `json:"tags,omitempty"`
-		CreatedAt  time.Time  `json:"createdAt"`
+		ID         string    `json:"id"`
+		Template   string    `json:"template"`
+		PromptType string    `json:"promptType,omitempty"`
+		Category   string    `json:"category,omitempty"`
+		Domain     string    `json:"domain,omitempty"`
+		Brand      string    `json:"brand,omitempty"`
+		Tags       []string  `json:"tags,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
 	} `json:"prompt"`
 
 	// LLM information
@@ -42,13 +42,13 @@ type SimplifiedBrandPromptResponse struct {
 
 	// Related information (GEO analysis, sources, etc.)
 	Analysis struct {
-		VisibilityScore    int      `json:"visibilityScore,omitempty"`
-		BrandMentioned     bool     `json:"brandMentioned,omitempty"`
-		InGroundingSources bool     `json:"inGroundingSources,omitempty"`
-		Sentiment          string   `json:"sentiment,omitempty"`
-		BrandPosition      int      `json:"brandPosition,omitempty"`
-		TotalBrandsListed  int      `json:"totalBrandsListed,omitempty"`
-		CompetitorsMention []string `json:"competitorsMention,omitempty"`
+		VisibilityScore    int                 `json:"visibilityScore,omitempty"`
+		BrandMentioned     bool                `json:"brandMentioned,omitempty"`
+		InGroundingSources bool                `json:"inGroundingSources,omitempty"`
+		Sentiment          string              `json:"sentiment,omitempty"`
+		BrandPosition      int                 `json:"brandPosition,omitempty"`
+		TotalBrandsListed  int                 `json:"totalBrandsListed,omitempty"`
+		CompetitorsMention []models.Competitor `json:"competitorsMention,omitempty"`
 	} `json:"analysis"`
 
 	// Grounding sources
@@ -161,7 +161,7 @@ func (s *Server) getBrandPromptsWithLatestResponses(c *gin.Context) {
 			simplified.Analysis.Sentiment = latest.Sentiment
 			simplified.Analysis.BrandPosition = latest.BrandPosition
 			simplified.Analysis.TotalBrandsListed = latest.TotalBrandsListed
-			simplified.Analysis.CompetitorsMention = latest.CompetitorsMention
+			simplified.Analysis.CompetitorsMention = convertCompetitorStringsToCompetitors(latest.CompetitorsMention)
 
 			// Populate sources
 			simplified.Sources.GroundingSources = latest.GroundingSources
@@ -204,34 +204,34 @@ type SimplifiedPromptResponse struct {
 
 	// Prompt information
 	Prompt struct {
-		ID         string     `json:"id"`
-		Template   string     `json:"template"`
-		PromptType string     `json:"promptType,omitempty"`
-		Category   string     `json:"category,omitempty"`
-		Domain     string     `json:"domain,omitempty"`
-		Brand      string     `json:"brand,omitempty"`
-		Tags       []string   `json:"tags,omitempty"`
-		CreatedAt  time.Time  `json:"createdAt"`
+		ID         string    `json:"id"`
+		Template   string    `json:"template"`
+		PromptType string    `json:"promptType,omitempty"`
+		Category   string    `json:"category,omitempty"`
+		Domain     string    `json:"domain,omitempty"`
+		Brand      string    `json:"brand,omitempty"`
+		Tags       []string  `json:"tags,omitempty"`
+		CreatedAt  time.Time `json:"createdAt"`
 	} `json:"prompt"`
 
 	// LLM information
 	LLM struct {
-		ID       string  `json:"id"`
-		Name     string  `json:"name"`
-		Provider string  `json:"provider"`
-		Model    string  `json:"model"`
+		ID          string  `json:"id"`
+		Name        string  `json:"name"`
+		Provider    string  `json:"provider"`
+		Model       string  `json:"model"`
 		Temperature float64 `json:"temperature,omitempty"`
 	} `json:"llm"`
 
 	// Related information (GEO analysis, sources, etc.)
 	Analysis struct {
-		VisibilityScore    int      `json:"visibilityScore,omitempty"`
-		BrandMentioned     bool     `json:"brandMentioned,omitempty"`
-		InGroundingSources bool     `json:"inGroundingSources,omitempty"`
-		Sentiment          string   `json:"sentiment,omitempty"`
-		BrandPosition      int      `json:"brandPosition,omitempty"`
-		TotalBrandsListed  int      `json:"totalBrandsListed,omitempty"`
-		CompetitorsMention []string `json:"competitorsMention,omitempty"`
+		VisibilityScore    int                 `json:"visibilityScore,omitempty"`
+		BrandMentioned     bool                `json:"brandMentioned,omitempty"`
+		InGroundingSources bool                `json:"inGroundingSources,omitempty"`
+		Sentiment          string              `json:"sentiment,omitempty"`
+		BrandPosition      int                 `json:"brandPosition,omitempty"`
+		TotalBrandsListed  int                 `json:"totalBrandsListed,omitempty"`
+		CompetitorsMention []models.Competitor `json:"competitorsMention,omitempty"`
 	} `json:"analysis"`
 
 	// Grounding sources
@@ -243,8 +243,8 @@ type SimplifiedPromptResponse struct {
 
 	// Metadata
 	Metadata struct {
-		TokensUsed int   `json:"tokensUsed,omitempty"`
-		LatencyMs  int64 `json:"latencyMs,omitempty"`
+		TokensUsed int       `json:"tokensUsed,omitempty"`
+		LatencyMs  int64     `json:"latencyMs,omitempty"`
 		CreatedAt  time.Time `json:"createdAt"`
 	} `json:"metadata"`
 }
@@ -348,7 +348,7 @@ func (s *Server) getPromptResponses(c *gin.Context) {
 	result.Analysis.Sentiment = latest.Sentiment
 	result.Analysis.BrandPosition = latest.BrandPosition
 	result.Analysis.TotalBrandsListed = latest.TotalBrandsListed
-	result.Analysis.CompetitorsMention = latest.CompetitorsMention
+	result.Analysis.CompetitorsMention = convertCompetitorStringsToCompetitors(latest.CompetitorsMention)
 
 	// Populate sources
 	result.Sources.GroundingSources = latest.GroundingSources
@@ -371,7 +371,7 @@ func extractSearchAnswerFromJSON(text string) string {
 
 	// Try to parse as JSON
 	var jsonData map[string]interface{}
-	
+
 	// Clean up markdown code blocks if present
 	cleanedText := strings.TrimSpace(text)
 	jsonBlockRegex := regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")
@@ -416,23 +416,78 @@ func cleanMarkdownResponse(text string) string {
 
 	// Replace \n with spaces
 	text = strings.ReplaceAll(text, "\\n", " ")
-	
+
 	// Replace actual newlines with spaces
 	text = strings.ReplaceAll(text, "\n", " ")
-	
+
 	// Replace \r\n with spaces
 	text = strings.ReplaceAll(text, "\r\n", " ")
-	
+
 	// Replace \r with spaces
 	text = strings.ReplaceAll(text, "\r", " ")
-	
+
 	// Replace multiple spaces with single space
 	spaceRegex := regexp.MustCompile(`\s+`)
 	text = spaceRegex.ReplaceAllString(text, " ")
-	
+
 	// Trim leading/trailing whitespace
 	text = strings.TrimSpace(text)
-	
+
 	return text
 }
 
+// convertCompetitorStringsToCompetitors converts a slice of competitor strings to Competitor objects
+func convertCompetitorStringsToCompetitors(competitorStrings []string) []models.Competitor {
+	competitors := make([]models.Competitor, 0, len(competitorStrings))
+	for _, str := range competitorStrings {
+		var name, domain string
+
+		// Check if it's in "name|domain" format
+		if idx := strings.Index(str, "|"); idx != -1 {
+			name = strings.TrimSpace(str[:idx])
+			domain = strings.TrimSpace(str[idx+1:])
+		} else {
+			// Old format: just the name, derive domain
+			name = str
+			domain = deriveCompetitorDomainFromName(name)
+		}
+
+		// If domain is empty, derive it
+		if domain == "" {
+			domain = deriveCompetitorDomainFromName(name)
+		}
+
+		competitors = append(competitors, models.Competitor{
+			Name:   name,
+			Domain: domain,
+		})
+	}
+	return competitors
+}
+
+// deriveCompetitorDomainFromName derives a domain from a competitor name
+func deriveCompetitorDomainFromName(competitorName string) string {
+	// If it already looks like a domain, normalize and return
+	if strings.Contains(competitorName, ".") {
+		normalized := strings.ToLower(strings.TrimSpace(competitorName))
+		// Remove protocol if present
+		normalized = strings.TrimPrefix(normalized, "http://")
+		normalized = strings.TrimPrefix(normalized, "https://")
+		// Remove path if present
+		if idx := strings.Index(normalized, "/"); idx != -1 {
+			normalized = normalized[:idx]
+		}
+		// Add www. if not present
+		if !strings.HasPrefix(normalized, "www.") {
+			return "www." + normalized
+		}
+		return normalized
+	}
+
+	// Convert to lowercase and remove spaces
+	normalized := strings.ToLower(strings.TrimSpace(competitorName))
+	normalized = strings.ReplaceAll(normalized, " ", "")
+
+	// Construct www.{name}.com
+	return "www." + normalized + ".com"
+}

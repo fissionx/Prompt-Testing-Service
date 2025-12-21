@@ -208,9 +208,14 @@ func (s *PromptTimeSeriesService) computeOverview(responses []*models.Response) 
 		return compList[i].count > compList[j].count
 	})
 
-	// Top 5 competitors
+	// Top 5 competitors - convert to TopCompetitor objects with name and domain
 	for i := 0; i < len(compList) && i < 5; i++ {
-		overview.TopCompetitors = append(overview.TopCompetitors, compList[i].name)
+		compName := compList[i].name
+		domain := deriveCompetitorDomainFromName(compName)
+		overview.TopCompetitors = append(overview.TopCompetitors, models.TopCompetitor{
+			Name:   compName,
+			Domain: domain,
+		})
 	}
 
 	return overview
