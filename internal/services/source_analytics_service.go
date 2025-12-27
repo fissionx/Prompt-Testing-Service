@@ -63,22 +63,57 @@ func (s *SourceAnalyticsService) GetSourceAnalytics(
 	brandInSources := false
 	
 	for _, resp := range brandResponses {
-		// Count grounding domains
+		// Process grounding sources (URLs) and group by domain
+		for _, sourceURL := range resp.GroundingSources {
+			if sourceURL == "" {
+				continue
+			}
+			
+			// Extract domain from URL
+			domain := ExtractDomainFromURL(sourceURL)
+			if domain == "" {
+				continue
+			}
+			
+			// Normalize domain (add www. prefix for consistency)
+			normalizedDomain := normalizeCitationDomain(domain)
+			
+			if _, exists := domainStats[normalizedDomain]; !exists {
+				domainStats[normalizedDomain] = &sourceStats{
+					domain:       normalizedDomain,
+					llmBreakdown: make(map[string]int),
+					urls:         make(map[string]bool), // Use map to deduplicate URLs
+				}
+			}
+			
+			domainStats[normalizedDomain].citationCount++
+			domainStats[normalizedDomain].llmBreakdown[resp.LLMName]++
+			domainStats[normalizedDomain].urls[sourceURL] = true
+			totalCitations++
+		}
+		
+		// Also process GroundingDomains for backward compatibility
 		for _, domain := range resp.GroundingDomains {
 			if domain == "" {
 				continue
 			}
 			
-			if _, exists := domainStats[domain]; !exists {
-				domainStats[domain] = &sourceStats{
-					domain:       domain,
+			normalizedDomain := normalizeCitationDomain(domain)
+			
+			if _, exists := domainStats[normalizedDomain]; !exists {
+				domainStats[normalizedDomain] = &sourceStats{
+					domain:       normalizedDomain,
 					llmBreakdown: make(map[string]int),
+					urls:         make(map[string]bool),
 				}
 			}
 			
-			domainStats[domain].citationCount++
-			domainStats[domain].llmBreakdown[resp.LLMName]++
-			totalCitations++
+			// Only count if not already counted from GroundingSources
+			if len(domainStats[normalizedDomain].urls) == 0 {
+				domainStats[normalizedDomain].citationCount++
+				domainStats[normalizedDomain].llmBreakdown[resp.LLMName]++
+				totalCitations++
+			}
 		}
 		
 		// Check if brand is in sources
@@ -92,14 +127,21 @@ func (s *SourceAnalyticsService) GetSourceAnalytics(
 	totalResponses := len(brandResponses)
 	
 	for domain, stats := range domainStats {
-		// Normalize domain to include www. prefix
-		normalizedDomain := normalizeCitationDomain(domain)
+		// Convert URL map to slice
+		var groundingURLs []string
+		for url := range stats.urls {
+			groundingURLs = append(groundingURLs, url)
+		}
+		// Sort URLs for consistent output
+		sort.Strings(groundingURLs)
+		
 		insight := models.SourceInsight{
-			Domain:        normalizedDomain,
+			Domain:        domain,
 			CitationCount: stats.citationCount,
 			MentionRate:   float64(stats.citationCount) / float64(totalResponses) * 100,
 			LLMBreakdown:  stats.llmBreakdown,
 			Categories:    categorizeSource(domain),
+			GroundingURLs: groundingURLs,
 		}
 		sourceInsights = append(sourceInsights, insight)
 	}
@@ -147,5 +189,6 @@ type sourceStats struct {
 	domain        string
 	citationCount int
 	llmBreakdown  map[string]int
+	urls          map[string]bool // Track unique URLs for this domain
 }
 

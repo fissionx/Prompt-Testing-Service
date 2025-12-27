@@ -356,6 +356,7 @@ type SourceInsight struct {
 	MentionRate   float64        `json:"mentionRate"`
 	LLMBreakdown  map[string]int `json:"llmBreakdown"`
 	Categories    []string       `json:"categories"`
+	GroundingURLs []string       `json:"groundingUrls,omitempty"`
 }
 
 // Recommendation represents an actionable insight for the user
