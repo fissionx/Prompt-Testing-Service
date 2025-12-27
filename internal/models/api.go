@@ -413,33 +413,60 @@ type BrandPerformance struct {
 type CompetitiveBenchmarkResponse struct {
 	MainBrand       BrandPerformance            `json:"mainBrand"`
 	Competitors     []BrandPerformance          `json:"competitors"`
+	OtherBrands     []BrandPerformance          `json:"otherBrands,omitempty"` // Brands mentioned but not in tracked competitors list
 	MarketLeader    string                      `json:"marketLeader"`
 	YourRank        int                         `json:"yourRank"`
 	TotalBrands     int                         `json:"totalBrands"`
 	PromptBreakdown []PromptCompetitiveAnalysis `json:"promptBreakdown"`
-	Recommendations []Recommendation            `json:"recommendations"`
 	AnalyzedAt      time.Time                   `json:"analyzedAt"`
 }
 
 // PromptCompetitiveAnalysis shows competitive performance for a specific prompt
 type PromptCompetitiveAnalysis struct {
-	PromptID             string                    `json:"promptId"`
-	PromptText           string                    `json:"promptText"`
-	PromptType           string                    `json:"promptType,omitempty"`
-	MainBrandResult      PromptBrandResult         `json:"mainBrandResult"`
-	CompetitorsMentioned []PromptCompetitorMention `json:"competitorsMentioned"`
-	Winner               string                    `json:"winner"`
-	TotalBrandsMentioned int                       `json:"totalBrandsMentioned"`
-	ExecutedAt           time.Time                 `json:"executedAt"`
+	PromptID                      string                       `json:"promptId"`
+	PromptText                    string                       `json:"promptText"`
+	PromptType                    string                       `json:"promptType,omitempty"`
+	MainBrandResult               PromptBrandResult            `json:"mainBrandResult"`
+	TrackedCompetitorsMentioned   []PromptCompetitorMention    `json:"trackedCompetitorsMentioned"`
+	UntrackedCompetitorsMentioned []UntrackedCompetitorMention `json:"untrackedCompetitorsMentioned,omitempty"` // Brands mentioned but not in tracked list
+	Winner                        string                       `json:"winner"`
+	TotalBrandsMentioned          int                          `json:"totalBrandsMentioned"`
+	ExecutedAt                    time.Time                    `json:"executedAt"`
+	Insights                      *PromptInsights              `json:"insights,omitempty"`
+}
+
+// UntrackedCompetitorMention shows how an untracked competitor appeared in a prompt response
+type UntrackedCompetitorMention struct {
+	Brand           string  `json:"brand"`
+	VisibilityScore int     `json:"visibilityScore"`
+	Position        int     `json:"position"`
+	Sentiment       string  `json:"sentiment"`
+	InSources       bool    `json:"inSources"`
+	ShareOfVoice    float64 `json:"shareOfVoice"` // Percentage of all brands mentioned in this prompt
+}
+
+// PromptInsights provides gap analysis for dashboard visualization
+type PromptInsights struct {
+	// Gap percentage: 0-100, where 0 = no gap, 100 = maximum gap
+	GapPercentage float64 `json:"gapPercentage"`
+	// Reason category: "blog_missing", "topic_not_discussed", "low_review", "poor_seo", "no_mention", "low_visibility", "poor_position", "missing_citations", "negative_sentiment", "none"
+	ReasonCategory string `json:"reasonCategory"`
+	// Gap severity: "none", "low", "medium", "high", "critical"
+	Severity string `json:"severity"`
+	// Leading competitor (if any)
+	LeadingCompetitor string `json:"leadingCompetitor,omitempty"`
+	// Recommendations to fill the gap (at prompt level)
+	Recommendations []string `json:"recommendations,omitempty"`
 }
 
 // PromptBrandResult shows how the main brand performed on a specific prompt
 type PromptBrandResult struct {
-	Mentioned       bool   `json:"mentioned"`
-	VisibilityScore int    `json:"visibilityScore"`
-	Position        int    `json:"position"`
-	Sentiment       string `json:"sentiment"`
-	InSources       bool   `json:"inSources"`
+	Mentioned       bool    `json:"mentioned"`
+	VisibilityScore int     `json:"visibilityScore"`
+	Position        int     `json:"position"`
+	Sentiment       string  `json:"sentiment"`
+	InSources       bool    `json:"inSources"`
+	ShareOfVoice    float64 `json:"shareOfVoice"` // Percentage of all brands mentioned in this prompt
 }
 
 // PromptCompetitorMention shows how a competitor appeared in a prompt response

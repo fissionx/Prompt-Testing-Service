@@ -316,17 +316,29 @@ func (m *MongoDB) SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark 
 func (m *MongoDB) GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error) {
 	filter := bson.M{}
 
-	if query.CampaignID != "" {
-		filter["campaign_id"] = query.CampaignID
-	}
+	// Always filter by brand
 	if query.Brand != "" {
 		filter["main_brand"] = query.Brand
 	}
-	if query.StartTime != nil {
-		filter["start_time"] = bson.M{"$lte": *query.StartTime}
+
+	// For campaign-specific queries, filter by campaign_id
+	// For general queries (no campaign_id), only get entries with empty campaign_id
+	if query.CampaignID != "" {
+		filter["campaign_id"] = query.CampaignID
+	} else {
+		// For general cache, only get entries with empty campaign_id
+		filter["campaign_id"] = ""
 	}
-	if query.EndTime != nil {
-		filter["end_time"] = bson.M{"$gte": *query.EndTime}
+
+	// Time range matching: cache should overlap with query range
+	// Cache is valid if: cache.start_time <= query.end_time AND cache.end_time >= query.start_time
+	if query.StartTime != nil && query.EndTime != nil {
+		filter["start_time"] = bson.M{"$lte": *query.EndTime}
+		filter["end_time"] = bson.M{"$gte": *query.StartTime}
+	} else if query.StartTime != nil {
+		filter["end_time"] = bson.M{"$gte": *query.StartTime}
+	} else if query.EndTime != nil {
+		filter["start_time"] = bson.M{"$lte": *query.EndTime}
 	}
 
 	opts := options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})

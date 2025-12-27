@@ -422,11 +422,11 @@ func (m *ScheduledCampaignManager) cacheCompetitiveBenchmark(
 		EndTime:         *endTime,
 		MainBrandPerf:   benchmark.MainBrand,
 		Competitors:     benchmark.Competitors,
+		OtherBrands:     benchmark.OtherBrands,
 		MarketLeader:    benchmark.MarketLeader,
 		YourRank:        benchmark.YourRank,
 		TotalBrands:     benchmark.TotalBrands,
 		PromptBreakdown: benchmark.PromptBreakdown,
-		Recommendations: benchmark.Recommendations,
 		AnalyzedAt:      benchmark.AnalyzedAt,
 	}
 

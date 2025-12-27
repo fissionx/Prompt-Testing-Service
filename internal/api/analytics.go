@@ -167,11 +167,11 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 			response := &models.CompetitiveBenchmarkResponse{
 				MainBrand:       mainBrandPerf,
 				Competitors:     competitors,
+				OtherBrands:     cachedData.OtherBrands,
 				MarketLeader:    cachedData.MarketLeader,
 				YourRank:        cachedData.YourRank,
 				TotalBrands:     cachedData.TotalBrands,
 				PromptBreakdown: cachedData.PromptBreakdown,
-				Recommendations: cachedData.Recommendations,
 				AnalyzedAt:      cachedData.AnalyzedAt,
 			}
 
@@ -211,9 +211,11 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 		return
 	}
 
-	// Cache the computed data for future requests (only for auto-detected competitors)
-	if len(req.Competitors) == 0 {
+	// Cache the computed data for future requests
+	// Cache when: (1) no specific competitors requested (auto-detected), OR (2) forceRefresh is true (update cache)
+	if len(req.Competitors) == 0 || req.ForceRefresh {
 		go func() {
+			// Use the same time ranges that were used for the query
 			startTime := time.Now().Add(-30 * 24 * time.Hour)
 			endTime := time.Now()
 			if req.StartTime != nil {
@@ -223,18 +225,24 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 				endTime = *req.EndTime
 			}
 
+			// If forceRefresh is true, delete old cache entries for this brand first
+			if req.ForceRefresh {
+				_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(context.Background(), req.MainBrand)
+			}
+
 			cachedBenchmark := &models.CachedCompetitiveBenchmark{
 				ID:              uuid.New().String(),
+				CampaignID:      "", // Empty for general cache (not campaign-specific)
 				MainBrand:       req.MainBrand,
 				StartTime:       startTime,
 				EndTime:         endTime,
 				MainBrandPerf:   benchmark.MainBrand,
 				Competitors:     benchmark.Competitors,
+				OtherBrands:     benchmark.OtherBrands,
 				MarketLeader:    benchmark.MarketLeader,
 				YourRank:        benchmark.YourRank,
 				TotalBrands:     benchmark.TotalBrands,
 				PromptBreakdown: benchmark.PromptBreakdown,
-				Recommendations: benchmark.Recommendations,
 				AnalyzedAt:      benchmark.AnalyzedAt,
 			}
 			s.db.SaveCachedCompetitiveBenchmark(context.Background(), cachedBenchmark)

@@ -61,11 +61,11 @@ type CachedCompetitiveBenchmark struct {
 	// Cached analytics data
 	MainBrandPerf   BrandPerformance            `json:"mainBrand" bson:"main_brand_perf"`
 	Competitors     []BrandPerformance          `json:"competitors" bson:"competitors"`
+	OtherBrands     []BrandPerformance          `json:"otherBrands,omitempty" bson:"other_brands,omitempty"`
 	MarketLeader    string                      `json:"marketLeader" bson:"market_leader"`
 	YourRank        int                         `json:"yourRank" bson:"your_rank"`
 	TotalBrands     int                         `json:"totalBrands" bson:"total_brands"`
 	PromptBreakdown []PromptCompetitiveAnalysis `json:"promptBreakdown" bson:"prompt_breakdown"`
-	Recommendations []Recommendation            `json:"recommendations" bson:"recommendations"`
 	AnalyzedAt      time.Time                   `json:"analyzedAt" bson:"analyzed_at"`
 
 	CreatedAt time.Time `json:"createdAt" bson:"created_at"`
