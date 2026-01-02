@@ -201,10 +201,10 @@ type GEOAnalysis struct {
 
 // GeneratePromptsRequest represents the request to generate prompts for a brand
 type GeneratePromptsRequest struct {
-	Brand       string `json:"brand" binding:"required"`
+	BrandID     string `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	Website     string `json:"website,omitempty"`
 	Category    string `json:"category,omitempty"`
-	Domain      string `json:"domain,omitempty"`
+	Domain      string `json:"domain,omitempty"` // Deprecated: will be fetched from brand API
 	Description string `json:"description,omitempty"`
 	Count       int    `json:"count,omitempty"`
 	LLMID       string `json:"llmId,omitempty"` // Optional LLM ID to use for generation (defaults to Google/Gemini if not provided)
@@ -233,7 +233,7 @@ type PromptPreview struct {
 // BulkExecuteRequest represents the request to execute multiple prompts across multiple LLMs
 type BulkExecuteRequest struct {
 	CampaignName string   `json:"campaignName" binding:"required"`
-	Brand        string   `json:"brand" binding:"required"`
+	BrandID      string   `json:"brandId" binding:"required"`   // Brand ID (UUID) from external API
 	PromptIDs    []string `json:"promptIds" binding:"required"` // Existing prompt IDs from the database
 	LLMIDs       []string `json:"llmIds" binding:"required"`
 	Temperature  float64  `json:"temperature,omitempty"`
@@ -251,9 +251,9 @@ type CustomPrompt struct {
 
 // SaveCustomPromptsRequest represents the request to save custom prompts along with promptIds from suggested prompts
 type SaveCustomPromptsRequest struct {
-	Brand         string         `json:"brand" binding:"required"`
-	PromptIDs     []string       `json:"promptIds,omitempty"`     // Prompt IDs from suggested prompts
-	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"` // New custom prompts to create
+	BrandID       string         `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	PromptIDs     []string       `json:"promptIds,omitempty"`        // Prompt IDs from suggested prompts
+	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"`    // New custom prompts to create
 }
 
 // SaveCustomPromptsResponse represents the response after saving custom prompts
@@ -292,7 +292,7 @@ type BulkExecuteResponse struct {
 
 // GEOInsightsRequest represents the request for GEO insights/analytics
 type GEOInsightsRequest struct {
-	Brand        string     `json:"brand,omitempty"`
+	BrandID      string     `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	CampaignID   string     `json:"campaignId,omitempty"`
 	StartTime    *time.Time `json:"startTime,omitempty"`
 	EndTime      *time.Time `json:"endTime,omitempty"`
@@ -383,7 +383,7 @@ type SourceAnalyticsResponse struct {
 
 // CompetitiveBenchmarkRequest represents request for competitive analysis
 type CompetitiveBenchmarkRequest struct {
-	MainBrand    string       `json:"mainBrand" binding:"required"`
+	MainBrandID  string       `json:"mainBrandId" binding:"required"` // Brand ID (UUID) from external API
 	Competitors  []Competitor `json:"competitors,omitempty"`
 	PromptIDs    []string     `json:"promptIds,omitempty"`
 	LLMIDs       []string     `json:"llmIds,omitempty"`
@@ -477,11 +477,11 @@ type PromptCompetitorMention struct {
 
 // SourceAnalyticsRequest represents request for source analytics
 type SourceAnalyticsRequest struct {
-	Brand        string     `json:"brand" binding:"required"`
-	StartTime    *time.Time `json:"startTime,omitempty"`
-	EndTime      *time.Time `json:"endTime,omitempty"`
-	TopN         int        `json:"topN,omitempty"`
-	ForceRefresh bool       `json:"forceRefresh,omitempty"` // Force re-computation even if cached
+	BrandID      string     `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	StartTime    *time.Time `json:"startTime" form:"startTime"`                // ISO 8601 format (e.g., "2024-01-01T00:00:00Z")
+	EndTime      *time.Time `json:"endTime" form:"endTime"`                    // ISO 8601 format (e.g., "2024-01-31T23:59:59Z")
+	TopN         int        `json:"topN" form:"topN"`                          // Number of top sources to return (default: 20)
+	ForceRefresh bool       `json:"forceRefresh" form:"forceRefresh"`          // Force re-computation even if cached
 }
 
 // PositionAnalyticsResponse represents position/ranking analytics
@@ -499,7 +499,7 @@ type PositionAnalyticsResponse struct {
 
 // PromptPerformanceRequest represents request for prompt performance analysis
 type PromptPerformanceRequest struct {
-	Brand        string     `json:"brand" binding:"required"`
+	BrandID      string     `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	StartTime    *time.Time `json:"startTime,omitempty"`
 	EndTime      *time.Time `json:"endTime,omitempty"`
 	MinResponses int        `json:"minResponses,omitempty"`
@@ -622,7 +622,7 @@ type PromptTimeSeriesDataPoint struct {
 
 // DashboardOverviewRequest represents the request for dashboard overview
 type DashboardOverviewRequest struct {
-	Brand     string     `json:"brand" form:"brand" binding:"required"`
+	BrandID   string     `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	StartTime *time.Time `json:"startTime" form:"startTime"`
 	EndTime   *time.Time `json:"endTime" form:"endTime"`
 }
@@ -689,7 +689,7 @@ type TrendDataPoint struct {
 
 // ModelAnalyticsRequest represents the request for model-level analytics
 type ModelAnalyticsRequest struct {
-	Brand     string     `json:"brand" binding:"required"`
+	BrandID   string     `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	StartTime *time.Time `json:"startTime,omitempty"`
 	EndTime   *time.Time `json:"endTime,omitempty"`
 }
@@ -723,7 +723,7 @@ type ModelPerformance struct {
 
 // CompetitorMatrixRequest represents the request for competitor matrix
 type CompetitorMatrixRequest struct {
-	MainBrand   string       `json:"mainBrand" binding:"required"`
+	MainBrandID string       `json:"mainBrandId" binding:"required"` // Brand ID (UUID) from external API
 	Competitors []Competitor `json:"competitors,omitempty"`
 	StartTime   *time.Time   `json:"startTime,omitempty"`
 	EndTime     *time.Time   `json:"endTime,omitempty"`
@@ -770,7 +770,7 @@ type MatrixAxisInfo struct {
 
 // TrendComparisonRequest represents the request for trend comparison
 type TrendComparisonRequest struct {
-	MainBrand   string       `json:"mainBrand" binding:"required"`
+	MainBrandID string       `json:"mainBrandId" binding:"required"` // Brand ID (UUID) from external API
 	Competitors []Competitor `json:"competitors,omitempty"`
 	Metric      string       `json:"metric"` // "visibility", "sentiment", "position"
 	StartTime   *time.Time   `json:"startTime,omitempty"`
@@ -808,7 +808,8 @@ type BrandTrendData struct {
 
 // ExportRequest represents the request for data export
 type ExportRequest struct {
-	Brand      string     `json:"brand" binding:"required"`
+	BrandID    string     `json:"brandId" binding:"required"`    // Brand ID (UUID) from external API
+	Brand      string     `json:"brand,omitempty"`               // Brand name (populated from brandId, used internally)
 	ExportType string     `json:"exportType" binding:"required"` // "insights", "prompts", "responses", "sources", "competitive"
 	Format     string     `json:"format,omitempty"`              // "csv", "json" (default: csv)
 	StartTime  *time.Time `json:"startTime,omitempty"`
@@ -835,7 +836,7 @@ type Competitor struct {
 
 // SuggestCompetitorsRequest represents the request to suggest competitors for a brand
 type SuggestCompetitorsRequest struct {
-	Brand        string `json:"brand" form:"brand" binding:"required"`
+	BrandID      string `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	Website      string `json:"website" form:"website"`
 	Description  string `json:"description" form:"description"`
 	Category     string `json:"category" form:"category"`
@@ -861,7 +862,7 @@ type LLMDetails struct {
 
 // SaveCompetitorsRequest represents the request to save user-defined competitors
 type SaveCompetitorsRequest struct {
-	Brand       string       `json:"brand" binding:"required"`
+	BrandID     string       `json:"brandId" binding:"required"`     // Brand ID (UUID) from external API
 	Competitors []Competitor `json:"competitors" binding:"required"` // User's final competitor list with name and domain
 	Source      string       `json:"source,omitempty"`               // "suggested", "custom", "mixed"
 }

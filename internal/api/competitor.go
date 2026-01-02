@@ -7,13 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // saveCompetitors handles POST /api/v1/geo/competitors
 // Adds new competitors to the existing list (does not replace)
 // UI can send just the new competitor(s) to add - backend will merge with existing list
 // Deduplicates automatically to prevent adding the same competitor twice
-// Returns the same response format as GET /api/v1/geo/competitors?brand=X
+// Returns the same response format as GET /api/v1/geo/competitors?brandId=X
 func (s *Server) saveCompetitors(c *gin.Context) {
 	var req models.SaveCompetitorsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -21,22 +22,40 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
 
-	if len(req.Competitors) == 0 {
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
+
+	// Normalize competitor domains to www. format
+	normalizedCompetitors := make([]models.Competitor, len(req.Competitors))
+	for i, comp := range req.Competitors {
+		normalizedCompetitors[i] = comp
+		if comp.Domain != "" {
+			normalizedCompetitors[i].Domain = shared.NormalizeDomainToURL(comp.Domain)
+		}
+	}
+
+	if len(normalizedCompetitors) == 0 {
 		s.errorResponse(c, http.StatusBadRequest, "At least one competitor is required")
 		return
 	}
 
 	ctx := c.Request.Context()
 
-	_, err := s.competitorService.SaveCompetitors(
+	_, err = s.competitorService.SaveCompetitors(
 		ctx,
-		req.Brand,
-		req.Competitors,
+		brandName,
+		normalizedCompetitors,
 		req.Source,
 	)
 	if err != nil {
@@ -45,25 +64,34 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 	}
 
 	// Return the updated competitors list in the same format as GET endpoint
-	s.getCompetitorsResponse(c, req.Brand, "", "", "", false)
+	s.getCompetitorsResponse(c, brandName, "", "", "", false)
 }
 
 // getCompetitors handles GET /api/v1/geo/competitors
 // Merged endpoint that returns both saved competitors and suggested competitors
 // If website parameter is provided, it will also fetch suggestions and filter out already saved competitors
 func (s *Server) getCompetitors(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
 
-	website := c.Query("website")
-	description := c.Query("description")
-	category := c.Query("category")
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
+
+	website := shared.NormalizeDomainToURL(brandInfo.Domain)
+	description := ""
+	category := brandInfo.Category
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getCompetitorsResponse(c, brand, website, description, category, forceRefresh)
+	s.getCompetitorsResponse(c, brandName, website, description, category, forceRefresh)
 }
 
 // getCompetitorsResponse is a helper function that builds and returns the competitors response
@@ -155,22 +183,31 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, website, descript
 
 // deleteCompetitors handles DELETE /api/v1/geo/competitors
 // Supports two modes:
-// 1. Delete all competitors: DELETE /api/v1/geo/competitors?brand=Apple
-// 2. Delete individual competitor: DELETE /api/v1/geo/competitors?brand=Apple&name=Samsung
-// Returns the same response format as GET /api/v1/geo/competitors?brand=X
+// 1. Delete all competitors: DELETE /api/v1/geo/competitors?brandId=7
+// 2. Delete individual competitor: DELETE /api/v1/geo/competitors?brandId=7&name=Samsung
+// Returns the same response format as GET /api/v1/geo/competitors?brandId=X
 func (s *Server) deleteCompetitors(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	competitorName := c.Query("name")
 	ctx := c.Request.Context()
 
 	// If name is provided, delete individual competitor
 	if competitorName != "" {
-		_, err := s.competitorService.DeleteCompetitorByName(ctx, brand, competitorName)
+		_, err := s.competitorService.DeleteCompetitorByName(ctx, brandName, competitorName)
 		if err != nil {
 			// Check if it's a "not found" error
 			if strings.Contains(err.Error(), "not found") {
@@ -182,17 +219,17 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 		}
 
 		// Return the updated competitors list in the same format as GET endpoint
-		s.getCompetitorsResponse(c, brand, "", "", "", false)
+		s.getCompetitorsResponse(c, brandName, "", "", "", false)
 		return
 	}
 
 	// Otherwise, move all competitors to suggestedList (preserves data)
-	err := s.competitorService.DeleteCompetitors(ctx, brand)
+	err = s.competitorService.DeleteCompetitors(ctx, brandName)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to clear competitors: "+err.Error())
 		return
 	}
 
 	// Return the updated competitors list in the same format as GET endpoint
-	s.getCompetitorsResponse(c, brand, "", "", "", false)
+	s.getCompetitorsResponse(c, brandName, "", "", "", false)
 }

@@ -7,15 +7,25 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // getDashboardOverview handles GET /api/v1/geo/dashboard/overview
 func (s *Server) getDashboardOverview(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "brand is required")
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "brandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	// Parse time parameters
 	var startTime, endTime *time.Time
@@ -32,7 +42,7 @@ func (s *Server) getDashboardOverview(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	overview, err := s.dashboardService.GetDashboardOverview(ctx, brand, startTime, endTime)
+	overview, err := s.dashboardService.GetDashboardOverview(ctx, brandName, startTime, endTime)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get dashboard overview: "+err.Error())
 		return
@@ -53,14 +63,23 @@ func (s *Server) getModelAnalytics(c *gin.Context) {
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
 
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
+
 	ctx := c.Request.Context()
 
-	analytics, err := s.dashboardService.GetModelAnalytics(ctx, req.Brand, req.StartTime, req.EndTime)
+	analytics, err := s.dashboardService.GetModelAnalytics(ctx, brandName, req.StartTime, req.EndTime)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get model analytics: "+err.Error())
 		return
@@ -81,10 +100,20 @@ func (s *Server) getCompetitorMatrix(c *gin.Context) {
 		return
 	}
 
-	if req.MainBrand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Main brand is required")
+	if req.MainBrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "MainBrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.MainBrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	mainBrandName := brandInfo.Name
+	mainBrandDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
 
 	ctx := c.Request.Context()
 
@@ -94,13 +123,18 @@ func (s *Server) getCompetitorMatrix(c *gin.Context) {
 	for _, comp := range req.Competitors {
 		competitorNames = append(competitorNames, comp.Name)
 		if comp.Domain != "" {
-			competitorMap[comp.Name] = comp.Domain
+			competitorMap[comp.Name] = shared.NormalizeDomainToURL(comp.Domain)
 		}
+	}
+
+	// Ensure main brand domain is in the map
+	if mainBrandDomain != "" {
+		competitorMap[mainBrandName] = mainBrandDomain
 	}
 
 	matrix, err := s.dashboardService.GetCompetitorMatrix(
 		ctx,
-		req.MainBrand,
+		mainBrandName,
 		competitorNames,
 		req.StartTime,
 		req.EndTime,
@@ -126,10 +160,20 @@ func (s *Server) getTrendComparison(c *gin.Context) {
 		return
 	}
 
-	if req.MainBrand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Main brand is required")
+	if req.MainBrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "MainBrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.MainBrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	mainBrandName := brandInfo.Name
+	mainBrandDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
 
 	ctx := c.Request.Context()
 
@@ -139,13 +183,18 @@ func (s *Server) getTrendComparison(c *gin.Context) {
 	for _, comp := range req.Competitors {
 		competitorNames = append(competitorNames, comp.Name)
 		if comp.Domain != "" {
-			competitorMap[comp.Name] = comp.Domain
+			competitorMap[comp.Name] = shared.NormalizeDomainToURL(comp.Domain)
 		}
+	}
+
+	// Ensure main brand domain is in the map
+	if mainBrandDomain != "" {
+		competitorMap[mainBrandName] = mainBrandDomain
 	}
 
 	trends, err := s.dashboardService.GetTrendComparison(
 		ctx,
-		req.MainBrand,
+		mainBrandName,
 		competitorNames,
 		req.Metric,
 		req.StartTime,
@@ -173,10 +222,20 @@ func (s *Server) exportData(c *gin.Context) {
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	// Set brand name in request for service
+	req.Brand = brandInfo.Name
 
 	if req.ExportType == "" {
 		s.errorResponse(c, http.StatusBadRequest, "Export type is required")

@@ -38,15 +38,25 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brand string) (*mod
 		return nil, fmt.Errorf("failed to list prompts: %w", err)
 	}
 
+	// Use a map to track unique templates (normalized) and keep the first occurrence
+	templateMap := make(map[string]models.PromptDetail)
 	var activePrompts []models.PromptDetail
+	
 	for _, prompt := range allPrompts {
 		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
-			activePrompts = append(activePrompts, models.PromptDetail{
-				ID:         prompt.ID,
-				Template:   prompt.Template,
-				PromptType: prompt.PromptType,
-				Category:   prompt.Category,
-			})
+			normalizedTemplate := normalizeTemplate(prompt.Template)
+			
+			// Only add if we haven't seen this template before
+			if _, exists := templateMap[normalizedTemplate]; !exists {
+				detail := models.PromptDetail{
+					ID:         prompt.ID,
+					Template:   prompt.Template,
+					PromptType: prompt.PromptType,
+					Category:   prompt.Category,
+				}
+				templateMap[normalizedTemplate] = detail
+				activePrompts = append(activePrompts, detail)
+			}
 		}
 	}
 
@@ -503,6 +513,17 @@ func (s *BrandPromptService) SavePrompts(
 		createdAt = time.Now()
 	}
 
+	// Build a map of existing active prompt templates for deduplication
+	// Key: normalized template, Value: prompt ID
+	activeTemplateMap := make(map[string]string)
+	for _, activeID := range existingActivePromptIDs {
+		activePrompt, err := s.db.GetPrompt(ctx, activeID)
+		if err == nil && activePrompt != nil {
+			normalizedTemplate := normalizeTemplate(activePrompt.Template)
+			activeTemplateMap[normalizedTemplate] = activeID
+		}
+	}
+
 	// Process prompt IDs (from suggested list)
 	var savedPromptIDs []string
 	createdCount := 0
@@ -515,6 +536,34 @@ func (s *BrandPromptService) SavePrompts(
 			continue // Skip invalid prompts
 		}
 
+		// Check for duplicate template in active prompts
+		normalizedTemplate := normalizeTemplate(prompt.Template)
+		if existingID, exists := activeTemplateMap[normalizedTemplate]; exists {
+			// Template already exists in active prompts, skip adding duplicate
+			fmt.Printf("Skipping duplicate prompt template (already exists as ID: %s): %s\n", existingID, prompt.Template)
+			// Still remove from suggested list
+			var newSuggested []string
+			for _, suggestedID := range existingSuggestedPromptIDs {
+				if suggestedID != promptID {
+					newSuggested = append(newSuggested, suggestedID)
+				}
+			}
+			existingSuggestedPromptIDs = newSuggested
+			continue
+		}
+
+		// Check if already in active list by ID
+		found := false
+		for _, existingID := range existingActivePromptIDs {
+			if existingID == promptID {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue // Already in active list
+		}
+
 		// Mark prompt as active (enabled and set brand)
 		prompt.Enabled = true
 		prompt.Brand = brand
@@ -523,17 +572,9 @@ func (s *BrandPromptService) SavePrompts(
 			continue
 		}
 
-		// Add to active list (deduplicate)
-		found := false
-		for _, existingID := range existingActivePromptIDs {
-			if existingID == promptID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			existingActivePromptIDs = append(existingActivePromptIDs, promptID)
-		}
+		// Add to active list and template map
+		existingActivePromptIDs = append(existingActivePromptIDs, promptID)
+		activeTemplateMap[normalizedTemplate] = promptID
 
 		// Remove from suggested list
 		var newSuggested []string
@@ -550,6 +591,26 @@ func (s *BrandPromptService) SavePrompts(
 
 	// Create new custom prompts
 	for _, customPrompt := range customPrompts {
+		// Check for duplicate template in active prompts
+		normalizedTemplate := normalizeTemplate(customPrompt.Template)
+		if existingID, exists := activeTemplateMap[normalizedTemplate]; exists {
+			// Template already exists in active prompts, skip creating duplicate
+			fmt.Printf("Skipping duplicate custom prompt template (already exists as ID: %s): %s\n", existingID, customPrompt.Template)
+			// Add existing prompt ID to saved list if not already there
+			found := false
+			for _, savedID := range savedPromptIDs {
+				if savedID == existingID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				savedPromptIDs = append(savedPromptIDs, existingID)
+				existingCount++
+			}
+			continue
+		}
+
 		promptType := models.PromptType(customPrompt.PromptType)
 		if promptType == "" {
 			promptType = models.PromptTypeCustom
@@ -572,8 +633,9 @@ func (s *BrandPromptService) SavePrompts(
 			return nil, fmt.Errorf("failed to create custom prompt: %w", err)
 		}
 
-		// Add to active list
+		// Add to active list and template map
 		existingActivePromptIDs = append(existingActivePromptIDs, prompt.ID)
+		activeTemplateMap[normalizedTemplate] = prompt.ID
 		savedPromptIDs = append(savedPromptIDs, prompt.ID)
 		createdCount++
 	}
@@ -718,5 +780,16 @@ func (s *BrandPromptService) DeleteAllPrompts(ctx context.Context, brand string)
 	}
 
 	return s.db.SaveBrandPrompts(ctx, brandPrompts)
+}
+
+// normalizeTemplate normalizes a prompt template for comparison
+// Removes extra whitespace, converts to lowercase, and trims
+func normalizeTemplate(template string) string {
+	// Trim whitespace and convert to lowercase for comparison
+	normalized := strings.TrimSpace(template)
+	normalized = strings.ToLower(normalized)
+	// Replace multiple spaces with single space
+	normalized = strings.Join(strings.Fields(normalized), " ")
+	return normalized
 }
 

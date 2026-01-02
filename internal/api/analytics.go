@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,18 +17,57 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// getSourceAnalytics handles POST /api/v1/geo/analytics/sources
+// getSourceAnalytics handles GET /api/v1/geo/analytics/sources
+// Query parameters:
+//   - brandId (required): Brand UUID from external API
+//   - startTime (optional): Start time in ISO 8601 format (e.g., "2024-01-01T00:00:00Z")
+//   - endTime (optional): End time in ISO 8601 format (e.g., "2024-01-31T23:59:59Z")
+//   - topN (optional): Number of top sources to return (default: 20)
+//   - forceRefresh (optional): Force re-computation even if cached (default: false)
 func (s *Server) getSourceAnalytics(c *gin.Context) {
 	var req models.SourceAnalyticsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	// Parse time parameters if provided
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			req.StartTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			req.EndTime = &t
+		}
+	}
+
+	// Parse TopN from query parameter
+	if topNStr := c.Query("topN"); topNStr != "" {
+		if parsed, err := strconv.Atoi(topNStr); err == nil && parsed > 0 {
+			req.TopN = parsed
+		}
+	}
+
+	// Parse ForceRefresh from query parameter
+	if forceRefreshStr := c.Query("forceRefresh"); forceRefreshStr != "" {
+		req.ForceRefresh = forceRefreshStr == "true"
+	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	if req.TopN == 0 {
 		req.TopN = 20
@@ -39,7 +79,7 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	var cachedData *models.CachedSourceAnalytics
 	if !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     req.Brand,
+			Brand:     brandName,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -51,7 +91,7 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 			normalizedSources := make([]models.SourceInsight, len(cachedData.TopSources))
 			for i, source := range cachedData.TopSources {
 				normalizedSources[i] = source
-				normalizedSources[i].Domain = normalizeDomainForSource(source.Domain)
+				normalizedSources[i].Domain = shared.NormalizeDomainToURL(source.Domain)
 			}
 
 			// Return cached data with normalized domains
@@ -78,7 +118,7 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	// Compute analytics if not cached
 	analytics, err := s.sourceAnalyticsService.GetSourceAnalytics(
 		ctx,
-		req.Brand,
+		brandName,
 		req.StartTime,
 		req.EndTime,
 		req.TopN,
@@ -101,7 +141,7 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 
 		cachedAnalytics := &models.CachedSourceAnalytics{
 			ID:              uuid.New().String(),
-			Brand:           req.Brand,
+			Brand:           brandName,
 			StartTime:       startTime,
 			EndTime:         endTime,
 			LogoURL:         analytics.LogoURL,
@@ -130,17 +170,27 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 		return
 	}
 
-	if req.MainBrand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Main brand is required")
+	if req.MainBrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "MainBrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.MainBrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	mainBrandName := brandInfo.Name
+	mainBrandDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
 
 	ctx := c.Request.Context()
 
 	// Try to get cached data first (only if no specific competitors are requested and not forcing refresh)
 	if len(req.Competitors) == 0 && !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     req.MainBrand,
+			Brand:     mainBrandName,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -190,14 +240,20 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	for _, comp := range req.Competitors {
 		competitorNames = append(competitorNames, comp.Name)
 		if comp.Domain != "" {
-			competitorMap[comp.Name] = comp.Domain
+			// Normalize competitor domains to www. format
+			competitorMap[comp.Name] = shared.NormalizeDomainToURL(comp.Domain)
 		}
+	}
+
+	// Ensure main brand domain is in the map
+	if mainBrandDomain != "" {
+		competitorMap[mainBrandName] = mainBrandDomain
 	}
 
 	// Compute benchmark if not cached or specific competitors requested
 	benchmark, err := s.competitiveBenchmarkService.GetCompetitiveBenchmark(
 		ctx,
-		req.MainBrand,
+		mainBrandName,
 		competitorNames,
 		req.PromptIDs,
 		req.LLMIDs,
@@ -209,6 +265,11 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitive benchmark: "+err.Error())
 		return
+	}
+
+	// Ensure main brand domain is set in response
+	if benchmark.MainBrand.Domain == "" {
+		benchmark.MainBrand.Domain = mainBrandDomain
 	}
 
 	// Cache the computed data for future requests
@@ -227,13 +288,13 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 
 			// If forceRefresh is true, delete old cache entries for this brand first
 			if req.ForceRefresh {
-				_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(context.Background(), req.MainBrand)
+				_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(context.Background(), mainBrandName)
 			}
 
 			cachedBenchmark := &models.CachedCompetitiveBenchmark{
 				ID:              uuid.New().String(),
 				CampaignID:      "", // Empty for general cache (not campaign-specific)
-				MainBrand:       req.MainBrand,
+				MainBrand:       mainBrandName,
 				StartTime:       startTime,
 				EndTime:         endTime,
 				MainBrandPerf:   benchmark.MainBrand,
@@ -408,10 +469,19 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	if req.MinResponses == 0 {
 		req.MinResponses = 3
@@ -423,7 +493,7 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	var cachedData *models.CachedPromptPerformance
 	if !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     req.Brand,
+			Brand:     brandName,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -456,7 +526,7 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	// Compute prompt performance analytics if not cached
 	performance, err := s.promptPerformanceService.GetPromptPerformance(
 		ctx,
-		req.Brand,
+		brandName,
 		req.StartTime,
 		req.EndTime,
 		req.MinResponses,
@@ -479,7 +549,7 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 
 		cachedPerformance := &models.CachedPromptPerformance{
 			ID:                   uuid.New().String(),
-			Brand:                req.Brand,
+			Brand:                brandName,
 			StartTime:            startTime,
 			EndTime:              endTime,
 			LogoURL:              performance.LogoURL,

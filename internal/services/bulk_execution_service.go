@@ -156,7 +156,7 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	response, err := provider.Generate(ctx, prompt.Template, llm.Config{
 		Model:       llmConfig.Model,
 		Temperature: temperature,
-		MaxTokens:   4096,
+		MaxTokens:   4096, // TODO: Make this configurable
 		Brand:       brand,
 	})
 	if err != nil {

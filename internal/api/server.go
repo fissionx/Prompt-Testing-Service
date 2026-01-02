@@ -31,6 +31,7 @@ type Server struct {
 	exportService               *services.ExportService
 	competitorService           *services.CompetitorService
 	brandPromptService          *services.BrandPromptService
+	brandService                *services.BrandService
 	llmRegistry                 *llm.Registry
 	router                      *gin.Engine
 	corsOrigin                  string
@@ -65,6 +66,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 	})
 
 	scheduledCampaignManager := services.NewScheduledCampaignManager(database, llmRegistry)
+	brandService := services.NewBrandService("") // Uses default URL
 
 	server := &Server{
 		db:                          database,
@@ -81,6 +83,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		exportService:               services.NewExportService(database),
 		competitorService:           services.NewCompetitorService(database, llmRegistry),
 		brandPromptService:          services.NewBrandPromptService(database, llmRegistry),
+		brandService:                brandService,
 		llmRegistry:                 llmRegistry,
 		router:                      router,
 		corsOrigin:                  corsOrigin,
@@ -142,7 +145,7 @@ func (s *Server) setupRoutes() {
 		geo.POST("/insights", s.getGEOInsights)
 
 		// NEW: Advanced Analytics
-		geo.POST("/analytics/sources", s.getSourceAnalytics)
+		geo.GET("/analytics/sources", s.getSourceAnalytics)
 		geo.POST("/analytics/competitive", s.getCompetitiveBenchmark)
 		geo.POST("/analytics/position", s.getPositionAnalytics)
 		geo.POST("/analytics/prompt-performance", s.getPromptPerformance)

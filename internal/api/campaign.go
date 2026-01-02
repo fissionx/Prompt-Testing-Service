@@ -10,21 +10,31 @@ import (
 
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
+	"github.com/fissionx/gego/internal/shared"
 )
 
-// deletePromptsByBrand handles DELETE /api/v1/geo/prompts?brand=X
+// deletePromptsByBrand handles DELETE /api/v1/geo/prompts/brand?brandId=X
 // Deletes all prompts for a specific brand
 func (s *Server) deletePromptsByBrand(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	ctx := c.Request.Context()
 
 	// Delete all prompts for this brand
-	deletedCount, err := s.db.DeletePromptsByBrand(ctx, brand)
+	deletedCount, err := s.db.DeletePromptsByBrand(ctx, brandName)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to delete prompts: "+err.Error())
 		return
@@ -33,36 +43,64 @@ func (s *Server) deletePromptsByBrand(c *gin.Context) {
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
 		Data: map[string]interface{}{
-			"brand":   brand,
+			"brand":   brandName,
 			"deleted": deletedCount,
 		},
 		Message: "Prompts deleted successfully",
 	})
 }
 
-// getBrandPrompts handles GET /api/v1/geo/prompts?brand=X
+// getBrandPrompts handles GET /api/v1/geo/prompts?brandId=X&count=Y&forceRefresh=true
 // Returns both active prompts and suggested prompts for a brand
-// If website parameter is provided, it will also fetch suggestions and filter out already active prompts
+// Automatically uses domain and category from brand info API
+// Query parameters:
+//   - brandId (required): Brand UUID from external API
+//   - count (optional): Number of prompts to suggest (default: 20)
+//   - forceRefresh (optional): Force refresh suggestions (default: false)
 func (s *Server) getBrandPrompts(c *gin.Context) {
-	brand := c.Query("brand")
-	if brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
 
-	website := c.Query("website")
-	category := c.Query("category")
-	domain := c.Query("domain")
-	description := c.Query("description")
-	count := 20 // Default count
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
+	normalizedDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
+
+	// Use domain from brand info as website (convert to https URL)
+	website := ""
+	if normalizedDomain != "" {
+		website = "https://" + normalizedDomain
+	}
+
+	// Use category from brand info
+	category := brandInfo.Category
+
+	// Use normalized domain
+	domain := normalizedDomain
+
+	// No description needed - will be derived from brand info if needed
+	description := ""
+
+	// Parse count parameter (default: 20)
+	count := 20
 	if countStr := c.Query("count"); countStr != "" {
 		if parsed, err := strconv.Atoi(countStr); err == nil && parsed > 0 {
 			count = parsed
 		}
 	}
+
+	// Parse forceRefresh parameter (default: false)
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getBrandPromptsResponse(c, brand, website, category, domain, description, count, forceRefresh)
+	s.getBrandPromptsResponse(c, brandName, website, category, domain, description, count, forceRefresh)
 }
 
 // getBrandPromptsResponse is a helper function that builds and returns the prompts response
@@ -82,7 +120,7 @@ func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, categor
 	if website != "" {
 		// Check if we need fresh suggestions (empty prompts list)
 		needsFreshSuggestions := len(response.ActivePrompts) == 0 && len(response.SuggestedPrompts) == 0
-		
+
 		// Only force refresh if:
 		// 1. Explicitly requested via forceRefresh parameter, OR
 		// 2. We need fresh suggestions (empty prompts list)
@@ -136,7 +174,7 @@ func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, categor
 
 // SaveAndExecutePromptsRequest represents the request to save and execute prompts
 type SaveAndExecutePromptsRequest struct {
-	Brand         string                `json:"brand" binding:"required"`
+	BrandID       string                `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
 	CampaignName  string                `json:"campaignName"`
 	PromptIDs     []string              `json:"promptIds"`     // Existing prompt IDs (suggested prompts)
 	CustomPrompts []models.CustomPrompt `json:"customPrompts"` // User's custom prompts
@@ -155,10 +193,19 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		return
 	}
 
-	if req.Brand == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
 
 	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
 		s.errorResponse(c, http.StatusBadRequest, "At least one prompt is required (promptIds or customPrompts)")
@@ -243,7 +290,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 
 	// Use BrandPromptService to properly manage prompts and preserve suggested prompts
 	// First, delete all active prompts (but preserve suggested prompts in BrandPrompts record)
-	if err := s.brandPromptService.DeleteAllPrompts(ctx, req.Brand); err != nil {
+	if err := s.brandPromptService.DeleteAllPrompts(ctx, brandName); err != nil {
 		// If no BrandPrompts record exists, that's okay - we'll create one
 		fmt.Printf("Warning: failed to delete existing prompts: %v\n", err)
 	}
@@ -291,7 +338,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 
 	saveResponse, err := s.brandPromptService.SavePrompts(
 		ctx,
-		req.Brand,
+		brandName,
 		promptIDsFromSuggested,
 		customPromptsToSave,
 		source,
@@ -305,7 +352,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 
 	// Set defaults
 	if req.CampaignName == "" {
-		req.CampaignName = req.Brand + " Execution"
+		req.CampaignName = brandName + " Execution"
 	}
 	if req.Temperature == 0 {
 		req.Temperature = 0.7
@@ -320,7 +367,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
 			ctx,
 			req.CampaignName,
-			req.Brand,
+			brandName,
 			allPromptIDs,
 			req.LLMIDs,
 			req.Temperature,
@@ -359,7 +406,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 	campaign, err := bulkService.ExecuteCampaign(
 		ctx,
 		req.CampaignName,
-		req.Brand,
+		brandName,
 		allPromptIDs,
 		req.LLMIDs,
 		req.Temperature,

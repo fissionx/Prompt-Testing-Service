@@ -181,3 +181,37 @@ func CountOccurrences(text, keyword string) int {
 
 	return count
 }
+
+// NormalizeDomainToURL converts a domain to a URL starting with www.
+// Examples:
+//   - "chargebee.com" -> "www.chargebee.com"
+//   - "www.chargebee.com" -> "www.chargebee.com"
+//   - "https://chargebee.com" -> "www.chargebee.com"
+//   - "http://www.chargebee.com" -> "www.chargebee.com"
+func NormalizeDomainToURL(domain string) string {
+	if domain == "" {
+		return ""
+	}
+
+	// Remove protocol if present
+	domain = strings.TrimPrefix(domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	
+	// Remove trailing slash
+	domain = strings.TrimSuffix(domain, "/")
+	
+	// Remove path if present
+	if idx := strings.Index(domain, "/"); idx != -1 {
+		domain = domain[:idx]
+	}
+	
+	// Remove www. if already present to avoid duplication
+	domain = strings.TrimPrefix(domain, "www.")
+	
+	// Add www. prefix
+	if domain != "" {
+		domain = "www." + domain
+	}
+	
+	return domain
+}
