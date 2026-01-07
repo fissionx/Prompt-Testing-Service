@@ -251,9 +251,9 @@ type CustomPrompt struct {
 
 // SaveCustomPromptsRequest represents the request to save custom prompts along with promptIds from suggested prompts
 type SaveCustomPromptsRequest struct {
-	BrandID       string         `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
-	PromptIDs     []string       `json:"promptIds,omitempty"`        // Prompt IDs from suggested prompts
-	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"`    // New custom prompts to create
+	BrandID       string         `json:"brandId,omitempty"`       // Brand ID (UUID) - now obtained from path parameter
+	PromptIDs     []string       `json:"promptIds,omitempty"`     // Prompt IDs from suggested prompts
+	CustomPrompts []CustomPrompt `json:"customPrompts,omitempty"` // New custom prompts to create
 }
 
 // SaveCustomPromptsResponse represents the response after saving custom prompts
@@ -862,7 +862,7 @@ type LLMDetails struct {
 
 // SaveCompetitorsRequest represents the request to save user-defined competitors
 type SaveCompetitorsRequest struct {
-	BrandID     string       `json:"brandId" binding:"required"`     // Brand ID (UUID) from external API
+	BrandID     string       `json:"brandId,omitempty"`              // Brand ID (UUID) - now obtained from path parameter
 	Competitors []Competitor `json:"competitors" binding:"required"` // User's final competitor list with name and domain
 	Source      string       `json:"source,omitempty"`               // "suggested", "custom", "mixed"
 }

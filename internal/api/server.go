@@ -145,32 +145,32 @@ func (s *Server) setupRoutes() {
 		geo.POST("/insights", s.getGEOInsights)
 
 		// NEW: Advanced Analytics
-		geo.GET("/analytics/sources", s.getSourceAnalytics)
-		geo.GET("/analytics/competitive", s.getCompetitiveBenchmark)
-		geo.GET("/analytics/position", s.getPositionAnalytics)
-		geo.GET("/analytics/prompt-performance", s.getPromptPerformance)
-		geo.GET("/analytics/prompt-timeseries", s.getPromptTimeSeries)
+		geo.GET("/brand/:brandId/analytics/sources", s.getSourceAnalytics)
+		geo.GET("/brand/:brandId/analytics/competitive", s.getCompetitiveBenchmark)
+		geo.GET("/brand/:brandId/analytics/position", s.getPositionAnalytics)
+		geo.GET("/brand/:brandId/analytics/prompt-performance", s.getPromptPerformance)
+		geo.GET("/brand/:brandId/analytics/prompt-timeseries", s.getPromptTimeSeries)
 
 		// Dashboard & Overview
-		geo.GET("/dashboard/overview", s.getDashboardOverview)
-		geo.GET("/analytics/models", s.getModelAnalytics)
+		geo.GET("/brand/:brandId/dashboard/overview", s.getDashboardOverview)
+		geo.GET("/brand/:brandId/analytics/models", s.getModelAnalytics)
 		geo.POST("/analytics/competitor-matrix", s.getCompetitorMatrix)
-		geo.GET("/analytics/trend-comparison", s.getTrendComparison)
+		geo.GET("/brand/:brandId/analytics/trend-comparison", s.getTrendComparison)
 
 		// Export
 		geo.POST("/export", s.exportData)
 
 		// Competitor Management
-		geo.POST("/competitors", s.saveCompetitors)
-		geo.GET("/competitors", s.getCompetitors)
-		geo.DELETE("/competitors", s.deleteCompetitors)
+		geo.POST("/brand/:brandId/competitors", s.saveCompetitors)
+		geo.GET("/brand/:brandId/competitors", s.getCompetitors)
+		geo.DELETE("/brand/:brandId/competitors", s.deleteCompetitors)
 
 		// Prompt Management (prompts per brand)
-		geo.GET("/prompts", s.getBrandPrompts)
-		geo.POST("/prompts/save", s.saveCustomPrompts)
-		geo.POST("/prompts/execute/bulk", s.saveAndExecutePrompts)
-		geo.DELETE("/prompts", s.deletePromptsByIDs)         // Deletes prompts by IDs (request body with promptIds array)
-		geo.DELETE("/prompts/brand", s.deletePromptsByBrand) // Deletes all prompts by brand (query param ?brand=X)
+		geo.GET("/brand/:brandId/prompts", s.getBrandPrompts)
+		geo.POST("/brand/:brandId/prompts/save", s.saveCustomPrompts)
+		geo.POST("/brand/:brandId/prompts/execute/bulk", s.saveAndExecutePrompts)
+		geo.DELETE("/brand/:brandId/prompts", s.deletePromptsByIDs)         // Deletes prompts by IDs (request body with promptIds array)
+		geo.DELETE("/brand/:brandId/prompts/brand", s.deletePromptsByBrand) // Deletes all prompts by brand
 	}
 
 	api.GET("/health", s.healthCheck)

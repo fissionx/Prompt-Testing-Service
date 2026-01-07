@@ -10,25 +10,26 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// saveCompetitors handles POST /api/v1/geo/competitors
+// saveCompetitors handles POST /api/v1/geo/brand/:brandId/competitors
 // Adds new competitors to the existing list (does not replace)
 // UI can send just the new competitor(s) to add - backend will merge with existing list
 // Deduplicates automatically to prevent adding the same competitor twice
-// Returns the same response format as GET /api/v1/geo/competitors?brandId=X
+// Returns the same response format as GET /api/v1/geo/brand/:brandId/competitors
 func (s *Server) saveCompetitors(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
+		return
+	}
+
 	var req models.SaveCompetitorsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.BrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
-		return
-	}
-
 	// Get brand info from external API
-	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
@@ -67,11 +68,11 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 	s.getCompetitorsResponse(c, brandName, "", "", "", false)
 }
 
-// getCompetitors handles GET /api/v1/geo/competitors
+// getCompetitors handles GET /api/v1/geo/brand/:brandId/competitors
 // Merged endpoint that returns both saved competitors and suggested competitors
 // If website parameter is provided, it will also fetch suggestions and filter out already saved competitors
 func (s *Server) getCompetitors(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
@@ -181,13 +182,13 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, website, descript
 	})
 }
 
-// deleteCompetitors handles DELETE /api/v1/geo/competitors
+// deleteCompetitors handles DELETE /api/v1/geo/brand/:brandId/competitors
 // Supports two modes:
-// 1. Delete all competitors: DELETE /api/v1/geo/competitors?brandId=7
-// 2. Delete individual competitor: DELETE /api/v1/geo/competitors?brandId=7&name=Samsung
-// Returns the same response format as GET /api/v1/geo/competitors?brandId=X
+// 1. Delete all competitors: DELETE /api/v1/geo/brand/:brandId/competitors
+// 2. Delete individual competitor: DELETE /api/v1/geo/brand/:brandId/competitors?name=Samsung
+// Returns the same response format as GET /api/v1/geo/brand/:brandId/competitors
 func (s *Server) deleteCompetitors(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return

@@ -527,24 +527,25 @@ func (s *Server) listScheduledCampaigns(c *gin.Context) {
 	})
 }
 
-// saveCustomPrompts handles POST /api/v1/geo/prompts/save
+// saveCustomPrompts handles POST /api/v1/geo/brand/:brandId/prompts/save
 // Accepts both promptIds from suggested prompts and custom prompts
 // Moves prompts from suggested list to active list
-// Returns the same response format as GET /api/v1/geo/prompts?brandId=X
+// Returns the same response format as GET /api/v1/geo/brand/:brandId/prompts
 func (s *Server) saveCustomPrompts(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
+		return
+	}
+
 	var req models.SaveCustomPromptsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.BrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
-		return
-	}
-
 	// Get brand info from external API
-	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
@@ -597,21 +598,22 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 }
 
 // deletePromptsByIDs handles DELETE /api/v1/geo/prompts
+// deletePromptsByIDs handles DELETE /api/v1/geo/brand/:brandId/prompts
 // Deletes one or more prompts by IDs from the active list and moves them back to suggested list
 // Supports:
-//   - Query parameters: ?brandId=X&id=Y (single prompt)
-//   - JSON body: { "promptIds": ["id1", "id2"] } with ?brandId=X (multiple prompts)
-//   - Query parameter only: ?brandId=X (delete all prompts for brand)
+//   - Query parameters: ?id=Y (single prompt)
+//   - JSON body: { "promptIds": ["id1", "id2"] } (multiple prompts)
+//   - No query params or body (delete all prompts for brand)
 //
-// Returns the same response format as GET /api/v1/geo/prompts?brandId=X
+// Returns the same response format as GET /api/v1/geo/brand/:brandId/prompts
 func (s *Server) deletePromptsByIDs(c *gin.Context) {
-	brandID := c.Query("brandId")
-	promptID := c.Query("id") // Individual prompt ID to delete
-
+	brandID := c.Param("brandId")
 	if brandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required. Provide either 'id' query parameter or 'promptIds' in request body")
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
+
+	promptID := c.Query("id") // Individual prompt ID to delete
 
 	// Get brand info from external API
 	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)

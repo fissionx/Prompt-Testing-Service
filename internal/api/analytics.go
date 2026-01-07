@@ -17,24 +17,24 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// getSourceAnalytics handles GET /api/v1/geo/analytics/sources
-// Query parameters:
+// getSourceAnalytics handles GET /api/v1/geo/brand/:brandId/analytics/sources
+// Path parameters:
 //   - brandId (required): Brand UUID from external API
+//
+// Query parameters:
 //   - startTime (optional): Start time in ISO 8601 format (e.g., "2024-01-01T00:00:00Z")
 //   - endTime (optional): End time in ISO 8601 format (e.g., "2024-01-31T23:59:59Z")
 //   - topN (optional): Number of top sources to return (default: 20)
 //   - forceRefresh (optional): Force re-computation even if cached (default: false)
 func (s *Server) getSourceAnalytics(c *gin.Context) {
-	var req models.SourceAnalyticsRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.BrandID == "" {
+	brandID := c.Param("brandId")
+	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	var req models.SourceAnalyticsRequest
+	req.BrandID = brandID
 
 	// Parse time parameters if provided
 	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
@@ -162,18 +162,16 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	})
 }
 
-// getCompetitiveBenchmark handles GET /api/v1/geo/analytics/competitive
+// getCompetitiveBenchmark handles GET /api/v1/geo/brand/:brandId/analytics/competitive
 func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
-	var req models.CompetitiveBenchmarkRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.BrandID == "" {
+	brandID := c.Param("brandId")
+	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	var req models.CompetitiveBenchmarkRequest
+	req.BrandID = brandID
 
 	// Parse time parameters if provided
 	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
@@ -345,9 +343,9 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	})
 }
 
-// getPositionAnalytics handles GET /api/v1/geo/analytics/position
+// getPositionAnalytics handles GET /api/v1/geo/brand/:brandId/analytics/position
 func (s *Server) getPositionAnalytics(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
@@ -506,18 +504,16 @@ func getPositionAnalyticsForBrand(
 	return response, nil
 }
 
-// getPromptPerformance handles GET /api/v1/geo/analytics/prompt-performance
+// getPromptPerformance handles GET /api/v1/geo/brand/:brandId/analytics/prompt-performance
 func (s *Server) getPromptPerformance(c *gin.Context) {
-	var req models.PromptPerformanceRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.BrandID == "" {
+	brandID := c.Param("brandId")
+	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	var req models.PromptPerformanceRequest
+	req.BrandID = brandID
 
 	// Parse time parameters if provided
 	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
@@ -640,16 +636,30 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	})
 }
 
-// getPromptTimeSeries handles GET /api/v1/geo/analytics/prompt-timeseries
+// getPromptTimeSeries handles GET /api/v1/geo/brand/:brandId/analytics/prompt-timeseries
 func (s *Server) getPromptTimeSeries(c *gin.Context) {
-	// Get query parameters
+	// Get brandId from path parameter
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
+		return
+	}
+
+	// Get promptId from query parameter
 	promptID := c.Query("promptId")
 	if promptID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "promptId is required")
 		return
 	}
 
-	brand := c.Query("brand")
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brand := brandInfo.Name
 
 	// Parse time parameters
 	var startTime, endTime *time.Time

@@ -10,9 +10,9 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// getDashboardOverview handles GET /api/v1/geo/dashboard/overview
+// getDashboardOverview handles GET /api/v1/geo/brand/:brandId/dashboard/overview
 func (s *Server) getDashboardOverview(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "brandId is required")
 		return
@@ -55,18 +55,16 @@ func (s *Server) getDashboardOverview(c *gin.Context) {
 	})
 }
 
-// getModelAnalytics handles GET /api/v1/geo/analytics/models
+// getModelAnalytics handles GET /api/v1/geo/brand/:brandId/analytics/models
 func (s *Server) getModelAnalytics(c *gin.Context) {
-	var req models.ModelAnalyticsRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.BrandID == "" {
+	brandID := c.Param("brandId")
+	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	var req models.ModelAnalyticsRequest
+	req.BrandID = brandID
 
 	// Parse time parameters if provided
 	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
@@ -164,18 +162,16 @@ func (s *Server) getCompetitorMatrix(c *gin.Context) {
 	})
 }
 
-// getTrendComparison handles GET /api/v1/geo/analytics/trend-comparison
+// getTrendComparison handles GET /api/v1/geo/brand/:brandId/analytics/trend-comparison
 func (s *Server) getTrendComparison(c *gin.Context) {
-	var req models.TrendComparisonRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
-		return
-	}
-
-	if req.BrandID == "" {
+	brandID := c.Param("brandId")
+	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
+
+	var req models.TrendComparisonRequest
+	req.BrandID = brandID
 
 	// Parse time parameters if provided
 	if startTimeStr := c.Query("startTime"); startTimeStr != "" {

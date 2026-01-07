@@ -13,10 +13,10 @@ import (
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// deletePromptsByBrand handles DELETE /api/v1/geo/prompts/brand?brandId=X
+// deletePromptsByBrand handles DELETE /api/v1/geo/brand/:brandId/prompts/brand
 // Deletes all prompts for a specific brand
 func (s *Server) deletePromptsByBrand(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
@@ -50,15 +50,17 @@ func (s *Server) deletePromptsByBrand(c *gin.Context) {
 	})
 }
 
-// getBrandPrompts handles GET /api/v1/geo/prompts?brandId=X&count=Y&forceRefresh=true
+// getBrandPrompts handles GET /api/v1/geo/brand/:brandId/prompts
 // Returns both active prompts and suggested prompts for a brand
 // Automatically uses domain and category from brand info API
-// Query parameters:
+// Path parameters:
 //   - brandId (required): Brand UUID from external API
+//
+// Query parameters:
 //   - count (optional): Number of prompts to suggest (default: 20)
 //   - forceRefresh (optional): Force refresh suggestions (default: false)
 func (s *Server) getBrandPrompts(c *gin.Context) {
-	brandID := c.Query("brandId")
+	brandID := c.Param("brandId")
 	if brandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
@@ -174,7 +176,7 @@ func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, categor
 
 // SaveAndExecutePromptsRequest represents the request to save and execute prompts
 type SaveAndExecutePromptsRequest struct {
-	BrandID       string                `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	BrandID       string                `json:"brandId,omitempty"` // Brand ID (UUID) - now obtained from path parameter
 	CampaignName  string                `json:"campaignName"`
 	PromptIDs     []string              `json:"promptIds"`     // Existing prompt IDs (suggested prompts)
 	CustomPrompts []models.CustomPrompt `json:"customPrompts"` // User's custom prompts
@@ -184,22 +186,24 @@ type SaveAndExecutePromptsRequest struct {
 	TotalRuns     int                   `json:"totalRuns"`    // Number of runs per prompt (default: 1)
 }
 
-// saveAndExecutePrompts handles POST /api/v1/geo/prompts/execute/bulk
+// saveAndExecutePrompts handles POST /api/v1/geo/brand/:brandId/prompts/execute/bulk
 // Saves prompts for a brand (upsert - replaces existing) and executes them
 func (s *Server) saveAndExecutePrompts(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
+		return
+	}
+
 	var req SaveAndExecutePromptsRequest
+	req.BrandID = brandID
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.BrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
-		return
-	}
-
 	// Get brand info from external API
-	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
