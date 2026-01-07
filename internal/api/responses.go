@@ -68,14 +68,34 @@ type SimplifiedBrandPromptResponse struct {
 
 // getBrandPromptsWithLatestResponses handles GET /api/v1/brand/:brand/prompts
 // Returns all prompts associated with a brand and their latest response including grounding sources
+// Accepts either a brand ID (UUID) or brand name
 func (s *Server) getBrandPromptsWithLatestResponses(c *gin.Context) {
-	brand := c.Param("brand")
-	if brand == "" {
+	brandParam := c.Param("brand")
+	if brandParam == "" {
 		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
 		return
 	}
 
 	ctx := c.Request.Context()
+
+	// Try to get brand info from external API if it looks like a UUID
+	// UUID format: 8ea22500-53ff-42fb-81eb-f7cd512463ac (36 characters with dashes)
+	var brandName string
+	if len(brandParam) == 36 && strings.Count(brandParam, "-") == 4 {
+		// Looks like a UUID, try to fetch brand info
+		brandInfo, err := s.brandService.GetBrandInfo(ctx, brandParam)
+		if err == nil {
+			brandName = brandInfo.Name
+		} else {
+			// If brand service lookup fails, fall back to using the parameter as brand name
+			brandName = brandParam
+		}
+	} else {
+		// Not a UUID, use as brand name directly
+		brandName = brandParam
+	}
+
+	brand := brandName
 
 	// Get all responses (we'll filter by brand in memory since ResponseFilter doesn't support brand yet)
 	// TODO: Add Brand to ResponseFilter for better performance
