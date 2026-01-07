@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/logger"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
 )
@@ -45,6 +47,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 
 	allowedOrigins := parseAllowedOrigins(corsOrigin)
 
+	// CORS middleware
 	router.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 		allowedOrigin := getAllowedOrigin(origin, allowedOrigins, corsOrigin)
@@ -63,6 +66,30 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		}
 
 		c.Next()
+	})
+
+	// Request latency tracking middleware
+	router.Use(func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		method := c.Request.Method
+
+		// Process request
+		c.Next()
+
+		// Calculate latency
+		duration := time.Since(start)
+		status := c.Writer.Status()
+
+		// Log request latency
+		logger.GetLogger().Info(
+			"[API] method=%s path=%s status=%d duration_ms=%.2f duration_ns=%d",
+			method,
+			path,
+			status,
+			float64(duration.Nanoseconds())/1e6, // Convert to milliseconds
+			duration.Nanoseconds(),
+		)
 	})
 
 	scheduledCampaignManager := services.NewScheduledCampaignManager(database, llmRegistry)

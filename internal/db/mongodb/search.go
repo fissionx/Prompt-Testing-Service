@@ -13,6 +13,7 @@ import (
 
 // SearchKeyword searches for a keyword in all responses and calculates stats on-the-fly
 func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, endTime *time.Time) (*models.KeywordStats, error) {
+	start := time.Now()
 	pattern := regexp.QuoteMeta(keyword)
 	regex := bson.M{"$regex": pattern, "$options": "i"}
 
@@ -33,6 +34,7 @@ func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, 
 
 	cursor, err := m.database.Collection(collResponses).Find(ctx, query)
 	if err != nil {
+		trackLatency("SearchKeyword", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -86,11 +88,13 @@ func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, 
 	stats.UniquePrompts = len(promptsSeen)
 	stats.UniqueLLMs = len(llmsSeen)
 
+	trackLatency("SearchKeyword", collResponses, start, nil)
 	return stats, nil
 }
 
 // GetTopKeywords returns the most common keywords across all responses
 func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endTime *time.Time) ([]models.KeywordCount, error) {
+	start := time.Now()
 	query := bson.M{}
 	if startTime != nil || endTime != nil {
 		timeQuery := bson.M{}
@@ -105,6 +109,7 @@ func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endT
 
 	cursor, err := m.database.Collection(collResponses).Find(ctx, query)
 	if err != nil {
+		trackLatency("GetTopKeywords", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -154,5 +159,6 @@ func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endT
 		})
 	}
 
+	trackLatency("GetTopKeywords", collResponses, start, nil)
 	return results, nil
 }

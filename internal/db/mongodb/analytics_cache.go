@@ -170,6 +170,7 @@ func (m *MongoDB) createAnalyticsCacheIndexes(ctx context.Context) error {
 
 // SaveCachedGEOInsights saves or updates cached GEO insights
 func (m *MongoDB) SaveCachedGEOInsights(ctx context.Context, insights *models.CachedGEOInsights) error {
+	start := time.Now()
 	now := time.Now()
 	if insights.CreatedAt.IsZero() {
 		insights.CreatedAt = now
@@ -184,11 +185,13 @@ func (m *MongoDB) SaveCachedGEOInsights(ctx context.Context, insights *models.Ca
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collCachedGEOInsights).ReplaceOne(ctx, filter, insights, opts)
+	trackLatency("SaveCachedGEOInsights", collCachedGEOInsights, start, err)
 	return err
 }
 
 // GetCachedGEOInsights retrieves cached GEO insights based on query
 func (m *MongoDB) GetCachedGEOInsights(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedGEOInsights, error) {
+	start := time.Now()
 	filter := bson.M{}
 
 	if query.CampaignID != "" {
@@ -210,12 +213,15 @@ func (m *MongoDB) GetCachedGEOInsights(ctx context.Context, query models.Analyti
 	var insights models.CachedGEOInsights
 	err := m.database.Collection(collCachedGEOInsights).FindOne(ctx, filter, opts).Decode(&insights)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetCachedGEOInsights", collCachedGEOInsights, start, nil)
 		return nil, nil // Not found, not an error
 	}
 	if err != nil {
+		trackLatency("GetCachedGEOInsights", collCachedGEOInsights, start, err)
 		return nil, fmt.Errorf("failed to get cached geo insights: %w", err)
 	}
 
+	trackLatency("GetCachedGEOInsights", collCachedGEOInsights, start, nil)
 	return &insights, nil
 }
 
@@ -233,6 +239,7 @@ func (m *MongoDB) DeleteCachedGEOInsightsByBrand(ctx context.Context, brand stri
 
 // SaveCachedSourceAnalytics saves or updates cached source analytics
 func (m *MongoDB) SaveCachedSourceAnalytics(ctx context.Context, analytics *models.CachedSourceAnalytics) error {
+	start := time.Now()
 	now := time.Now()
 	if analytics.CreatedAt.IsZero() {
 		analytics.CreatedAt = now
@@ -247,11 +254,13 @@ func (m *MongoDB) SaveCachedSourceAnalytics(ctx context.Context, analytics *mode
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collCachedSourceAnalytics).ReplaceOne(ctx, filter, analytics, opts)
+	trackLatency("SaveCachedSourceAnalytics", collCachedSourceAnalytics, start, err)
 	return err
 }
 
 // GetCachedSourceAnalytics retrieves cached source analytics based on query
 func (m *MongoDB) GetCachedSourceAnalytics(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedSourceAnalytics, error) {
+	start := time.Now()
 	filter := bson.M{}
 
 	if query.CampaignID != "" {
@@ -272,12 +281,15 @@ func (m *MongoDB) GetCachedSourceAnalytics(ctx context.Context, query models.Ana
 	var analytics models.CachedSourceAnalytics
 	err := m.database.Collection(collCachedSourceAnalytics).FindOne(ctx, filter, opts).Decode(&analytics)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetCachedSourceAnalytics", collCachedSourceAnalytics, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetCachedSourceAnalytics", collCachedSourceAnalytics, start, err)
 		return nil, fmt.Errorf("failed to get cached source analytics: %w", err)
 	}
 
+	trackLatency("GetCachedSourceAnalytics", collCachedSourceAnalytics, start, nil)
 	return &analytics, nil
 }
 
@@ -295,6 +307,7 @@ func (m *MongoDB) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brand 
 
 // SaveCachedCompetitiveBenchmark saves or updates cached competitive benchmark
 func (m *MongoDB) SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark *models.CachedCompetitiveBenchmark) error {
+	start := time.Now()
 	now := time.Now()
 	if benchmark.CreatedAt.IsZero() {
 		benchmark.CreatedAt = now
@@ -309,11 +322,13 @@ func (m *MongoDB) SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark 
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collCachedCompetitiveBenchmark).ReplaceOne(ctx, filter, benchmark, opts)
+	trackLatency("SaveCachedCompetitiveBenchmark", collCachedCompetitiveBenchmark, start, err)
 	return err
 }
 
 // GetCachedCompetitiveBenchmark retrieves cached competitive benchmark based on query
 func (m *MongoDB) GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error) {
+	start := time.Now()
 	filter := bson.M{}
 
 	// Always filter by brand
@@ -346,12 +361,15 @@ func (m *MongoDB) GetCachedCompetitiveBenchmark(ctx context.Context, query model
 	var benchmark models.CachedCompetitiveBenchmark
 	err := m.database.Collection(collCachedCompetitiveBenchmark).FindOne(ctx, filter, opts).Decode(&benchmark)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetCachedCompetitiveBenchmark", collCachedCompetitiveBenchmark, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetCachedCompetitiveBenchmark", collCachedCompetitiveBenchmark, start, err)
 		return nil, fmt.Errorf("failed to get cached competitive benchmark: %w", err)
 	}
 
+	trackLatency("GetCachedCompetitiveBenchmark", collCachedCompetitiveBenchmark, start, nil)
 	return &benchmark, nil
 }
 
@@ -369,6 +387,7 @@ func (m *MongoDB) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, b
 
 // SaveCachedPromptPerformance saves or updates cached prompt performance
 func (m *MongoDB) SaveCachedPromptPerformance(ctx context.Context, performance *models.CachedPromptPerformance) error {
+	start := time.Now()
 	now := time.Now()
 	if performance.CreatedAt.IsZero() {
 		performance.CreatedAt = now
@@ -383,11 +402,13 @@ func (m *MongoDB) SaveCachedPromptPerformance(ctx context.Context, performance *
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collCachedPromptPerformance).ReplaceOne(ctx, filter, performance, opts)
+	trackLatency("SaveCachedPromptPerformance", collCachedPromptPerformance, start, err)
 	return err
 }
 
 // GetCachedPromptPerformance retrieves cached prompt performance based on query
 func (m *MongoDB) GetCachedPromptPerformance(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptPerformance, error) {
+	start := time.Now()
 	filter := bson.M{}
 
 	if query.CampaignID != "" {
@@ -408,12 +429,15 @@ func (m *MongoDB) GetCachedPromptPerformance(ctx context.Context, query models.A
 	var performance models.CachedPromptPerformance
 	err := m.database.Collection(collCachedPromptPerformance).FindOne(ctx, filter, opts).Decode(&performance)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetCachedPromptPerformance", collCachedPromptPerformance, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetCachedPromptPerformance", collCachedPromptPerformance, start, err)
 		return nil, fmt.Errorf("failed to get cached prompt performance: %w", err)
 	}
 
+	trackLatency("GetCachedPromptPerformance", collCachedPromptPerformance, start, nil)
 	return &performance, nil
 }
 
@@ -431,6 +455,7 @@ func (m *MongoDB) DeleteCachedPromptPerformanceByBrand(ctx context.Context, bran
 
 // SaveScheduledCampaign saves or updates a scheduled campaign
 func (m *MongoDB) SaveScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error {
+	start := time.Now()
 	now := time.Now()
 	if campaign.CreatedAt.IsZero() {
 		campaign.CreatedAt = now
@@ -442,25 +467,31 @@ func (m *MongoDB) SaveScheduledCampaign(ctx context.Context, campaign *models.Sc
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collScheduledCampaigns).ReplaceOne(ctx, filter, campaign, opts)
+	trackLatency("SaveScheduledCampaign", collScheduledCampaigns, start, err)
 	return err
 }
 
 // GetScheduledCampaign retrieves a scheduled campaign by ID
 func (m *MongoDB) GetScheduledCampaign(ctx context.Context, id string) (*models.ScheduledCampaign, error) {
+	start := time.Now()
 	var campaign models.ScheduledCampaign
 	err := m.database.Collection(collScheduledCampaigns).FindOne(ctx, bson.M{"_id": id}).Decode(&campaign)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetScheduledCampaign", collScheduledCampaigns, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetScheduledCampaign", collScheduledCampaigns, start, err)
 		return nil, fmt.Errorf("failed to get scheduled campaign: %w", err)
 	}
 
+	trackLatency("GetScheduledCampaign", collScheduledCampaigns, start, nil)
 	return &campaign, nil
 }
 
 // GetScheduledCampaignByBrand retrieves a scheduled campaign by brand
 func (m *MongoDB) GetScheduledCampaignByBrand(ctx context.Context, brand string) (*models.ScheduledCampaign, error) {
+	start := time.Now()
 	filter := bson.M{
 		"brand":  brand,
 		"status": bson.M{"$in": []string{"active", "running"}},
@@ -471,17 +502,21 @@ func (m *MongoDB) GetScheduledCampaignByBrand(ctx context.Context, brand string)
 	var campaign models.ScheduledCampaign
 	err := m.database.Collection(collScheduledCampaigns).FindOne(ctx, filter, opts).Decode(&campaign)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetScheduledCampaignByBrand", collScheduledCampaigns, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetScheduledCampaignByBrand", collScheduledCampaigns, start, err)
 		return nil, fmt.Errorf("failed to get scheduled campaign by brand: %w", err)
 	}
 
+	trackLatency("GetScheduledCampaignByBrand", collScheduledCampaigns, start, nil)
 	return &campaign, nil
 }
 
 // ListScheduledCampaigns lists all scheduled campaigns with optional status filter
 func (m *MongoDB) ListScheduledCampaigns(ctx context.Context, status string) ([]*models.ScheduledCampaign, error) {
+	start := time.Now()
 	filter := bson.M{}
 	if status != "" {
 		filter["status"] = status
@@ -491,15 +526,18 @@ func (m *MongoDB) ListScheduledCampaigns(ctx context.Context, status string) ([]
 
 	cursor, err := m.database.Collection(collScheduledCampaigns).Find(ctx, filter, opts)
 	if err != nil {
+		trackLatency("ListScheduledCampaigns", collScheduledCampaigns, start, err)
 		return nil, fmt.Errorf("failed to list scheduled campaigns: %w", err)
 	}
 	defer cursor.Close(ctx)
 
 	var campaigns []*models.ScheduledCampaign
 	if err := cursor.All(ctx, &campaigns); err != nil {
+		trackLatency("ListScheduledCampaigns", collScheduledCampaigns, start, err)
 		return nil, fmt.Errorf("failed to decode scheduled campaigns: %w", err)
 	}
 
+	trackLatency("ListScheduledCampaigns", collScheduledCampaigns, start, nil)
 	return campaigns, nil
 }
 
@@ -539,6 +577,7 @@ func (m *MongoDB) DeleteScheduledCampaign(ctx context.Context, id string) error 
 
 // SaveCachedPromptTimeSeries saves or updates cached prompt time series
 func (m *MongoDB) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *models.CachedPromptTimeSeries) error {
+	start := time.Now()
 	now := time.Now()
 	if timeSeries.CreatedAt.IsZero() {
 		timeSeries.CreatedAt = now
@@ -553,11 +592,13 @@ func (m *MongoDB) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *mo
 
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collCachedPromptTimeSeries).ReplaceOne(ctx, filter, timeSeries, opts)
+	trackLatency("SaveCachedPromptTimeSeries", collCachedPromptTimeSeries, start, err)
 	return err
 }
 
 // GetCachedPromptTimeSeries retrieves cached prompt time series based on query
 func (m *MongoDB) GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error) {
+	start := time.Now()
 	filter := bson.M{}
 
 	if query.PromptID != "" {
@@ -581,12 +622,15 @@ func (m *MongoDB) GetCachedPromptTimeSeries(ctx context.Context, query models.An
 	var timeSeries models.CachedPromptTimeSeries
 	err := m.database.Collection(collCachedPromptTimeSeries).FindOne(ctx, filter, opts).Decode(&timeSeries)
 	if err == mongo.ErrNoDocuments {
+		trackLatency("GetCachedPromptTimeSeries", collCachedPromptTimeSeries, start, nil)
 		return nil, nil
 	}
 	if err != nil {
+		trackLatency("GetCachedPromptTimeSeries", collCachedPromptTimeSeries, start, err)
 		return nil, fmt.Errorf("failed to get cached prompt time series: %w", err)
 	}
 
+	trackLatency("GetCachedPromptTimeSeries", collCachedPromptTimeSeries, start, nil)
 	return &timeSeries, nil
 }
 
