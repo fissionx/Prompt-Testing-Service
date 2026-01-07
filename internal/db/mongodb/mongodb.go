@@ -10,10 +10,19 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"github.com/fissionx/gego/internal/logger"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
+
+// trackLatency accumulates MongoDB operation latency in context for summary logging
+func trackLatency(ctx context.Context, operation, collection string, start time.Time, err error) {
+	duration := time.Since(start)
+	
+	// Accumulate time in context if available (from API requests)
+	if mongoTotalTime, ok := ctx.Value("mongo_total_time").(*time.Duration); ok {
+		*mongoTotalTime += duration
+	}
+}
 
 // MongoDB implements the Database interface for MongoDB
 type MongoDB struct {
@@ -32,25 +41,6 @@ const (
 	collBrandPrompts     = "brand_prompts"
 	collGEOCampaigns     = "geo_campaigns"
 )
-
-// trackLatency logs MongoDB operation latency with structured information
-func trackLatency(operation, collection string, start time.Time, err error) {
-	duration := time.Since(start)
-	status := "success"
-	if err != nil {
-		status = "error"
-	}
-	
-	logger.GetLogger().Info(
-		"[MongoDB] operation=%s collection=%s duration_ms=%.2f duration_ns=%d status=%s error=%v",
-		operation,
-		collection,
-		float64(duration.Nanoseconds())/1e6, // Convert to milliseconds
-		duration.Nanoseconds(),
-		status,
-		err,
-	)
-}
 
 // New creates a new MongoDB database instance
 func New(config *models.Config) (*MongoDB, error) {
@@ -247,7 +237,7 @@ func (m *MongoDB) CreatePrompt(ctx context.Context, prompt *models.Prompt) error
 	}
 
 	_, err := m.database.Collection(collPrompts).InsertOne(ctx, doc)
-	trackLatency("CreatePrompt", collPrompts, start, err)
+	trackLatency(ctx, "CreatePrompt", collPrompts, start, err)
 	return err
 }
 
@@ -257,11 +247,11 @@ func (m *MongoDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, err
 	var doc bson.M
 	err := m.database.Collection(collPrompts).FindOne(ctx, bson.M{"_id": id}).Decode(&doc)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetPrompt", collPrompts, start, err)
+		trackLatency(ctx, "GetPrompt", collPrompts, start, err)
 		return nil, fmt.Errorf("prompt not found: %s", id)
 	}
 	if err != nil {
-		trackLatency("GetPrompt", collPrompts, start, err)
+		trackLatency(ctx, "GetPrompt", collPrompts, start, err)
 		return nil, err
 	}
 
@@ -302,7 +292,7 @@ func (m *MongoDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, err
 			}
 		}
 
-	trackLatency("GetPrompt", collPrompts, start, nil)
+	trackLatency(ctx, "GetPrompt", collPrompts, start, nil)
 	return prompt, nil
 }
 
@@ -316,7 +306,7 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 
 	cursor, err := m.database.Collection(collPrompts).Find(ctx, filter)
 	if err != nil {
-		trackLatency("ListPrompts", collPrompts, start, err)
+		trackLatency(ctx, "ListPrompts", collPrompts, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -370,7 +360,7 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 		prompts = append(prompts, prompt)
 	}
 
-	trackLatency("ListPrompts", collPrompts, start, nil)
+	trackLatency(ctx, "ListPrompts", collPrompts, start, nil)
 	return prompts, nil
 }
 
@@ -410,17 +400,17 @@ func (m *MongoDB) UpdatePrompt(ctx context.Context, prompt *models.Prompt) error
 	)
 
 	if err != nil {
-		trackLatency("UpdatePrompt", collPrompts, start, err)
+		trackLatency(ctx, "UpdatePrompt", collPrompts, start, err)
 		return err
 	}
 
 	if result.MatchedCount == 0 {
 		err := fmt.Errorf("prompt not found: %s", prompt.ID)
-		trackLatency("UpdatePrompt", collPrompts, start, err)
+		trackLatency(ctx, "UpdatePrompt", collPrompts, start, err)
 		return err
 	}
 
-	trackLatency("UpdatePrompt", collPrompts, start, nil)
+	trackLatency(ctx, "UpdatePrompt", collPrompts, start, nil)
 	return nil
 }
 
@@ -436,17 +426,17 @@ func (m *MongoDB) DeletePrompt(ctx context.Context, id string) error {
 
 	result, err := m.database.Collection(collPrompts).DeleteOne(ctx, filter)
 	if err != nil {
-		trackLatency("DeletePrompt", collPrompts, start, err)
+		trackLatency(ctx, "DeletePrompt", collPrompts, start, err)
 		return err
 	}
 
 	if result.DeletedCount == 0 {
 		err := fmt.Errorf("prompt not found: %s", id)
-		trackLatency("DeletePrompt", collPrompts, start, err)
+		trackLatency(ctx, "DeletePrompt", collPrompts, start, err)
 		return err
 	}
 
-	trackLatency("DeletePrompt", collPrompts, start, nil)
+	trackLatency(ctx, "DeletePrompt", collPrompts, start, nil)
 	return nil
 }
 
@@ -454,7 +444,7 @@ func (m *MongoDB) DeletePrompt(ctx context.Context, id string) error {
 func (m *MongoDB) DeleteAllPrompts(ctx context.Context) (int, error) {
 	start := time.Now()
 	result, err := m.database.Collection(collPrompts).DeleteMany(ctx, bson.M{})
-	trackLatency("DeleteAllPrompts", collPrompts, start, err)
+	trackLatency(ctx, "DeleteAllPrompts", collPrompts, start, err)
 	if err != nil {
 		return 0, err
 	}
@@ -466,7 +456,7 @@ func (m *MongoDB) DeletePromptsByBrand(ctx context.Context, brand string) (int, 
 	start := time.Now()
 	filter := bson.M{"brand": bson.M{"$regex": primitive.Regex{Pattern: "^" + brand + "$", Options: "i"}}}
 	result, err := m.database.Collection(collPrompts).DeleteMany(ctx, filter)
-	trackLatency("DeletePromptsByBrand", collPrompts, start, err)
+	trackLatency(ctx, "DeletePromptsByBrand", collPrompts, start, err)
 	if err != nil {
 		return 0, err
 	}
@@ -544,7 +534,7 @@ func (m *MongoDB) CreateResponse(ctx context.Context, response *models.Response)
 	}
 
 	_, err := m.database.Collection(collResponses).InsertOne(ctx, doc)
-	trackLatency("CreateResponse", collResponses, start, err)
+	trackLatency(ctx, "CreateResponse", collResponses, start, err)
 	return err
 }
 
@@ -554,11 +544,11 @@ func (m *MongoDB) GetResponse(ctx context.Context, id string) (*models.Response,
 	var response models.Response
 	err := m.database.Collection(collResponses).FindOne(ctx, bson.M{"_id": id}).Decode(&response)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetResponse", collResponses, start, err)
+		trackLatency(ctx, "GetResponse", collResponses, start, err)
 		return nil, fmt.Errorf("response not found: %s", id)
 	}
 	if err != nil {
-		trackLatency("GetResponse", collResponses, start, err)
+		trackLatency(ctx, "GetResponse", collResponses, start, err)
 		return nil, err
 	}
 
@@ -570,7 +560,7 @@ func (m *MongoDB) GetResponse(ctx context.Context, id string) (*models.Response,
 		response.PromptText = decompressed
 	}
 
-	trackLatency("GetResponse", collResponses, start, nil)
+	trackLatency(ctx, "GetResponse", collResponses, start, nil)
 	return &response, nil
 }
 
@@ -616,14 +606,14 @@ func (m *MongoDB) ListResponses(ctx context.Context, filter shared.ResponseFilte
 
 	cursor, err := m.database.Collection(collResponses).Find(ctx, query, opts)
 	if err != nil {
-		trackLatency("ListResponses", collResponses, start, err)
+		trackLatency(ctx, "ListResponses", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
 	var responses []*models.Response
 	if err := cursor.All(ctx, &responses); err != nil {
-		trackLatency("ListResponses", collResponses, start, err)
+		trackLatency(ctx, "ListResponses", collResponses, start, err)
 		return nil, err
 	}
 
@@ -637,7 +627,7 @@ func (m *MongoDB) ListResponses(ctx context.Context, filter shared.ResponseFilte
 		}
 	}
 
-	trackLatency("ListResponses", collResponses, start, nil)
+	trackLatency(ctx, "ListResponses", collResponses, start, nil)
 	return responses, nil
 }
 
@@ -673,7 +663,7 @@ func (m *MongoDB) CountResponses(ctx context.Context, filter shared.ResponseFilt
 	}
 
 	count, err := m.database.Collection(collResponses).CountDocuments(ctx, query)
-	trackLatency("CountResponses", collResponses, start, err)
+	trackLatency(ctx, "CountResponses", collResponses, start, err)
 	return count, err
 }
 
@@ -723,7 +713,7 @@ func getTime(doc bson.M, key string) time.Time {
 func (m *MongoDB) DeleteAllResponses(ctx context.Context) (int, error) {
 	start := time.Now()
 	result, err := m.database.Collection(collResponses).DeleteMany(ctx, bson.M{})
-	trackLatency("DeleteAllResponses", collResponses, start, err)
+	trackLatency(ctx, "DeleteAllResponses", collResponses, start, err)
 	if err != nil {
 		return 0, err
 	}
@@ -760,7 +750,7 @@ func (m *MongoDB) GetPromptStats(ctx context.Context, promptID string) (*models.
 
 	cursor, err := m.database.Collection(collResponses).Aggregate(ctx, pipeline)
 	if err != nil {
-		trackLatency("GetPromptStats", collResponses, start, err)
+		trackLatency(ctx, "GetPromptStats", collResponses, start, err)
 		return nil, fmt.Errorf("failed to aggregate prompt stats: %w", err)
 	}
 	defer cursor.Close(ctx)
@@ -779,11 +769,11 @@ func (m *MongoDB) GetPromptStats(ctx context.Context, promptID string) (*models.
 
 	llmCounts, err := m.getLLMCountsForPrompt(ctx, promptID)
 	if err != nil {
-		trackLatency("GetPromptStats", collResponses, start, err)
+		trackLatency(ctx, "GetPromptStats", collResponses, start, err)
 		return nil, fmt.Errorf("failed to get LLM counts: %w", err)
 	}
 
-	trackLatency("GetPromptStats", collResponses, start, nil)
+	trackLatency(ctx, "GetPromptStats", collResponses, start, nil)
 	return &models.PromptStats{
 		PromptID:       promptID,
 		TotalResponses: result.TotalResponses,
@@ -824,7 +814,7 @@ func (m *MongoDB) GetLLMStats(ctx context.Context, llmID string) (*models.LLMSta
 
 	cursor, err := m.database.Collection(collResponses).Aggregate(ctx, pipeline)
 	if err != nil {
-		trackLatency("GetLLMStats", collResponses, start, err)
+		trackLatency(ctx, "GetLLMStats", collResponses, start, err)
 		return nil, fmt.Errorf("failed to aggregate LLM stats: %w", err)
 	}
 	defer cursor.Close(ctx)
@@ -837,18 +827,18 @@ func (m *MongoDB) GetLLMStats(ctx context.Context, llmID string) (*models.LLMSta
 
 	if cursor.Next(ctx) {
 		if err := cursor.Decode(&result); err != nil {
-			trackLatency("GetLLMStats", collResponses, start, err)
+			trackLatency(ctx, "GetLLMStats", collResponses, start, err)
 			return nil, fmt.Errorf("failed to decode LLM stats: %w", err)
 		}
 	}
 
 	promptCounts, err := m.getPromptCountsForLLM(ctx, llmID)
 	if err != nil {
-		trackLatency("GetLLMStats", collResponses, start, err)
+		trackLatency(ctx, "GetLLMStats", collResponses, start, err)
 		return nil, fmt.Errorf("failed to get prompt counts: %w", err)
 	}
 
-	trackLatency("GetLLMStats", collResponses, start, nil)
+	trackLatency(ctx, "GetLLMStats", collResponses, start, nil)
 	return &models.LLMStats{
 		LLMID:          llmID,
 		TotalResponses: result.TotalResponses,
@@ -878,7 +868,7 @@ func (m *MongoDB) getLLMCountsForPrompt(ctx context.Context, promptID string) (m
 
 	cursor, err := m.database.Collection(collResponses).Aggregate(ctx, pipeline)
 	if err != nil {
-		trackLatency("getLLMCountsForPrompt", collResponses, start, err)
+		trackLatency(ctx, "getLLMCountsForPrompt", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -895,7 +885,7 @@ func (m *MongoDB) getLLMCountsForPrompt(ctx context.Context, promptID string) (m
 		counts[result.ID] = result.Count
 	}
 
-	trackLatency("getLLMCountsForPrompt", collResponses, start, nil)
+	trackLatency(ctx, "getLLMCountsForPrompt", collResponses, start, nil)
 	return counts, nil
 }
 
@@ -918,7 +908,7 @@ func (m *MongoDB) getPromptCountsForLLM(ctx context.Context, llmID string) (map[
 
 	cursor, err := m.database.Collection(collResponses).Aggregate(ctx, pipeline)
 	if err != nil {
-		trackLatency("getPromptCountsForLLM", collResponses, start, err)
+		trackLatency(ctx, "getPromptCountsForLLM", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -935,7 +925,7 @@ func (m *MongoDB) getPromptCountsForLLM(ctx context.Context, llmID string) (map[
 		counts[result.ID] = result.Count
 	}
 
-	trackLatency("getPromptCountsForLLM", collResponses, start, nil)
+	trackLatency(ctx, "getPromptCountsForLLM", collResponses, start, nil)
 	return counts, nil
 }
 
@@ -957,7 +947,7 @@ func (m *MongoDB) CreatePromptLibrary(ctx context.Context, library *models.Promp
 	}
 
 	_, err := m.database.Collection(collPromptLibrary).InsertOne(ctx, doc)
-	trackLatency("CreatePromptLibrary", collPromptLibrary, start, err)
+	trackLatency(ctx, "CreatePromptLibrary", collPromptLibrary, start, err)
 	return err
 }
 
@@ -978,15 +968,15 @@ func (m *MongoDB) GetPromptLibrary(ctx context.Context, brand, domain, category 
 	var library models.PromptLibrary
 	err := m.database.Collection(collPromptLibrary).FindOne(ctx, filter).Decode(&library)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetPromptLibrary", collPromptLibrary, start, nil)
+		trackLatency(ctx, "GetPromptLibrary", collPromptLibrary, start, nil)
 		return nil, nil // Return nil if not found (not an error)
 	}
 	if err != nil {
-		trackLatency("GetPromptLibrary", collPromptLibrary, start, err)
+		trackLatency(ctx, "GetPromptLibrary", collPromptLibrary, start, err)
 		return nil, fmt.Errorf("failed to find prompt library: %w", err)
 	}
 
-	trackLatency("GetPromptLibrary", collPromptLibrary, start, nil)
+	trackLatency(ctx, "GetPromptLibrary", collPromptLibrary, start, nil)
 	return &library, nil
 }
 
@@ -1013,17 +1003,17 @@ func (m *MongoDB) UpdatePromptLibrary(ctx context.Context, library *models.Promp
 	)
 
 	if err != nil {
-		trackLatency("UpdatePromptLibrary", collPromptLibrary, start, err)
+		trackLatency(ctx, "UpdatePromptLibrary", collPromptLibrary, start, err)
 		return fmt.Errorf("failed to update prompt library: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
 		err := fmt.Errorf("prompt library not found: %s", library.ID)
-		trackLatency("UpdatePromptLibrary", collPromptLibrary, start, err)
+		trackLatency(ctx, "UpdatePromptLibrary", collPromptLibrary, start, err)
 		return err
 	}
 
-	trackLatency("UpdatePromptLibrary", collPromptLibrary, start, nil)
+	trackLatency(ctx, "UpdatePromptLibrary", collPromptLibrary, start, nil)
 	return nil
 }
 
@@ -1032,18 +1022,18 @@ func (m *MongoDB) ListPromptLibraries(ctx context.Context) ([]*models.PromptLibr
 	start := time.Now()
 	cursor, err := m.database.Collection(collPromptLibrary).Find(ctx, bson.M{})
 	if err != nil {
-		trackLatency("ListPromptLibraries", collPromptLibrary, start, err)
+		trackLatency(ctx, "ListPromptLibraries", collPromptLibrary, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
 	var libraries []*models.PromptLibrary
 	if err := cursor.All(ctx, &libraries); err != nil {
-		trackLatency("ListPromptLibraries", collPromptLibrary, start, err)
+		trackLatency(ctx, "ListPromptLibraries", collPromptLibrary, start, err)
 		return nil, err
 	}
 
-	trackLatency("ListPromptLibraries", collPromptLibrary, start, nil)
+	trackLatency(ctx, "ListPromptLibraries", collPromptLibrary, start, nil)
 	return libraries, nil
 }
 
@@ -1066,7 +1056,7 @@ func (m *MongoDB) CreateBrandProfile(ctx context.Context, profile *models.BrandP
 	}
 
 	_, err := m.database.Collection(collBrandProfiles).InsertOne(ctx, doc)
-	trackLatency("CreateBrandProfile", collBrandProfiles, start, err)
+	trackLatency(ctx, "CreateBrandProfile", collBrandProfiles, start, err)
 	return err
 }
 
@@ -1076,15 +1066,15 @@ func (m *MongoDB) GetBrandProfile(ctx context.Context, brandName string) (*model
 	var profile models.BrandProfile
 	err := m.database.Collection(collBrandProfiles).FindOne(ctx, bson.M{"brand_name": brandName}).Decode(&profile)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetBrandProfile", collBrandProfiles, start, nil)
+		trackLatency(ctx, "GetBrandProfile", collBrandProfiles, start, nil)
 		return nil, nil // Return nil if not found (not an error)
 	}
 	if err != nil {
-		trackLatency("GetBrandProfile", collBrandProfiles, start, err)
+		trackLatency(ctx, "GetBrandProfile", collBrandProfiles, start, err)
 		return nil, fmt.Errorf("failed to find brand profile: %w", err)
 	}
 
-	trackLatency("GetBrandProfile", collBrandProfiles, start, nil)
+	trackLatency(ctx, "GetBrandProfile", collBrandProfiles, start, nil)
 	return &profile, nil
 }
 
@@ -1112,17 +1102,17 @@ func (m *MongoDB) UpdateBrandProfile(ctx context.Context, profile *models.BrandP
 	)
 
 	if err != nil {
-		trackLatency("UpdateBrandProfile", collBrandProfiles, start, err)
+		trackLatency(ctx, "UpdateBrandProfile", collBrandProfiles, start, err)
 		return fmt.Errorf("failed to update brand profile: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
 		err := fmt.Errorf("brand profile not found: %s", profile.ID)
-		trackLatency("UpdateBrandProfile", collBrandProfiles, start, err)
+		trackLatency(ctx, "UpdateBrandProfile", collBrandProfiles, start, err)
 		return err
 	}
 
-	trackLatency("UpdateBrandProfile", collBrandProfiles, start, nil)
+	trackLatency(ctx, "UpdateBrandProfile", collBrandProfiles, start, nil)
 	return nil
 }
 
@@ -1131,18 +1121,18 @@ func (m *MongoDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile
 	start := time.Now()
 	cursor, err := m.database.Collection(collBrandProfiles).Find(ctx, bson.M{})
 	if err != nil {
-		trackLatency("ListBrandProfiles", collBrandProfiles, start, err)
+		trackLatency(ctx, "ListBrandProfiles", collBrandProfiles, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
 	var profiles []*models.BrandProfile
 	if err := cursor.All(ctx, &profiles); err != nil {
-		trackLatency("ListBrandProfiles", collBrandProfiles, start, err)
+		trackLatency(ctx, "ListBrandProfiles", collBrandProfiles, start, err)
 		return nil, err
 	}
 
-	trackLatency("ListBrandProfiles", collBrandProfiles, start, nil)
+	trackLatency(ctx, "ListBrandProfiles", collBrandProfiles, start, nil)
 	return profiles, nil
 }
 
@@ -1172,7 +1162,7 @@ func (m *MongoDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache
 		opts,
 	)
 
-	trackLatency("SaveBrandLogo", collBrandLogos, start, err)
+	trackLatency(ctx, "SaveBrandLogo", collBrandLogos, start, err)
 	return err
 }
 
@@ -1182,15 +1172,15 @@ func (m *MongoDB) GetBrandLogo(ctx context.Context, brandName string) (*models.B
 	var logo models.BrandLogoCache
 	err := m.database.Collection(collBrandLogos).FindOne(ctx, bson.M{"brand_name": brandName}).Decode(&logo)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetBrandLogo", collBrandLogos, start, nil)
+		trackLatency(ctx, "GetBrandLogo", collBrandLogos, start, nil)
 		return nil, nil // Not found - not an error
 	}
 	if err != nil {
-		trackLatency("GetBrandLogo", collBrandLogos, start, err)
+		trackLatency(ctx, "GetBrandLogo", collBrandLogos, start, err)
 		return nil, fmt.Errorf("failed to find brand logo: %w", err)
 	}
 
-	trackLatency("GetBrandLogo", collBrandLogos, start, nil)
+	trackLatency(ctx, "GetBrandLogo", collBrandLogos, start, nil)
 	return &logo, nil
 }
 
@@ -1224,7 +1214,7 @@ func (m *MongoDB) SaveBrandCompetitors(ctx context.Context, competitors *models.
 		opts,
 	)
 
-	trackLatency("SaveBrandCompetitors", collBrandCompetitors, start, err)
+	trackLatency(ctx, "SaveBrandCompetitors", collBrandCompetitors, start, err)
 	return err
 }
 
@@ -1234,15 +1224,15 @@ func (m *MongoDB) GetBrandCompetitors(ctx context.Context, brand string) (*model
 	var competitors models.BrandCompetitors
 	err := m.database.Collection(collBrandCompetitors).FindOne(ctx, bson.M{"brand": brand}).Decode(&competitors)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetBrandCompetitors", collBrandCompetitors, start, nil)
+		trackLatency(ctx, "GetBrandCompetitors", collBrandCompetitors, start, nil)
 		return nil, nil // Not found - not an error
 	}
 	if err != nil {
-		trackLatency("GetBrandCompetitors", collBrandCompetitors, start, err)
+		trackLatency(ctx, "GetBrandCompetitors", collBrandCompetitors, start, err)
 		return nil, fmt.Errorf("failed to get brand competitors: %w", err)
 	}
 
-	trackLatency("GetBrandCompetitors", collBrandCompetitors, start, nil)
+	trackLatency(ctx, "GetBrandCompetitors", collBrandCompetitors, start, nil)
 	return &competitors, nil
 }
 
@@ -1250,7 +1240,7 @@ func (m *MongoDB) GetBrandCompetitors(ctx context.Context, brand string) (*model
 func (m *MongoDB) DeleteBrandCompetitors(ctx context.Context, brand string) error {
 	start := time.Now()
 	_, err := m.database.Collection(collBrandCompetitors).DeleteOne(ctx, bson.M{"brand": brand})
-	trackLatency("DeleteBrandCompetitors", collBrandCompetitors, start, err)
+	trackLatency(ctx, "DeleteBrandCompetitors", collBrandCompetitors, start, err)
 	return err
 }
 
@@ -1259,18 +1249,18 @@ func (m *MongoDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandComp
 	start := time.Now()
 	cursor, err := m.database.Collection(collBrandCompetitors).Find(ctx, bson.M{})
 	if err != nil {
-		trackLatency("ListBrandCompetitors", collBrandCompetitors, start, err)
+		trackLatency(ctx, "ListBrandCompetitors", collBrandCompetitors, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
 	var competitorsList []*models.BrandCompetitors
 	if err := cursor.All(ctx, &competitorsList); err != nil {
-		trackLatency("ListBrandCompetitors", collBrandCompetitors, start, err)
+		trackLatency(ctx, "ListBrandCompetitors", collBrandCompetitors, start, err)
 		return nil, err
 	}
 
-	trackLatency("ListBrandCompetitors", collBrandCompetitors, start, nil)
+	trackLatency(ctx, "ListBrandCompetitors", collBrandCompetitors, start, nil)
 	return competitorsList, nil
 }
 
@@ -1302,7 +1292,7 @@ func (m *MongoDB) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPro
 		opts,
 	)
 
-	trackLatency("SaveBrandPrompts", collBrandPrompts, start, err)
+	trackLatency(ctx, "SaveBrandPrompts", collBrandPrompts, start, err)
 	return err
 }
 
@@ -1312,15 +1302,15 @@ func (m *MongoDB) GetBrandPrompts(ctx context.Context, brand string) (*models.Br
 	var prompts models.BrandPrompts
 	err := m.database.Collection(collBrandPrompts).FindOne(ctx, bson.M{"brand": brand}).Decode(&prompts)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetBrandPrompts", collBrandPrompts, start, nil)
+		trackLatency(ctx, "GetBrandPrompts", collBrandPrompts, start, nil)
 		return nil, nil // Not found - not an error
 	}
 	if err != nil {
-		trackLatency("GetBrandPrompts", collBrandPrompts, start, err)
+		trackLatency(ctx, "GetBrandPrompts", collBrandPrompts, start, err)
 		return nil, fmt.Errorf("failed to get brand prompts: %w", err)
 	}
 
-	trackLatency("GetBrandPrompts", collBrandPrompts, start, nil)
+	trackLatency(ctx, "GetBrandPrompts", collBrandPrompts, start, nil)
 	return &prompts, nil
 }
 
@@ -1354,7 +1344,7 @@ func (m *MongoDB) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCampa
 	filter := bson.M{"_id": campaign.ID}
 	opts := options.Replace().SetUpsert(true)
 	_, err := m.database.Collection(collGEOCampaigns).ReplaceOne(ctx, filter, doc, opts)
-	trackLatency("SaveGEOCampaign", collGEOCampaigns, start, err)
+	trackLatency(ctx, "SaveGEOCampaign", collGEOCampaigns, start, err)
 	return err
 }
 
@@ -1364,14 +1354,14 @@ func (m *MongoDB) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCam
 	var campaign models.GEOCampaign
 	err := m.database.Collection(collGEOCampaigns).FindOne(ctx, bson.M{"_id": id}).Decode(&campaign)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetGEOCampaign", collGEOCampaigns, start, nil)
+		trackLatency(ctx, "GetGEOCampaign", collGEOCampaigns, start, nil)
 		return nil, nil
 	}
 	if err != nil {
-		trackLatency("GetGEOCampaign", collGEOCampaigns, start, err)
+		trackLatency(ctx, "GetGEOCampaign", collGEOCampaigns, start, err)
 		return nil, fmt.Errorf("failed to get GEO campaign: %w", err)
 	}
-	trackLatency("GetGEOCampaign", collGEOCampaigns, start, nil)
+	trackLatency(ctx, "GetGEOCampaign", collGEOCampaigns, start, nil)
 	return &campaign, nil
 }
 
@@ -1392,14 +1382,14 @@ func (m *MongoDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand string
 	var campaign models.GEOCampaign
 	err := m.database.Collection(collGEOCampaigns).FindOne(ctx, filter, opts).Decode(&campaign)
 	if err == mongo.ErrNoDocuments {
-		trackLatency("GetRunningGEOCampaignByBrand", collGEOCampaigns, start, nil)
+		trackLatency(ctx, "GetRunningGEOCampaignByBrand", collGEOCampaigns, start, nil)
 		return nil, nil
 	}
 	if err != nil {
-		trackLatency("GetRunningGEOCampaignByBrand", collGEOCampaigns, start, err)
+		trackLatency(ctx, "GetRunningGEOCampaignByBrand", collGEOCampaigns, start, err)
 		return nil, fmt.Errorf("failed to get running GEO campaign by brand: %w", err)
 	}
-	trackLatency("GetRunningGEOCampaignByBrand", collGEOCampaigns, start, nil)
+	trackLatency(ctx, "GetRunningGEOCampaignByBrand", collGEOCampaigns, start, nil)
 	return &campaign, nil
 }
 

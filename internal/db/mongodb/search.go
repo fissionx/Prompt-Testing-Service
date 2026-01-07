@@ -34,7 +34,7 @@ func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, 
 
 	cursor, err := m.database.Collection(collResponses).Find(ctx, query)
 	if err != nil {
-		trackLatency("SearchKeyword", collResponses, start, err)
+		trackLatency(ctx, "SearchKeyword", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -88,7 +88,7 @@ func (m *MongoDB) SearchKeyword(ctx context.Context, keyword string, startTime, 
 	stats.UniquePrompts = len(promptsSeen)
 	stats.UniqueLLMs = len(llmsSeen)
 
-	trackLatency("SearchKeyword", collResponses, start, nil)
+	trackLatency(ctx, "SearchKeyword", collResponses, start, nil)
 	return stats, nil
 }
 
@@ -109,7 +109,7 @@ func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endT
 
 	cursor, err := m.database.Collection(collResponses).Find(ctx, query)
 	if err != nil {
-		trackLatency("GetTopKeywords", collResponses, start, err)
+		trackLatency(ctx, "GetTopKeywords", collResponses, start, err)
 		return nil, err
 	}
 	defer cursor.Close(ctx)
@@ -159,6 +159,6 @@ func (m *MongoDB) GetTopKeywords(ctx context.Context, limit int, startTime, endT
 		})
 	}
 
-	trackLatency("GetTopKeywords", collResponses, start, nil)
+	trackLatency(ctx, "GetTopKeywords", collResponses, start, nil)
 	return results, nil
 }
