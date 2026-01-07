@@ -162,21 +162,49 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	})
 }
 
-// getCompetitiveBenchmark handles POST /api/v1/geo/analytics/competitive
+// getCompetitiveBenchmark handles GET /api/v1/geo/analytics/competitive
 func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	var req models.CompetitiveBenchmarkRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.MainBrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "MainBrandId is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
 
+	// Parse time parameters if provided
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			req.StartTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			req.EndTime = &t
+		}
+	}
+
+	// Parse array parameters (promptIds, llmIds, competitors)
+	if promptIDsStr := c.Query("promptIds"); promptIDsStr != "" {
+		req.PromptIDs = parseStringArray(promptIDsStr)
+	}
+	if llmIDsStr := c.Query("llmIds"); llmIDsStr != "" {
+		req.LLMIDs = parseStringArray(llmIDsStr)
+	}
+	if competitorsStr := c.Query("competitors"); competitorsStr != "" {
+		req.Competitors = parseCompetitorsFromQuery(competitorsStr)
+	}
+
+	// Parse forceRefresh
+	if forceRefreshStr := c.Query("forceRefresh"); forceRefreshStr != "" {
+		req.ForceRefresh = forceRefreshStr == "true"
+	}
+
 	// Get brand info from external API
-	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.MainBrandID)
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
@@ -317,26 +345,43 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	})
 }
 
-// getPositionAnalytics handles POST /api/v1/geo/analytics/position
+// getPositionAnalytics handles GET /api/v1/geo/analytics/position
 func (s *Server) getPositionAnalytics(c *gin.Context) {
-	var req struct {
-		Brand     string     `json:"brand" binding:"required"`
-		StartTime *time.Time `json:"start_time,omitempty"`
-		EndTime   *time.Time `json:"end_time,omitempty"`
+	brandID := c.Query("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
+		return
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
+	}
+
+	brandName := brandInfo.Name
+
+	// Parse time parameters
+	var startTime, endTime *time.Time
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			startTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			endTime = &t
+		}
 	}
 
 	// Get position analytics
 	analytics, err := getPositionAnalyticsForBrand(
 		c.Request.Context(),
 		s.db,
-		req.Brand,
-		req.StartTime,
-		req.EndTime,
+		brandName,
+		startTime,
+		endTime,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get position analytics: "+err.Error())
@@ -461,10 +506,10 @@ func getPositionAnalyticsForBrand(
 	return response, nil
 }
 
-// getPromptPerformance handles POST /api/v1/geo/analytics/prompt-performance
+// getPromptPerformance handles GET /api/v1/geo/analytics/prompt-performance
 func (s *Server) getPromptPerformance(c *gin.Context) {
 	var req models.PromptPerformanceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
@@ -472,6 +517,30 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	if req.BrandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
+	}
+
+	// Parse time parameters if provided
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			req.StartTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			req.EndTime = &t
+		}
+	}
+
+	// Parse minResponses
+	if minResponsesStr := c.Query("minResponses"); minResponsesStr != "" {
+		if parsed, err := strconv.Atoi(minResponsesStr); err == nil && parsed > 0 {
+			req.MinResponses = parsed
+		}
+	}
+
+	// Parse forceRefresh
+	if forceRefreshStr := c.Query("forceRefresh"); forceRefreshStr != "" {
+		req.ForceRefresh = forceRefreshStr == "true"
 	}
 
 	// Get brand info from external API
@@ -846,4 +915,53 @@ func deriveDomainFromName(name string) string {
 	}
 
 	return "www." + cleaned + ".com"
+}
+
+// parseStringArray parses a comma-separated string into a slice of strings
+func parseStringArray(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+// parseCompetitorsFromQuery parses competitors from query string
+// Expected format: "name1|domain1,name2|domain2" or "name1,name2"
+func parseCompetitorsFromQuery(s string) []models.Competitor {
+	if s == "" {
+		return []models.Competitor{}
+	}
+	parts := strings.Split(s, ",")
+	competitors := make([]models.Competitor, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		var name, domain string
+		if idx := strings.Index(part, "|"); idx != -1 {
+			name = strings.TrimSpace(part[:idx])
+			domain = strings.TrimSpace(part[idx+1:])
+		} else {
+			name = part
+			domain = deriveDomainFromName(name)
+		}
+
+		if name != "" {
+			competitors = append(competitors, models.Competitor{
+				Name:   name,
+				Domain: domain,
+			})
+		}
+	}
+	return competitors
 }

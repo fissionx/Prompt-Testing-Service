@@ -146,16 +146,16 @@ func (s *Server) setupRoutes() {
 
 		// NEW: Advanced Analytics
 		geo.GET("/analytics/sources", s.getSourceAnalytics)
-		geo.POST("/analytics/competitive", s.getCompetitiveBenchmark)
-		geo.POST("/analytics/position", s.getPositionAnalytics)
-		geo.POST("/analytics/prompt-performance", s.getPromptPerformance)
+		geo.GET("/analytics/competitive", s.getCompetitiveBenchmark)
+		geo.GET("/analytics/position", s.getPositionAnalytics)
+		geo.GET("/analytics/prompt-performance", s.getPromptPerformance)
 		geo.GET("/analytics/prompt-timeseries", s.getPromptTimeSeries)
 
 		// Dashboard & Overview
 		geo.GET("/dashboard/overview", s.getDashboardOverview)
-		geo.POST("/analytics/models", s.getModelAnalytics)
+		geo.GET("/analytics/models", s.getModelAnalytics)
 		geo.POST("/analytics/competitor-matrix", s.getCompetitorMatrix)
-		geo.POST("/analytics/trend-comparison", s.getTrendComparison)
+		geo.GET("/analytics/trend-comparison", s.getTrendComparison)
 
 		// Export
 		geo.POST("/export", s.exportData)

@@ -7,7 +7,6 @@
 ./gego
 *.db
 
-__debug_*
 # Test binary, built with `go test -c`
 *.test
 

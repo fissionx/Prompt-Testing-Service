@@ -55,10 +55,10 @@ func (s *Server) getDashboardOverview(c *gin.Context) {
 	})
 }
 
-// getModelAnalytics handles POST /api/v1/geo/analytics/models
+// getModelAnalytics handles GET /api/v1/geo/analytics/models
 func (s *Server) getModelAnalytics(c *gin.Context) {
 	var req models.ModelAnalyticsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
@@ -66,6 +66,18 @@ func (s *Server) getModelAnalytics(c *gin.Context) {
 	if req.BrandID == "" {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
+	}
+
+	// Parse time parameters if provided
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			req.StartTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			req.EndTime = &t
+		}
 	}
 
 	// Get brand info from external API
@@ -152,21 +164,46 @@ func (s *Server) getCompetitorMatrix(c *gin.Context) {
 	})
 }
 
-// getTrendComparison handles POST /api/v1/geo/analytics/trend-comparison
+// getTrendComparison handles GET /api/v1/geo/analytics/trend-comparison
 func (s *Server) getTrendComparison(c *gin.Context) {
 	var req models.TrendComparisonRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&req); err != nil {
 		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
-	if req.MainBrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "MainBrandId is required")
+	if req.BrandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
 		return
 	}
 
+	// Parse time parameters if provided
+	if startTimeStr := c.Query("startTime"); startTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, startTimeStr); err == nil {
+			req.StartTime = &t
+		}
+	}
+	if endTimeStr := c.Query("endTime"); endTimeStr != "" {
+		if t, err := time.Parse(time.RFC3339, endTimeStr); err == nil {
+			req.EndTime = &t
+		}
+	}
+
+	// Parse array parameters (competitors)
+	if competitorsStr := c.Query("competitors"); competitorsStr != "" {
+		req.Competitors = parseCompetitorsFromQuery(competitorsStr)
+	}
+
+	// Parse metric and granularity
+	if metricStr := c.Query("metric"); metricStr != "" {
+		req.Metric = metricStr
+	}
+	if granularityStr := c.Query("granularity"); granularityStr != "" {
+		req.Granularity = granularityStr
+	}
+
 	// Get brand info from external API
-	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.MainBrandID)
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return

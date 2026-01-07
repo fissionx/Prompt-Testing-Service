@@ -383,14 +383,14 @@ type SourceAnalyticsResponse struct {
 
 // CompetitiveBenchmarkRequest represents request for competitive analysis
 type CompetitiveBenchmarkRequest struct {
-	MainBrandID  string       `json:"mainBrandId" binding:"required"` // Brand ID (UUID) from external API
-	Competitors  []Competitor `json:"competitors,omitempty"`
-	PromptIDs    []string     `json:"promptIds,omitempty"`
-	LLMIDs       []string     `json:"llmIds,omitempty"`
-	StartTime    *time.Time   `json:"startTime,omitempty"`
-	EndTime      *time.Time   `json:"endTime,omitempty"`
-	Region       string       `json:"region,omitempty"`
-	ForceRefresh bool         `json:"forceRefresh,omitempty"` // Force re-computation even if cached
+	BrandID      string       `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	Competitors  []Competitor `json:"competitors,omitempty" form:"competitors"`
+	PromptIDs    []string     `json:"promptIds,omitempty" form:"promptIds"`
+	LLMIDs       []string     `json:"llmIds,omitempty" form:"llmIds"`
+	StartTime    *time.Time   `json:"startTime,omitempty" form:"startTime"`
+	EndTime      *time.Time   `json:"endTime,omitempty" form:"endTime"`
+	Region       string       `json:"region,omitempty" form:"region"`
+	ForceRefresh bool         `json:"forceRefresh,omitempty" form:"forceRefresh"` // Force re-computation even if cached
 }
 
 // BrandPerformance represents comprehensive brand performance metrics
@@ -499,11 +499,11 @@ type PositionAnalyticsResponse struct {
 
 // PromptPerformanceRequest represents request for prompt performance analysis
 type PromptPerformanceRequest struct {
-	BrandID      string     `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
-	StartTime    *time.Time `json:"startTime,omitempty"`
-	EndTime      *time.Time `json:"endTime,omitempty"`
-	MinResponses int        `json:"minResponses,omitempty"`
-	ForceRefresh bool       `json:"forceRefresh,omitempty"` // Force re-computation even if cached
+	BrandID      string     `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	StartTime    *time.Time `json:"startTime,omitempty" form:"startTime"`
+	EndTime      *time.Time `json:"endTime,omitempty" form:"endTime"`
+	MinResponses int        `json:"minResponses,omitempty" form:"minResponses"`
+	ForceRefresh bool       `json:"forceRefresh,omitempty" form:"forceRefresh"` // Force re-computation even if cached
 }
 
 // PromptPerformanceResponse represents prompt performance analysis results
@@ -689,9 +689,9 @@ type TrendDataPoint struct {
 
 // ModelAnalyticsRequest represents the request for model-level analytics
 type ModelAnalyticsRequest struct {
-	BrandID   string     `json:"brandId" binding:"required"` // Brand ID (UUID) from external API
-	StartTime *time.Time `json:"startTime,omitempty"`
-	EndTime   *time.Time `json:"endTime,omitempty"`
+	BrandID   string     `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	StartTime *time.Time `json:"startTime,omitempty" form:"startTime"`
+	EndTime   *time.Time `json:"endTime,omitempty" form:"endTime"`
 }
 
 // ModelAnalyticsResponse represents analytics broken down by AI model
@@ -770,12 +770,12 @@ type MatrixAxisInfo struct {
 
 // TrendComparisonRequest represents the request for trend comparison
 type TrendComparisonRequest struct {
-	MainBrandID string       `json:"mainBrandId" binding:"required"` // Brand ID (UUID) from external API
-	Competitors []Competitor `json:"competitors,omitempty"`
-	Metric      string       `json:"metric"` // "visibility", "sentiment", "position"
-	StartTime   *time.Time   `json:"startTime,omitempty"`
-	EndTime     *time.Time   `json:"endTime,omitempty"`
-	Granularity string       `json:"granularity,omitempty"` // "daily", "weekly", "monthly"
+	BrandID     string       `json:"brandId" form:"brandId" binding:"required"` // Brand ID (UUID) from external API
+	Competitors []Competitor `json:"competitors,omitempty" form:"competitors"`
+	Metric      string       `json:"metric" form:"metric"` // "visibility", "sentiment", "position"
+	StartTime   *time.Time   `json:"startTime,omitempty" form:"startTime"`
+	EndTime     *time.Time   `json:"endTime,omitempty" form:"endTime"`
+	Granularity string       `json:"granularity,omitempty" form:"granularity"` // "daily", "weekly", "monthly"
 }
 
 // TrendComparisonResponse represents trend data for multiple brands
