@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fissionx/gego/internal/db/mongodb"
+	"github.com/fissionx/gego/internal/db/postgresql"
 	"github.com/fissionx/gego/internal/db/sqlite"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
@@ -38,6 +39,11 @@ func New(sqlConfig, nosqlConfig *models.Config) (*HybridDB, error) {
 		nosqlDB, err = mongodb.New(nosqlConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create NoSQL database: %w", err)
+		}
+	case "postgresql", "postgres":
+		nosqlDB, err = postgresql.New(nosqlConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create PostgreSQL database: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported NoSQL database provider: %s", nosqlConfig.Provider)
@@ -208,6 +214,13 @@ func (h *HybridDB) GetLLMStats(ctx context.Context, llmID string) (*models.LLMSt
 func (h *HybridDB) GetNoSQLDatabase() *mongodb.MongoDB {
 	if mongoDB, ok := h.nosqlDB.(*mongodb.MongoDB); ok {
 		return mongoDB
+	}
+	return nil
+}
+
+func (h *HybridDB) GetPostgreSQLDatabase() *postgresql.PostgreSQL {
+	if pgDB, ok := h.nosqlDB.(*postgresql.PostgreSQL); ok {
+		return pgDB
 	}
 	return nil
 }

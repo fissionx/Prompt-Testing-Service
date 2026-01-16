@@ -74,9 +74,9 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		path := c.Request.URL.Path
 		method := c.Request.Method
 
-		// Initialize MongoDB total time tracking in context
-		mongoTotalTime := time.Duration(0)
-		ctx := context.WithValue(c.Request.Context(), "mongo_total_time", &mongoTotalTime)
+		// Initialize database total time tracking in context (works for both MongoDB and PostgreSQL)
+		dbTotalTime := time.Duration(0)
+		ctx := context.WithValue(c.Request.Context(), "mongo_total_time", &dbTotalTime)
 		c.Request = c.Request.WithContext(ctx)
 
 		// Process request
@@ -84,16 +84,17 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 
 		// Calculate latencies
 		apiDuration := time.Since(start)
+		dbDuration := dbTotalTime
 		status := c.Writer.Status()
 
-		// Log single summary line with API time and MongoDB time
+		// Log single summary line with API time and database time
 		logger.GetLogger().Info(
-			"[REQUEST] method=%s path=%s status=%d api_time_ms=%.2f mongo_time_ms=%.2f",
+			"[REQUEST] method=%s path=%s status=%d api_time_ms=%.2f db_time_ms=%.2f",
 			method,
 			path,
 			status,
 			float64(apiDuration.Nanoseconds())/1e6,
-			float64(mongoTotalTime.Nanoseconds())/1e6,
+			float64(dbDuration.Nanoseconds())/1e6,
 		)
 	})
 
@@ -156,6 +157,9 @@ func (s *Server) setupRoutes() {
 
 	api.GET("/responses", s.listResponses)
 	api.GET("/brand/:brand/prompts/responses", s.getBrandPromptsWithLatestResponses)
+
+	// Brand endpoints
+	api.GET("/brands/:id", s.getBrand)
 
 	api.POST("/execute", s.execute)
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -108,6 +109,22 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		Options:  cfg.NoSQLDatabase.Options,
 	}
 
+	fmt.Printf("📊 Database Configuration:\n")
+	fmt.Printf("  SQL Database: %s (%s)\n", sqlConfig.Provider, sqlConfig.URI)
+	fmt.Printf("  NoSQL Database: %s\n", nosqlConfig.Provider)
+	if nosqlConfig.Provider == "postgresql" || nosqlConfig.Provider == "postgres" {
+		// Mask password in URI for display
+		maskedURI := maskPasswordInURI(nosqlConfig.URI)
+		fmt.Printf("  PostgreSQL URI: %s\n", maskedURI)
+		fmt.Printf("  Database Name: %s\n", nosqlConfig.Database)
+		fmt.Printf("  ✅ Using PostgreSQL for NoSQL operations\n")
+	} else if nosqlConfig.Provider == "mongodb" {
+		fmt.Printf("  MongoDB URI: %s\n", nosqlConfig.URI)
+		fmt.Printf("  Database Name: %s\n", nosqlConfig.Database)
+		fmt.Printf("  ℹ️  Using MongoDB for NoSQL operations\n")
+	}
+	fmt.Println()
+
 	database, err := db.New(sqlConfig, nosqlConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create hybrid database: %w", err)
@@ -209,6 +226,33 @@ func runAPI(cmd *cobra.Command, args []string) error {
 
 	address := fmt.Sprintf("%s:%s", apiHost, apiPort)
 	return server.Run(address)
+}
+
+// maskPasswordInURI masks the password in a database URI for safe display
+func maskPasswordInURI(uri string) string {
+	// Simple masking: replace password between : and @
+	if strings.Contains(uri, "@") {
+		parts := strings.Split(uri, "@")
+		if len(parts) == 2 {
+			// Find the password part (between : and @)
+			beforeAt := parts[0]
+			if strings.Contains(beforeAt, ":") {
+				userPass := strings.Split(beforeAt, ":")
+				if len(userPass) >= 3 {
+					// postgresql://user:pass@host format
+					userPass[2] = "***"
+					masked := strings.Join(userPass, ":") + "@" + parts[1]
+					return masked
+				} else if len(userPass) == 2 {
+					// user:pass@host format
+					userPass[1] = "***"
+					masked := strings.Join(userPass, ":") + "@" + parts[1]
+					return masked
+				}
+			}
+		}
+	}
+	return uri
 }
 
 func runAPIMigrations(ctx context.Context, database db.Database) error {

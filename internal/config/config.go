@@ -95,6 +95,24 @@ func applyEnvironmentOverrides(cfg *Config) {
 		cfg.NoSQLDatabase.Database = dbName
 	}
 
+	// PostgreSQL/NoSQL Database Provider override (takes precedence)
+	if nosqlProvider := os.Getenv("NOSQL_DATABASE_PROVIDER"); nosqlProvider != "" {
+		cfg.NoSQLDatabase.Provider = nosqlProvider
+	}
+
+	// PostgreSQL URI override (sets provider to postgresql if not already set)
+	if pgURI := os.Getenv("POSTGRESQL_URI"); pgURI != "" {
+		if cfg.NoSQLDatabase.Provider == "" || cfg.NoSQLDatabase.Provider == "mongodb" {
+			cfg.NoSQLDatabase.Provider = "postgresql"
+		}
+		cfg.NoSQLDatabase.URI = pgURI
+	}
+
+	// PostgreSQL Database name override
+	if pgDBName := os.Getenv("POSTGRESQL_DATABASE"); pgDBName != "" {
+		cfg.NoSQLDatabase.Database = pgDBName
+	}
+
 	// SQL Database URI override (for SQLite)
 	if sqlURI := os.Getenv("SQL_DATABASE_URI"); sqlURI != "" {
 		cfg.SQLDatabase.URI = sqlURI
