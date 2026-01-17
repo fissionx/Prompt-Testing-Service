@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -45,15 +46,29 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 		return fmt.Errorf("PostgreSQL URI is required")
 	}
 
+	// Add connection parameters to reduce prepared statement caching issues
+	// binary_parameters=yes helps with prepared statement handling
+	// Also ensure we don't use server-side prepared statements by default
+	// The lib/pq driver will handle this, but we add this for safety
+	if !strings.Contains(connStr, "binary_parameters") {
+		separator := "?"
+		if strings.Contains(connStr, "?") {
+			separator = "&"
+		}
+		connStr += separator + "binary_parameters=yes"
+	}
+
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return fmt.Errorf("failed to open PostgreSQL database: %w", err)
 	}
 
 	// Set connection pool settings
+	// Reduced connection lifetime to help clear stale prepared statements
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxLifetime(3 * time.Minute) // Reduced from 5 to 3 minutes to clear stale connections faster
+	db.SetConnMaxIdleTime(1 * time.Minute)  // Close idle connections after 1 minute
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("failed to ping PostgreSQL database: %w", err)
@@ -532,18 +547,20 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 // ListPrompts lists all prompts, optionally filtered by enabled status
 func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
-	query := "SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at FROM prompts"
+	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+		FROM prompts WHERE 1=1`
 	args := []interface{}{}
 	argPos := 1
 
 	if enabled != nil {
-		query += fmt.Sprintf(" WHERE enabled = $%d", argPos)
+		query += fmt.Sprintf(" AND enabled = $%d", argPos)
 		args = append(args, *enabled)
 		argPos++
 	}
 
 	query += " ORDER BY created_at DESC"
 
+	// Use QueryContext directly to avoid prepared statement caching issues
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		trackLatency(ctx, "ListPrompts", "prompts", start, err)

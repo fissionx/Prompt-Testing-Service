@@ -210,7 +210,12 @@ func (p *PostgreSQL) GetResponse(ctx context.Context, id string) (*models.Respon
 // ListResponses lists responses with filtering
 func (p *PostgreSQL) ListResponses(ctx context.Context, filter shared.ResponseFilter) ([]*models.Response, error) {
 	start := time.Now()
-	query := "SELECT id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model, response_text, brand, temperature, metadata, schedule_id, tokens_used, latency_ms, error, visibility_score, brand_mentioned, in_grounding_sources, grounding_sources, sentiment, competitors_mention, brand_position, total_brands_listed, grounding_domains, web_search_queries, web_search_calls, search_answer, week, month, quarter, region, language, created_at FROM responses WHERE 1=1"
+	query := `SELECT id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model, 
+		response_text, brand, temperature, metadata, schedule_id, tokens_used, latency_ms, error, 
+		visibility_score, brand_mentioned, in_grounding_sources, grounding_sources, sentiment, 
+		competitors_mention, brand_position, total_brands_listed, grounding_domains, web_search_queries, 
+		web_search_calls, search_answer, week, month, quarter, region, language, created_at 
+		FROM responses WHERE 1=1`
 	args := []interface{}{}
 	argPos := 1
 
@@ -258,6 +263,8 @@ func (p *PostgreSQL) ListResponses(ctx context.Context, filter shared.ResponseFi
 		argPos++
 	}
 
+	// Use QueryContext directly without prepared statement caching issues
+	// Ensure args is properly formatted for the query
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

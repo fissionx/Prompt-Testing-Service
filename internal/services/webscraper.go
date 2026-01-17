@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -48,20 +49,52 @@ func (s *WebScraperService) ScrapeWebsite(ctx context.Context, url string) (*Web
 		url = "https://" + url
 	}
 
-	// Create request with context
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	// Retry logic for transient DNS/network failures
+	var resp *http.Response
+	var err error
+	maxRetries := 2
+	retryDelay := 1 * time.Second
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Wait before retry with exponential backoff
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(retryDelay * time.Duration(attempt)):
+			}
+		}
+
+		// Create request with context
+		req, reqErr := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("failed to create request: %w", reqErr)
+		}
+
+		// Set user agent to avoid blocks
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GeoBot/1.0; +https://github.com/fissionx/gego)")
+
+		// Fetch the page
+		resp, err = s.client.Do(req)
+		if err == nil {
+			break // Success, exit retry loop
+		}
+
+		// For DNS "not found" errors, don't retry - return immediately with helpful message
+		if dnsErr, ok := err.(*net.DNSError); ok && dnsErr.IsNotFound {
+			return nil, fmt.Errorf("failed to fetch website: DNS lookup failed for %s (domain may not exist or DNS server unreachable): %w", url, err)
+		}
+
+		// Check if error is retryable (DNS, network, timeout errors)
+		if !isRetryableError(err) {
+			return nil, fmt.Errorf("failed to fetch website: %w", err)
+		}
 	}
 
-	// Set user agent to avoid blocks
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; GeoBot/1.0; +https://github.com/fissionx/gego)")
-
-	// Fetch the page
-	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch website: %w", err)
+		return nil, fmt.Errorf("failed to fetch website after %d attempts: %w", maxRetries+1, err)
 	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -203,5 +236,44 @@ func (s *WebScraperService) GetBrandContext(content *WebsiteContent) string {
 	}
 
 	return context.String()
+}
+
+// isRetryableError checks if an error is transient and worth retrying
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// DNS errors (except not found)
+	if dnsErr, ok := err.(*net.DNSError); ok {
+		// Retry on temporary DNS errors (timeout, server error, etc.)
+		// But don't retry on "no such host" errors
+		return !dnsErr.IsNotFound && (dnsErr.IsTimeout || dnsErr.Temporary() || dnsErr.IsTemporary)
+	}
+
+	// Network timeout errors
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	// Check for "connection refused", "connection reset", etc. in error string
+	errStr := err.Error()
+	retryablePatterns := []string{
+		"connection refused",
+		"connection reset",
+		"network is unreachable",
+		"no route to host",
+		"temporary failure",
+		"i/o timeout",
+	}
+
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(strings.ToLower(errStr), pattern) {
+			return true
+		}
+	}
+
+	// Don't retry for other errors (bad URL, SSL errors, etc.)
+	return false
 }
 

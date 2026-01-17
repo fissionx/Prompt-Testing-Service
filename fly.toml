@@ -15,7 +15,10 @@ primary_region = 'sjc'
   GEGO_DATA_PATH = '/app/data'
   GEGO_ENV = 'dev'
   GEGO_LOG_PATH = '/app/logs'
-  MONGODB_DATABASE = 'gego'
+  # PostgreSQL Configuration (set via secrets)
+  # POSTGRESQL_URI will be set as a secret
+  # NOSQL_DATABASE_PROVIDER = 'postgresql'  # Set via secret if needed
+  POSTGRESQL_DATABASE = 'gego'
 
 [[mounts]]
   source = 'gego_data'

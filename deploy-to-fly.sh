@@ -44,26 +44,58 @@ else
     DEPLOY_ONLY=false
 fi
 
-# MongoDB URI configuration
+# Database configuration (PostgreSQL or MongoDB)
 if [ "$DEPLOY_ONLY" = false ]; then
     echo ""
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  MongoDB Configuration${NC}"
+    echo -e "${BLUE}  Database Configuration${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    # Default MongoDB URI from docs
-    DEFAULT_MONGODB_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/"
-    
-    echo "Please enter your MongoDB Atlas connection URI"
-    echo -e "${YELLOW}(Press Enter to use default from docs)${NC}"
-    echo "Default: ${DEFAULT_MONGODB_URI}"
+    echo "Select database type:"
+    echo "1) PostgreSQL (Recommended)"
+    echo "2) MongoDB"
     echo ""
-    read -p "MongoDB URI: " MONGODB_URI
+    read -p "Choice [1]: " DB_CHOICE
+    DB_CHOICE=${DB_CHOICE:-1}
     
-    if [ -z "$MONGODB_URI" ]; then
-        MONGODB_URI="$DEFAULT_MONGODB_URI"
-        echo -e "${GREEN}Using default MongoDB URI${NC}"
+    if [ "$DB_CHOICE" = "1" ]; then
+        # PostgreSQL configuration
+        echo ""
+        echo -e "${BLUE}PostgreSQL Configuration${NC}"
+        echo ""
+        echo "Please enter your PostgreSQL connection URI"
+        echo "Example: postgresql://user:password@host:port/database?sslmode=require"
+        echo ""
+        read -p "PostgreSQL URI: " POSTGRESQL_URI
+        
+        if [ -z "$POSTGRESQL_URI" ]; then
+            echo -e "${RED}❌ PostgreSQL URI is required${NC}"
+            exit 1
+        fi
+        
+        DB_TYPE="postgresql"
+        DB_URI="$POSTGRESQL_URI"
+    else
+        # MongoDB configuration
+        echo ""
+        echo -e "${BLUE}MongoDB Configuration${NC}"
+        echo ""
+        DEFAULT_MONGODB_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/"
+        
+        echo "Please enter your MongoDB Atlas connection URI"
+        echo -e "${YELLOW}(Press Enter to use default from docs)${NC}"
+        echo "Default: ${DEFAULT_MONGODB_URI}"
+        echo ""
+        read -p "MongoDB URI: " MONGODB_URI
+        
+        if [ -z "$MONGODB_URI" ]; then
+            MONGODB_URI="$DEFAULT_MONGODB_URI"
+            echo -e "${GREEN}Using default MongoDB URI${NC}"
+        fi
+        
+        DB_TYPE="mongodb"
+        DB_URI="$MONGODB_URI"
     fi
     
     echo ""
@@ -93,12 +125,22 @@ if [ "$DEPLOY_ONLY" = false ]; then
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     
-    # Set MongoDB URI as secret
-    if flyctl secrets set MONGODB_URI="${MONGODB_URI}" -a "${APP_NAME}"; then
-        echo -e "${GREEN}✓ MongoDB URI secret set${NC}"
+    # Set database secrets based on type
+    if [ "$DB_TYPE" = "postgresql" ]; then
+        if flyctl secrets set POSTGRESQL_URI="${DB_URI}" NOSQL_DATABASE_PROVIDER="postgresql" -a "${APP_NAME}"; then
+            echo -e "${GREEN}✓ PostgreSQL URI secret set${NC}"
+            echo -e "${GREEN}✓ Database provider set to postgresql${NC}"
+        else
+            echo -e "${RED}❌ Failed to set PostgreSQL secrets${NC}"
+            exit 1
+        fi
     else
-        echo -e "${RED}❌ Failed to set MongoDB URI secret${NC}"
-        exit 1
+        if flyctl secrets set MONGODB_URI="${DB_URI}" -a "${APP_NAME}"; then
+            echo -e "${GREEN}✓ MongoDB URI secret set${NC}"
+        else
+            echo -e "${RED}❌ Failed to set MongoDB URI secret${NC}"
+            exit 1
+        fi
     fi
 fi
 
@@ -147,8 +189,9 @@ else
     echo "Check the error messages above and:"
     echo "1. Review the logs: flyctl logs"
     echo "2. Check app status: flyctl status"
-    echo "3. Verify MongoDB connection string"
-    echo "4. Ensure MongoDB Atlas IP whitelist includes 0.0.0.0/0"
+    echo "3. Verify database connection string"
+    echo "4. For PostgreSQL: Ensure SSL mode matches your database"
+    echo "5. For MongoDB: Ensure MongoDB Atlas IP whitelist includes 0.0.0.0/0"
     exit 1
 fi
 
