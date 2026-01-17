@@ -155,8 +155,16 @@ func (h *HybridDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, er
 	return h.nosqlDB.GetPrompt(ctx, id)
 }
 
+func (h *HybridDB) GetPromptsByIDs(ctx context.Context, ids []string) ([]*models.Prompt, error) {
+	return h.nosqlDB.GetPromptsByIDs(ctx, ids)
+}
+
 func (h *HybridDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error) {
 	return h.nosqlDB.ListPrompts(ctx, enabled)
+}
+
+func (h *HybridDB) ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error) {
+	return h.nosqlDB.ListPromptsByBrand(ctx, brand, enabled)
 }
 
 func (h *HybridDB) UpdatePrompt(ctx context.Context, prompt *models.Prompt) error {

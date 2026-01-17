@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
@@ -604,6 +604,125 @@ func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.
 	}
 
 	trackLatency(ctx, "ListPrompts", "prompts", start, nil)
+	return prompts, nil
+}
+
+// GetPromptsByIDs retrieves multiple prompts by their IDs in a single query
+func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*models.Prompt, error) {
+	start := time.Now()
+	if len(ids) == 0 {
+		return []*models.Prompt{}, nil
+	}
+
+	// Build query with IN clause
+	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+		FROM prompts WHERE id = ANY($1)`
+
+	rows, err := p.db.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		trackLatency(ctx, "GetPromptsByIDs", "prompts", start, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prompts []*models.Prompt
+	for rows.Next() {
+		var prompt models.Prompt
+		var tagsJSON, promptTypeStr string
+
+		err := rows.Scan(
+			&prompt.ID,
+			&prompt.Template,
+			&promptTypeStr,
+			&tagsJSON,
+			&prompt.Category,
+			&prompt.Domain,
+			&prompt.Brand,
+			&prompt.SourceID,
+			&prompt.Generated,
+			&prompt.Enabled,
+			&prompt.CreatedAt,
+			&prompt.UpdatedAt,
+		)
+		if err != nil {
+			trackLatency(ctx, "GetPromptsByIDs", "prompts", start, err)
+			return nil, err
+		}
+
+		prompt.PromptType = models.PromptType(promptTypeStr)
+		prompt.Tags = jsonToSlice(tagsJSON)
+
+		// Decompress template if it was compressed
+		if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
+			prompt.Template = decompressed
+		}
+
+		prompts = append(prompts, &prompt)
+	}
+
+	trackLatency(ctx, "GetPromptsByIDs", "prompts", start, nil)
+	return prompts, nil
+}
+
+// ListPromptsByBrand lists prompts filtered by brand and optionally by enabled status
+func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error) {
+	start := time.Now()
+	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+		FROM prompts WHERE brand = $1`
+	args := []interface{}{brand}
+	argPos := 2
+
+	if enabled != nil {
+		query += fmt.Sprintf(" AND enabled = $%d", argPos)
+		args = append(args, *enabled)
+		argPos++
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		trackLatency(ctx, "ListPromptsByBrand", "prompts", start, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var prompts []*models.Prompt
+	for rows.Next() {
+		var prompt models.Prompt
+		var tagsJSON, promptTypeStr string
+
+		err := rows.Scan(
+			&prompt.ID,
+			&prompt.Template,
+			&promptTypeStr,
+			&tagsJSON,
+			&prompt.Category,
+			&prompt.Domain,
+			&prompt.Brand,
+			&prompt.SourceID,
+			&prompt.Generated,
+			&prompt.Enabled,
+			&prompt.CreatedAt,
+			&prompt.UpdatedAt,
+		)
+		if err != nil {
+			trackLatency(ctx, "ListPromptsByBrand", "prompts", start, err)
+			return nil, err
+		}
+
+		prompt.PromptType = models.PromptType(promptTypeStr)
+		prompt.Tags = jsonToSlice(tagsJSON)
+
+		// Decompress template if it was compressed
+		if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
+			prompt.Template = decompressed
+		}
+
+		prompts = append(prompts, &prompt)
+	}
+
+	trackLatency(ctx, "ListPromptsByBrand", "prompts", start, nil)
 	return prompts, nil
 }
 

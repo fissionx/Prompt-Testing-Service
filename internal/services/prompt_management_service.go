@@ -31,55 +31,67 @@ func NewBrandPromptService(database db.Database, llmRegistry *llm.Registry) *Bra
 
 // GetPrompts retrieves both active and suggested prompts for a brand
 func (s *BrandPromptService) GetPrompts(ctx context.Context, brand string) (*models.GetPromptsResponse, error) {
-	// Get active prompts (enabled prompts with brand set)
+	// Get active prompts (enabled prompts with brand set) - optimized: filter at database level
 	enabled := true
-	allPrompts, err := s.db.ListPrompts(ctx, &enabled)
+	brandPrompts, err := s.db.ListPromptsByBrand(ctx, brand, &enabled)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list prompts: %w", err)
+		return nil, fmt.Errorf("failed to list prompts by brand: %w", err)
 	}
 
 	// Use a map to track unique templates (normalized) and keep the first occurrence
 	templateMap := make(map[string]models.PromptDetail)
 	var activePrompts []models.PromptDetail
 	
-	for _, prompt := range allPrompts {
-		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
-			normalizedTemplate := normalizeTemplate(prompt.Template)
-			
-			// Only add if we haven't seen this template before
-			if _, exists := templateMap[normalizedTemplate]; !exists {
-				detail := models.PromptDetail{
-					ID:         prompt.ID,
-					Template:   prompt.Template,
-					PromptType: prompt.PromptType,
-					Category:   prompt.Category,
-				}
-				templateMap[normalizedTemplate] = detail
-				activePrompts = append(activePrompts, detail)
+	for _, prompt := range brandPrompts {
+		normalizedTemplate := normalizeTemplate(prompt.Template)
+		
+		// Only add if we haven't seen this template before
+		if _, exists := templateMap[normalizedTemplate]; !exists {
+			detail := models.PromptDetail{
+				ID:         prompt.ID,
+				Template:   prompt.Template,
+				PromptType: prompt.PromptType,
+				Category:   prompt.Category,
 			}
+			templateMap[normalizedTemplate] = detail
+			activePrompts = append(activePrompts, detail)
 		}
 	}
 
 	// Get suggested prompts from BrandPrompts
-	brandPrompts, err := s.db.GetBrandPrompts(ctx, brand)
+	brandPromptsRecord, err := s.db.GetBrandPrompts(ctx, brand)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get brand prompts: %w", err)
 	}
 
 	var suggestedPrompts []models.PromptDetail
-	if brandPrompts != nil && len(brandPrompts.SuggestedPromptIDs) > 0 {
-		// Fetch prompt details for suggested prompt IDs
-		for _, promptID := range brandPrompts.SuggestedPromptIDs {
-			prompt, err := s.db.GetPrompt(ctx, promptID)
-			if err != nil || prompt == nil {
-				continue // Skip invalid prompts
+	if brandPromptsRecord != nil && len(brandPromptsRecord.SuggestedPromptIDs) > 0 {
+		// Fetch prompt details for suggested prompt IDs - optimized: batch fetch instead of N+1 queries
+		prompts, err := s.db.GetPromptsByIDs(ctx, brandPromptsRecord.SuggestedPromptIDs)
+		if err != nil {
+			// If batch fetch fails, fall back to individual fetches (backward compatibility)
+			for _, promptID := range brandPromptsRecord.SuggestedPromptIDs {
+				prompt, err := s.db.GetPrompt(ctx, promptID)
+				if err != nil || prompt == nil {
+					continue // Skip invalid prompts
+				}
+				suggestedPrompts = append(suggestedPrompts, models.PromptDetail{
+					ID:         prompt.ID,
+					Template:   prompt.Template,
+					PromptType: prompt.PromptType,
+					Category:   prompt.Category,
+				})
 			}
-			suggestedPrompts = append(suggestedPrompts, models.PromptDetail{
-				ID:         prompt.ID,
-				Template:   prompt.Template,
-				PromptType: prompt.PromptType,
-				Category:   prompt.Category,
-			})
+		} else {
+			// Convert batch-fetched prompts to PromptDetail
+			for _, prompt := range prompts {
+				suggestedPrompts = append(suggestedPrompts, models.PromptDetail{
+					ID:         prompt.ID,
+					Template:   prompt.Template,
+					PromptType: prompt.PromptType,
+					Category:   prompt.Category,
+				})
+			}
 		}
 	}
 
@@ -116,19 +128,33 @@ func (s *BrandPromptService) SuggestPrompts(
 
 		// If we have suggested list cached, return it (deterministic behavior)
 		if existing != nil && len(existing.SuggestedPromptIDs) > 0 {
-			// Fetch prompt details
+			// Fetch prompt details - optimized: batch fetch instead of N+1 queries
 			var prompts []models.PromptDetail
-			for _, promptID := range existing.SuggestedPromptIDs {
-				prompt, err := s.db.GetPrompt(ctx, promptID)
-				if err != nil || prompt == nil {
-					continue
+			promptRecords, err := s.db.GetPromptsByIDs(ctx, existing.SuggestedPromptIDs)
+			if err != nil {
+				// If batch fetch fails, fall back to individual fetches (backward compatibility)
+				for _, promptID := range existing.SuggestedPromptIDs {
+					prompt, err := s.db.GetPrompt(ctx, promptID)
+					if err != nil || prompt == nil {
+						continue
+					}
+					prompts = append(prompts, models.PromptDetail{
+						ID:         prompt.ID,
+						Template:   prompt.Template,
+						PromptType: prompt.PromptType,
+						Category:   prompt.Category,
+					})
 				}
-				prompts = append(prompts, models.PromptDetail{
-					ID:         prompt.ID,
-					Template:   prompt.Template,
-					PromptType: prompt.PromptType,
-					Category:   prompt.Category,
-				})
+			} else {
+				// Convert batch-fetched prompts to PromptDetail
+				for _, prompt := range promptRecords {
+					prompts = append(prompts, models.PromptDetail{
+						ID:         prompt.ID,
+						Template:   prompt.Template,
+						PromptType: prompt.PromptType,
+						Category:   prompt.Category,
+					})
+				}
 			}
 			return &models.SuggestPromptsResponse{
 				Brand:       brand,

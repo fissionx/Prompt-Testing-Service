@@ -296,6 +296,81 @@ func (m *MongoDB) GetPrompt(ctx context.Context, id string) (*models.Prompt, err
 	return prompt, nil
 }
 
+// GetPromptsByIDs retrieves multiple prompts by their IDs in a single query
+func (m *MongoDB) GetPromptsByIDs(ctx context.Context, ids []string) ([]*models.Prompt, error) {
+	start := time.Now()
+	if len(ids) == 0 {
+		return []*models.Prompt{}, nil
+	}
+
+	filter := bson.M{"_id": bson.M{"$in": ids}}
+	cursor, err := m.database.Collection(collPrompts).Find(ctx, filter)
+	if err != nil {
+		trackLatency(ctx, "GetPromptsByIDs", collPrompts, start, err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var prompts []*models.Prompt
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue // Skip invalid documents
+		}
+
+		prompt := m.docToPrompt(doc)
+		if prompt != nil {
+			prompts = append(prompts, prompt)
+		}
+	}
+
+	trackLatency(ctx, "GetPromptsByIDs", collPrompts, start, nil)
+	return prompts, nil
+}
+
+// docToPrompt converts a BSON document to a Prompt struct (helper function)
+func (m *MongoDB) docToPrompt(doc bson.M) *models.Prompt {
+	var promptID string
+	if id, ok := doc["_id"].(string); ok {
+		promptID = id
+	} else if objectID, ok := doc["_id"].(primitive.ObjectID); ok {
+		promptID = objectID.Hex()
+	} else {
+		return nil
+	}
+
+	// Decompress template if it was compressed
+	template := getString(doc, "template")
+	if decompressed, err := shared.DecompressString(template); err == nil {
+		template = decompressed
+	}
+
+	prompt := &models.Prompt{
+		ID:         promptID,
+		Template:   template,
+		PromptType: models.PromptType(getString(doc, "prompt_type")),
+		Category:   getString(doc, "category"),
+		Domain:     getString(doc, "domain"),
+		Brand:      getString(doc, "brand"),
+		SourceID:   getString(doc, "source_id"),
+		Generated:  getBool(doc, "generated"),
+		Enabled:    getBool(doc, "enabled"),
+		CreatedAt:  getTime(doc, "created_at"),
+		UpdatedAt:  getTime(doc, "updated_at"),
+	}
+
+	// Handle optional tags
+	if tags, ok := doc["tags"].([]interface{}); ok {
+		for _, t := range tags {
+			if str, ok := t.(string); ok {
+				prompt.Tags = append(prompt.Tags, str)
+			}
+		}
+	}
+
+	return prompt
+}
+
 // ListPrompts lists all prompts, optionally filtered by enabled status
 func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
@@ -361,6 +436,38 @@ func (m *MongoDB) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Pro
 	}
 
 	trackLatency(ctx, "ListPrompts", collPrompts, start, nil)
+	return prompts, nil
+}
+
+// ListPromptsByBrand lists prompts filtered by brand and optionally by enabled status
+func (m *MongoDB) ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error) {
+	start := time.Now()
+	filter := bson.M{"brand": brand}
+	if enabled != nil {
+		filter["enabled"] = *enabled
+	}
+
+	cursor, err := m.database.Collection(collPrompts).Find(ctx, filter)
+	if err != nil {
+		trackLatency(ctx, "ListPromptsByBrand", collPrompts, start, err)
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var prompts []*models.Prompt
+	for cursor.Next(ctx) {
+		var doc bson.M
+		if err := cursor.Decode(&doc); err != nil {
+			continue // Skip invalid documents
+		}
+
+		prompt := m.docToPrompt(doc)
+		if prompt != nil {
+			prompts = append(prompts, prompt)
+		}
+	}
+
+	trackLatency(ctx, "ListPromptsByBrand", collPrompts, start, nil)
 	return prompts, nil
 }
 

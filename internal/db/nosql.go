@@ -18,7 +18,9 @@ type NoSQLDatabase interface {
 	// Prompt operations
 	CreatePrompt(ctx context.Context, prompt *models.Prompt) error
 	GetPrompt(ctx context.Context, id string) (*models.Prompt, error)
+	GetPromptsByIDs(ctx context.Context, ids []string) ([]*models.Prompt, error)
 	ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error)
+	ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error)
 	UpdatePrompt(ctx context.Context, prompt *models.Prompt) error
 	DeletePrompt(ctx context.Context, id string) error
 	DeleteAllPrompts(ctx context.Context) (int, error)
