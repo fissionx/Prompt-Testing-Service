@@ -219,31 +219,46 @@ func (s *SchedulerService) executeSchedule(ctx context.Context, schedule *models
 	logger.Info("Executing schedule: %s", schedule.ID)
 	logger.Info("Schedule has %d prompts and %d LLMs", len(schedule.PromptIDs), len(schedule.LLMIDs))
 
-	prompts := make([]*models.Prompt, 0, len(schedule.PromptIDs))
-	for _, promptID := range schedule.PromptIDs {
-		logger.Debug("Getting prompt: %s", promptID)
-		prompt, err := s.db.GetPrompt(ctx, promptID)
-		if err != nil {
-			logger.Error("Failed to get prompt %s: %v", promptID, err)
-			continue
+	// Fetch prompts - optimized: batch fetch instead of N queries
+	promptRecords, err := s.db.GetPromptsByIDs(ctx, schedule.PromptIDs)
+	if err != nil {
+		logger.Error("Failed to batch fetch prompts: %v", err)
+		// Fall back to individual fetches for backward compatibility
+		promptRecords = []*models.Prompt{}
+		for _, promptID := range schedule.PromptIDs {
+			prompt, err := s.db.GetPrompt(ctx, promptID)
+			if err != nil {
+				logger.Error("Failed to get prompt %s: %v", promptID, err)
+				continue
+			}
+			promptRecords = append(promptRecords, prompt)
 		}
-		logger.Debug("Retrieved prompt: %s (%s)", prompt.Template, prompt.ID)
-		prompts = append(prompts, prompt)
+	}
+	prompts := promptRecords
+
+	// Fetch LLMs - optimized: batch fetch instead of N queries
+	llmRecords, err := s.db.GetLLMsByIDs(ctx, schedule.LLMIDs)
+	if err != nil {
+		logger.Error("Failed to batch fetch LLMs: %v", err)
+		// Fall back to individual fetches for backward compatibility
+		llmRecords = []*models.LLMConfig{}
+		for _, llmID := range schedule.LLMIDs {
+			llmConfig, err := s.db.GetLLM(ctx, llmID)
+			if err != nil {
+				logger.Error("Failed to get LLM %s: %v", llmID, err)
+				continue
+			}
+			llmRecords = append(llmRecords, llmConfig)
+		}
 	}
 
-	llms := make([]*models.LLMConfig, 0, len(schedule.LLMIDs))
-	for _, llmID := range schedule.LLMIDs {
-		logger.Debug("Getting LLM: %s", llmID)
-		llmConfig, err := s.db.GetLLM(ctx, llmID)
-		if err != nil {
-			logger.Error("Failed to get LLM %s: %v", llmID, err)
-			continue
-		}
+	// Filter out disabled LLMs
+	llms := make([]*models.LLMConfig, 0, len(llmRecords))
+	for _, llmConfig := range llmRecords {
 		if !llmConfig.Enabled {
 			logger.Warning("LLM %s is disabled, skipping", llmConfig.Name)
 			continue
 		}
-		logger.Debug("Retrieved LLM: %s (%s) - API Key: %s", llmConfig.Name, llmConfig.ID, maskAPIKey(llmConfig.APIKey))
 		llms = append(llms, llmConfig)
 	}
 

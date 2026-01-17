@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/fissionx/gego/internal/db"
@@ -37,48 +36,35 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 		minResponses = 3 // Minimum responses to have meaningful data
 	}
 
-	// First, get ALL active prompts for this brand (not just those with responses)
+	// Get active prompts for this brand - optimized: filter at database level
 	enabled := true
-	allPrompts, err := s.db.ListPrompts(ctx, &enabled)
+	brandPrompts, err := s.db.ListPromptsByBrand(ctx, brand, &enabled)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter to get active prompts for this brand
-	var brandPrompts []*models.Prompt
-	for _, prompt := range allPrompts {
-		if prompt.Brand != "" && strings.EqualFold(prompt.Brand, brand) && prompt.Enabled {
-			brandPrompts = append(brandPrompts, prompt)
-		}
-	}
-
-	// Fetch all responses for the brand
+	// Fetch responses for the brand - optimized: filter by brand at database level
 	filter := shared.ResponseFilter{
+		Brand:     brand, // Filter at database level instead of in-memory
 		StartTime: startTime,
 		EndTime:   endTime,
 		Limit:     10000,
 	}
 
-	allResponses, err := s.db.ListResponses(ctx, filter)
+	responses, err := s.db.ListResponses(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter for brand and group by prompt
+	// Group responses by prompt
 	promptData := make(map[string]*promptPerformanceData)
-
-	for _, resp := range allResponses {
-		if resp.Brand != brand {
-			continue
-		}
-
+	for _, resp := range responses {
 		if _, exists := promptData[resp.PromptID]; !exists {
 			promptData[resp.PromptID] = &promptPerformanceData{
 				promptID:  resp.PromptID,
 				responses: []*models.Response{},
 			}
 		}
-
 		promptData[resp.PromptID].responses = append(promptData[resp.PromptID].responses, resp)
 	}
 

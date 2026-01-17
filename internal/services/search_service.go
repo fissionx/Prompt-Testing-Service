@@ -115,9 +115,11 @@ func (s *SearchService) findMatches(response *models.Response, regex *regexp.Reg
 
 		contextText := response.ResponseText[contextStart:contextEnd]
 
-		promptName := "Unknown Prompt"
-		if prompt, err := s.db.GetPrompt(context.Background(), response.PromptID); err == nil {
-			promptName = prompt.Template
+		// Use prompt text from response instead of fetching from database
+		// This avoids N database queries per match - response.PromptText already contains the template
+		promptName := response.PromptText
+		if promptName == "" {
+			promptName = "Unknown Prompt"
 		}
 
 		matches = append(matches, SearchMatch{

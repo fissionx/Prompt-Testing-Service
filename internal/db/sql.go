@@ -16,6 +16,7 @@ type SQLDatabase interface {
 	// LLM operations
 	CreateLLM(ctx context.Context, llm *models.LLMConfig) error
 	GetLLM(ctx context.Context, id string) (*models.LLMConfig, error)
+	GetLLMsByIDs(ctx context.Context, ids []string) ([]*models.LLMConfig, error)
 	ListLLMs(ctx context.Context, enabled *bool) ([]*models.LLMConfig, error)
 	UpdateLLM(ctx context.Context, llm *models.LLMConfig) error
 	DeleteLLM(ctx context.Context, id string) error

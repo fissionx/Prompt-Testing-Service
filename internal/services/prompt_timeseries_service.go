@@ -36,25 +36,18 @@ func (s *PromptTimeSeriesService) GetPromptTimeSeries(
 		return nil, err
 	}
 
-	// Fetch all responses for the prompt
+	// Fetch responses for the prompt - optimized: filter by brand at database level if specified
 	filter := shared.ResponseFilter{
 		PromptID:  promptID,
+		Brand:     brand, // Filter by brand at database level instead of in-memory
 		StartTime: startTime,
 		EndTime:   endTime,
 		Limit:     10000,
 	}
 
-	allResponses, err := s.db.ListResponses(ctx, filter)
+	responses, err := s.db.ListResponses(ctx, filter)
 	if err != nil {
 		return nil, err
-	}
-
-	// Filter by brand if specified
-	var responses []*models.Response
-	for _, resp := range allResponses {
-		if brand == "" || resp.Brand == brand {
-			responses = append(responses, resp)
-		}
 	}
 
 	// Build response

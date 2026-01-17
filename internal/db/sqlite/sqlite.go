@@ -209,6 +209,60 @@ func (s *SQLite) GetLLM(ctx context.Context, id string) (*models.LLMConfig, erro
 	return &llm, nil
 }
 
+// GetLLMsByIDs retrieves multiple LLM configurations by their IDs in a single query
+func (s *SQLite) GetLLMsByIDs(ctx context.Context, ids []string) ([]*models.LLMConfig, error) {
+	if len(ids) == 0 {
+		return []*models.LLMConfig{}, nil
+	}
+
+	// Build query with IN clause using placeholders
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, name, provider, model, api_key, base_url, config, enabled, created_at, updated_at
+		FROM llms WHERE id IN (%s)
+		ORDER BY created_at DESC`,
+		strings.Join(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var llms []*models.LLMConfig
+	for rows.Next() {
+		var llm models.LLMConfig
+		var configJSON string
+
+		err := rows.Scan(
+			&llm.ID,
+			&llm.Name,
+			&llm.Provider,
+			&llm.Model,
+			&llm.APIKey,
+			&llm.BaseURL,
+			&configJSON,
+			&llm.Enabled,
+			&llm.CreatedAt,
+			&llm.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		llm.Config = jsonToMap(configJSON)
+		llms = append(llms, &llm)
+	}
+
+	return llms, nil
+}
+
 // ListLLMs lists all LLM configurations, optionally filtered by enabled status
 func (s *SQLite) ListLLMs(ctx context.Context, enabled *bool) ([]*models.LLMConfig, error) {
 	query := `

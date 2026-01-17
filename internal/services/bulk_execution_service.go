@@ -269,15 +269,19 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	return s.db.CreateResponse(ctx, responseModel)
 }
 
-// getPrompts fetches prompts by IDs
+// getPrompts fetches prompts by IDs - optimized: batch fetch instead of N queries
 func (s *BulkExecutionService) getPrompts(ctx context.Context, promptIDs []string) ([]*models.Prompt, error) {
-	var prompts []*models.Prompt
-	for _, id := range promptIDs {
-		prompt, err := s.db.GetPrompt(ctx, id)
-		if err != nil {
-			continue
+	prompts, err := s.db.GetPromptsByIDs(ctx, promptIDs)
+	if err != nil {
+		// Fall back to individual fetches for backward compatibility
+		prompts = []*models.Prompt{}
+		for _, id := range promptIDs {
+			prompt, err := s.db.GetPrompt(ctx, id)
+			if err != nil {
+				continue
+			}
+			prompts = append(prompts, prompt)
 		}
-		prompts = append(prompts, prompt)
 	}
 	if len(prompts) == 0 {
 		return nil, fmt.Errorf("no valid prompts found")
@@ -285,30 +289,49 @@ func (s *BulkExecutionService) getPrompts(ctx context.Context, promptIDs []strin
 	return prompts, nil
 }
 
-// getLLMs fetches LLM configs by IDs
+// getLLMs fetches LLM configs by IDs - optimized: batch fetch instead of N queries
 func (s *BulkExecutionService) getLLMs(ctx context.Context, llmIDs []string) ([]*models.LLMConfig, error) {
 	if len(llmIDs) == 0 {
 		return nil, fmt.Errorf("no LLM IDs provided")
 	}
 
-	llmService := NewLLMService(s.db)
+	// Batch fetch all LLMs
+	llmRecords, err := s.db.GetLLMsByIDs(ctx, llmIDs)
+	if err != nil {
+		// Fall back to individual fetches for backward compatibility
+		llmService := NewLLMService(s.db)
+		llmRecords = []*models.LLMConfig{}
+		for _, id := range llmIDs {
+			llmConfig, err := llmService.GetLLM(ctx, id)
+			if err != nil {
+				continue
+			}
+			llmRecords = append(llmRecords, llmConfig)
+		}
+	}
+
+	// Filter enabled LLMs and track disabled/not found
 	var llms []*models.LLMConfig
 	var notFound []string
 	var disabled []string
+	foundMap := make(map[string]bool)
 
-	for _, id := range llmIDs {
-		llmConfig, err := llmService.GetLLM(ctx, id)
-		if err != nil {
-			notFound = append(notFound, id)
-			log.Printf("LLM %s not found: %v", id, err)
-			continue
-		}
+	for _, llmConfig := range llmRecords {
+		foundMap[llmConfig.ID] = true
 		if !llmConfig.Enabled {
-			disabled = append(disabled, fmt.Sprintf("%s (%s)", id, llmConfig.Name))
-			log.Printf("LLM %s (%s) is disabled", id, llmConfig.Name)
+			disabled = append(disabled, fmt.Sprintf("%s (%s)", llmConfig.ID, llmConfig.Name))
+			log.Printf("LLM %s (%s) is disabled", llmConfig.ID, llmConfig.Name)
 			continue
 		}
 		llms = append(llms, llmConfig)
+	}
+
+	// Track which LLMs were not found
+	for _, id := range llmIDs {
+		if !foundMap[id] {
+			notFound = append(notFound, id)
+			log.Printf("LLM %s not found", id)
+		}
 	}
 
 	if len(llms) == 0 {

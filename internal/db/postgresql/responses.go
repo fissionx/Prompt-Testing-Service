@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
+
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
@@ -219,16 +221,35 @@ func (p *PostgreSQL) ListResponses(ctx context.Context, filter shared.ResponseFi
 	args := []interface{}{}
 	argPos := 1
 
-	if filter.PromptID != "" {
+	// Handle prompt ID filtering - prefer batch (PromptIDs) over single (PromptID)
+	if len(filter.PromptIDs) > 0 {
+		query += fmt.Sprintf(" AND prompt_id = ANY($%d)", argPos)
+		args = append(args, pq.Array(filter.PromptIDs))
+		argPos++
+	} else if filter.PromptID != "" {
 		query += fmt.Sprintf(" AND prompt_id = $%d", argPos)
 		args = append(args, filter.PromptID)
 		argPos++
 	}
-	if filter.LLMID != "" {
+
+	// Handle LLM ID filtering - prefer batch (LLMIDs) over single (LLMID)
+	if len(filter.LLMIDs) > 0 {
+		query += fmt.Sprintf(" AND llm_id = ANY($%d)", argPos)
+		args = append(args, pq.Array(filter.LLMIDs))
+		argPos++
+	} else if filter.LLMID != "" {
 		query += fmt.Sprintf(" AND llm_id = $%d", argPos)
 		args = append(args, filter.LLMID)
 		argPos++
 	}
+
+	// Filter by brand if provided
+	if filter.Brand != "" {
+		query += fmt.Sprintf(" AND brand = $%d", argPos)
+		args = append(args, filter.Brand)
+		argPos++
+	}
+
 	if filter.ScheduleID != "" {
 		query += fmt.Sprintf(" AND schedule_id = $%d", argPos)
 		args = append(args, filter.ScheduleID)
@@ -357,16 +378,35 @@ func (p *PostgreSQL) CountResponses(ctx context.Context, filter shared.ResponseF
 	args := []interface{}{}
 	argPos := 1
 
-	if filter.PromptID != "" {
+	// Handle prompt ID filtering - prefer batch (PromptIDs) over single (PromptID)
+	if len(filter.PromptIDs) > 0 {
+		query += fmt.Sprintf(" AND prompt_id = ANY($%d)", argPos)
+		args = append(args, pq.Array(filter.PromptIDs))
+		argPos++
+	} else if filter.PromptID != "" {
 		query += fmt.Sprintf(" AND prompt_id = $%d", argPos)
 		args = append(args, filter.PromptID)
 		argPos++
 	}
-	if filter.LLMID != "" {
+
+	// Handle LLM ID filtering - prefer batch (LLMIDs) over single (LLMID)
+	if len(filter.LLMIDs) > 0 {
+		query += fmt.Sprintf(" AND llm_id = ANY($%d)", argPos)
+		args = append(args, pq.Array(filter.LLMIDs))
+		argPos++
+	} else if filter.LLMID != "" {
 		query += fmt.Sprintf(" AND llm_id = $%d", argPos)
 		args = append(args, filter.LLMID)
 		argPos++
 	}
+
+	// Filter by brand if provided
+	if filter.Brand != "" {
+		query += fmt.Sprintf(" AND brand = $%d", argPos)
+		args = append(args, filter.Brand)
+		argPos++
+	}
+
 	if filter.ScheduleID != "" {
 		query += fmt.Sprintf(" AND schedule_id = $%d", argPos)
 		args = append(args, filter.ScheduleID)

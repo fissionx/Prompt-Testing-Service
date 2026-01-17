@@ -106,6 +106,10 @@ func (h *HybridDB) GetLLM(ctx context.Context, id string) (*models.LLMConfig, er
 	return h.sqlDB.GetLLM(ctx, id)
 }
 
+func (h *HybridDB) GetLLMsByIDs(ctx context.Context, ids []string) ([]*models.LLMConfig, error) {
+	return h.sqlDB.GetLLMsByIDs(ctx, ids)
+}
+
 func (h *HybridDB) ListLLMs(ctx context.Context, enabled *bool) ([]*models.LLMConfig, error) {
 	return h.sqlDB.ListLLMs(ctx, enabled)
 }

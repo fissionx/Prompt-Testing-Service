@@ -676,12 +676,25 @@ func (m *MongoDB) ListResponses(ctx context.Context, filter shared.ResponseFilte
 	start := time.Now()
 	query := bson.M{}
 
-	if filter.PromptID != "" {
+	// Handle prompt ID filtering - prefer batch (PromptIDs) over single (PromptID)
+	if len(filter.PromptIDs) > 0 {
+		query["prompt_id"] = bson.M{"$in": filter.PromptIDs}
+	} else if filter.PromptID != "" {
 		query["prompt_id"] = filter.PromptID
 	}
-	if filter.LLMID != "" {
+
+	// Handle LLM ID filtering - prefer batch (LLMIDs) over single (LLMID)
+	if len(filter.LLMIDs) > 0 {
+		query["llm_id"] = bson.M{"$in": filter.LLMIDs}
+	} else if filter.LLMID != "" {
 		query["llm_id"] = filter.LLMID
 	}
+
+	// Filter by brand if provided
+	if filter.Brand != "" {
+		query["brand"] = filter.Brand
+	}
+
 	if filter.ScheduleID != "" {
 		query["schedule_id"] = filter.ScheduleID
 	}
@@ -743,12 +756,25 @@ func (m *MongoDB) CountResponses(ctx context.Context, filter shared.ResponseFilt
 	start := time.Now()
 	query := bson.M{}
 
-	if filter.PromptID != "" {
+	// Handle prompt ID filtering - prefer batch (PromptIDs) over single (PromptID)
+	if len(filter.PromptIDs) > 0 {
+		query["prompt_id"] = bson.M{"$in": filter.PromptIDs}
+	} else if filter.PromptID != "" {
 		query["prompt_id"] = filter.PromptID
 	}
-	if filter.LLMID != "" {
+
+	// Handle LLM ID filtering - prefer batch (LLMIDs) over single (LLMID)
+	if len(filter.LLMIDs) > 0 {
+		query["llm_id"] = bson.M{"$in": filter.LLMIDs}
+	} else if filter.LLMID != "" {
 		query["llm_id"] = filter.LLMID
 	}
+
+	// Filter by brand if provided
+	if filter.Brand != "" {
+		query["brand"] = filter.Brand
+	}
+
 	if filter.ScheduleID != "" {
 		query["schedule_id"] = filter.ScheduleID
 	}

@@ -39,8 +39,11 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 	region string,
 	competitorMap map[string]string, // name -> domain mapping
 ) (*models.CompetitiveBenchmarkResponse, error) {
-	// Fetch all responses for the main brand's campaigns
+	// Fetch responses - optimized: filter at database level instead of in-memory
 	filter := shared.ResponseFilter{
+		Brand:     mainBrand, // Filter by brand at database level
+		PromptIDs: promptIDs, // Filter by prompt IDs at database level (if provided)
+		LLMIDs:    llmIDs,    // Filter by LLM IDs at database level (if provided)
 		StartTime: startTime,
 		EndTime:   endTime,
 		Limit:     10000,
@@ -51,27 +54,12 @@ func (s *CompetitiveBenchmarkService) GetCompetitiveBenchmark(
 		return nil, fmt.Errorf("failed to fetch responses: %w", err)
 	}
 
-	// Filter to main brand's campaign responses
+	// Filter by region (region filtering still done in-memory as it's not in ResponseFilter yet)
 	var responses []*models.Response
 	for _, resp := range allResponses {
-		// Must match main brand
-		if resp.Brand != mainBrand {
-			continue
-		}
-
 		// Region filter: only apply if BOTH are specified
 		// If response has no region, or request has no region filter, include it
 		if region != "" && resp.Region != "" && !strings.EqualFold(resp.Region, region) {
-			continue
-		}
-
-		// Filter by prompt IDs if specified
-		if len(promptIDs) > 0 && !contains(promptIDs, resp.PromptID) {
-			continue
-		}
-
-		// Filter by LLM IDs if specified
-		if len(llmIDs) > 0 && !contains(llmIDs, resp.LLMID) {
 			continue
 		}
 
