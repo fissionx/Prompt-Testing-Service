@@ -51,6 +51,7 @@ type Prompt struct {
 // Schedule represents a scheduler configuration
 type Schedule struct {
 	ID          string     `json:"id"`
+	BrandID     string     `json:"brandId"`
 	Name        string     `json:"name"`
 	PromptIDs   []string   `json:"promptIds"`
 	LLMIDs      []string   `json:"llmIds"`

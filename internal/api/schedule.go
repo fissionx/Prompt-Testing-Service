@@ -8,17 +8,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"github.com/fissionx/gego/internal/logger"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// listSchedules handles GET /api/v1/schedules
+// listSchedules handles GET /api/v1/brand/:brandId/schedules
 func (s *Server) listSchedules(c *gin.Context) {
+	brandId := c.Param("brandId")
 	enabled := shared.ParseEnabledFilter(c)
 
 	page, limit := s.parsePagination(c)
 
-	schedules, err := s.scheduleService.ListSchedules(c.Request.Context(), enabled)
+	schedules, err := s.scheduleService.ListSchedules(c.Request.Context(), brandId, enabled)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to list schedules: "+err.Error())
 		return
@@ -41,6 +43,7 @@ func (s *Server) listSchedules(c *gin.Context) {
 	for i, schedule := range schedules {
 		responses[i] = models.ScheduleResponse{
 			ID:          schedule.ID,
+			BrandID:     schedule.BrandID,
 			Name:        schedule.Name,
 			PromptIDs:   schedule.PromptIDs,
 			LLMIDs:      schedule.LLMIDs,
@@ -67,9 +70,10 @@ func (s *Server) listSchedules(c *gin.Context) {
 	})
 }
 
-// getSchedule handles GET /api/v1/schedules/:id
+// getSchedule handles GET /api/v1/brand/:brandId/schedules/:id
 func (s *Server) getSchedule(c *gin.Context) {
 	id := c.Param("id")
+	brandId := c.Param("brandId")
 
 	schedule, err := s.scheduleService.GetSchedule(c.Request.Context(), id)
 	if err != nil {
@@ -77,8 +81,15 @@ func (s *Server) getSchedule(c *gin.Context) {
 		return
 	}
 
+	// Ensure the schedule belongs to the specified brand
+	if schedule.BrandID != brandId {
+		s.errorResponse(c, http.StatusForbidden, "Schedule does not belong to the specified brand")
+		return
+	}
+
 	response := models.ScheduleResponse{
 		ID:          schedule.ID,
+		BrandID:     schedule.BrandID,
 		Name:        schedule.Name,
 		PromptIDs:   schedule.PromptIDs,
 		LLMIDs:      schedule.LLMIDs,
@@ -134,8 +145,15 @@ func (s *Server) createSchedule(c *gin.Context) {
 		return
 	}
 
+	brandId := c.Param("brandId")
+	if brandId == "" {
+		s.errorResponse(c, http.StatusBadRequest, "brandId is required")
+		return
+	}
+
 	schedule := &models.Schedule{
 		ID:          uuid.New().String(),
+		BrandID:     brandId,
 		Name:        req.Name,
 		PromptIDs:   req.PromptIDs,
 		LLMIDs:      req.LLMIDs,
@@ -149,8 +167,17 @@ func (s *Server) createSchedule(c *gin.Context) {
 		return
 	}
 
+	// Register the schedule with the cron scheduler if it's enabled
+	if schedule.Enabled {
+		if err := s.schedulerService.RegisterSchedule(c.Request.Context(), schedule); err != nil {
+			// Log error but don't fail the request - schedule is saved, just not registered yet
+			logger.GetLogger().Info("Failed to register schedule with cron scheduler: %v", err)
+		}
+	}
+
 	response := models.ScheduleResponse{
 		ID:          schedule.ID,
+		BrandID:     schedule.BrandID,
 		Name:        schedule.Name,
 		PromptIDs:   schedule.PromptIDs,
 		LLMIDs:      schedule.LLMIDs,
@@ -170,9 +197,10 @@ func (s *Server) createSchedule(c *gin.Context) {
 	})
 }
 
-// updateSchedule handles PUT /api/v1/schedules/:id
+// updateSchedule handles PUT /api/v1/brand/:brandId/schedules/:id
 func (s *Server) updateSchedule(c *gin.Context) {
 	id := c.Param("id")
+	brandId := c.Param("brandId")
 
 	var req models.UpdateScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -183,6 +211,12 @@ func (s *Server) updateSchedule(c *gin.Context) {
 	schedule, err := s.scheduleService.GetSchedule(c.Request.Context(), id)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Schedule not found: "+err.Error())
+		return
+	}
+
+	// Ensure the schedule belongs to the specified brand
+	if schedule.BrandID != brandId {
+		s.errorResponse(c, http.StatusForbidden, "Schedule does not belong to the specified brand")
 		return
 	}
 
@@ -237,8 +271,15 @@ func (s *Server) updateSchedule(c *gin.Context) {
 		return
 	}
 
+	// Re-register the schedule with the cron scheduler (will unregister if disabled)
+	if err := s.schedulerService.RegisterSchedule(c.Request.Context(), schedule); err != nil {
+		// Log error but don't fail the request - schedule is saved, just not registered yet
+		logger.GetLogger().Info("Failed to register schedule with cron scheduler: %v", err)
+	}
+
 	response := models.ScheduleResponse{
 		ID:          schedule.ID,
+		BrandID:     schedule.BrandID,
 		Name:        schedule.Name,
 		PromptIDs:   schedule.PromptIDs,
 		LLMIDs:      schedule.LLMIDs,
@@ -254,9 +295,25 @@ func (s *Server) updateSchedule(c *gin.Context) {
 	s.successResponse(c, response)
 }
 
-// deleteSchedule handles DELETE /api/v1/schedules/:id
+// deleteSchedule handles DELETE /api/v1/brand/:brandId/schedules/:id
 func (s *Server) deleteSchedule(c *gin.Context) {
 	id := c.Param("id")
+	brandId := c.Param("brandId")
+
+	// Verify the schedule belongs to the specified brand before deleting
+	schedule, err := s.scheduleService.GetSchedule(c.Request.Context(), id)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Schedule not found: "+err.Error())
+		return
+	}
+
+	if schedule.BrandID != brandId {
+		s.errorResponse(c, http.StatusForbidden, "Schedule does not belong to the specified brand")
+		return
+	}
+
+	// Unregister the schedule from cron scheduler before deleting
+	s.schedulerService.UnregisterSchedule(id)
 
 	if err := s.scheduleService.DeleteSchedule(c.Request.Context(), id); err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Schedule not found: "+err.Error())

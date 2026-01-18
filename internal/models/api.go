@@ -87,6 +87,7 @@ type PromptResponse struct {
 }
 
 // CreateScheduleRequest represents the request to create a new schedule
+// Note: brandId is extracted from the URL path parameter, not from the request body
 type CreateScheduleRequest struct {
 	Name        string   `json:"name" binding:"required"`
 	PromptIDs   []string `json:"promptIds" binding:"required"`
@@ -109,6 +110,7 @@ type UpdateScheduleRequest struct {
 // ScheduleResponse represents the response for schedule operations
 type ScheduleResponse struct {
 	ID          string     `json:"id"`
+	BrandID     string     `json:"brandId"`
 	Name        string     `json:"name"`
 	PromptIDs   []string   `json:"promptIds"`
 	LLMIDs      []string   `json:"llmIds"`

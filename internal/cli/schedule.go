@@ -235,7 +235,7 @@ func runScheduleAdd(cmd *cobra.Command, args []string) error {
 func runScheduleList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	schedules, err := database.ListSchedules(ctx, nil)
+	schedules, err := database.ListSchedules(ctx, "", nil)
 	if err != nil {
 		return fmt.Errorf("failed to list schedules: %w", err)
 	}
@@ -335,7 +335,7 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 
 	if len(args) == 0 {
-		schedules, err := database.ListSchedules(ctx, nil)
+		schedules, err := database.ListSchedules(ctx, "", nil)
 		if err != nil {
 			return fmt.Errorf("failed to list schedules: %w", err)
 		}

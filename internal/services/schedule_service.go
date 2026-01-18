@@ -74,8 +74,8 @@ func (s *ScheduleService) GetSchedule(ctx context.Context, id string) (*models.S
 }
 
 // ListSchedules lists schedules with optional filtering
-func (s *ScheduleService) ListSchedules(ctx context.Context, enabled *bool) ([]*models.Schedule, error) {
-	return s.db.ListSchedules(ctx, enabled)
+func (s *ScheduleService) ListSchedules(ctx context.Context, brandId string, enabled *bool) ([]*models.Schedule, error) {
+	return s.db.ListSchedules(ctx, brandId, enabled)
 }
 
 // DeleteSchedule deletes a schedule
@@ -103,10 +103,10 @@ func (s *ScheduleService) DisableSchedule(ctx context.Context, id string) error 
 	return s.db.UpdateSchedule(ctx, schedule)
 }
 
-// GetEnabledSchedules returns only enabled schedules
+// GetEnabledSchedules returns only enabled schedules for all brands
 func (s *ScheduleService) GetEnabledSchedules(ctx context.Context) ([]*models.Schedule, error) {
 	enabled := true
-	return s.db.ListSchedules(ctx, &enabled)
+	return s.db.ListSchedules(ctx, "", &enabled) // Empty brandId means all brands
 }
 
 // UpdateLastRun updates the last run time for a schedule

@@ -29,6 +29,7 @@ type Server struct {
 	competitiveBenchmarkService *services.CompetitiveBenchmarkService
 	promptPerformanceService    *services.PromptPerformanceService
 	scheduledCampaignManager    *services.ScheduledCampaignManager
+	schedulerService            *services.SchedulerService
 	dashboardService            *services.DashboardService
 	exportService               *services.ExportService
 	competitorService           *services.CompetitorService
@@ -99,6 +100,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 	})
 
 	scheduledCampaignManager := services.NewScheduledCampaignManager(database, llmRegistry)
+	schedulerService := services.NewSchedulerService(database, llmRegistry)
 	brandService := services.NewBrandService("") // Uses default URL
 
 	server := &Server{
@@ -112,6 +114,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		competitiveBenchmarkService: services.NewCompetitiveBenchmarkService(database),
 		promptPerformanceService:    services.NewPromptPerformanceService(database),
 		scheduledCampaignManager:    scheduledCampaignManager,
+		schedulerService:            schedulerService,
 		dashboardService:            services.NewDashboardService(database),
 		exportService:               services.NewExportService(database),
 		competitorService:           services.NewCompetitorService(database, llmRegistry),
@@ -145,18 +148,18 @@ func (s *Server) setupRoutes() {
 	api.PUT("/prompts/:id", s.updatePrompt)
 	api.DELETE("/prompts/:id", s.deletePrompt)
 
-	api.GET("/schedules", s.listSchedules)
-	api.GET("/schedules/:id", s.getSchedule)
-	api.POST("/schedules", s.createSchedule)
-	api.PUT("/schedules/:id", s.updateSchedule)
-	api.DELETE("/schedules/:id", s.deleteSchedule)
+	api.GET("/brand/:brandId/schedules", s.listSchedules)
+	api.GET("/brand/:brandId/schedules/:id", s.getSchedule)
+	api.POST("/brand/:brandId/schedules", s.createSchedule)
+	api.PUT("/brand/:brandId/schedules/:id", s.updateSchedule)
+	api.DELETE("/brand/:brandId/schedules/:id", s.deleteSchedule)
 
 	api.GET("/stats", s.getStats)
 
 	api.POST("/search", s.search)
 
 	api.GET("/responses", s.listResponses)
-	api.GET("/brand/:brand/prompts/responses", s.getBrandPromptsWithLatestResponses)
+	api.GET("/brand/:brandId/prompts/responses", s.getBrandPromptsWithLatestResponses)
 
 	// Brand endpoints
 	api.GET("/brands/:id", s.getBrand)
@@ -220,12 +223,19 @@ func (s *Server) Run(address string) error {
 		return fmt.Errorf("failed to start scheduled campaign manager: %w", err)
 	}
 
+	// Start the scheduler service to handle cron schedules
+	if err := s.schedulerService.Start(context.Background()); err != nil {
+		// Log error but don't fail startup - scheduler might already be running
+		logger.GetLogger().Info("Failed to start scheduler service (may already be running): %v", err)
+	}
+
 	return s.router.Run(address)
 }
 
 // Stop stops the API server components
 func (s *Server) Stop() {
 	s.scheduledCampaignManager.Stop()
+	s.schedulerService.Stop()
 }
 
 // Helper functions

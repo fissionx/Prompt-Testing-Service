@@ -134,8 +134,8 @@ func (h *HybridDB) GetSchedule(ctx context.Context, id string) (*models.Schedule
 	return h.sqlDB.GetSchedule(ctx, id)
 }
 
-func (h *HybridDB) ListSchedules(ctx context.Context, enabled *bool) ([]*models.Schedule, error) {
-	return h.sqlDB.ListSchedules(ctx, enabled)
+func (h *HybridDB) ListSchedules(ctx context.Context, brandId string, enabled *bool) ([]*models.Schedule, error) {
+	return h.sqlDB.ListSchedules(ctx, brandId, enabled)
 }
 
 func (h *HybridDB) UpdateSchedule(ctx context.Context, schedule *models.Schedule) error {

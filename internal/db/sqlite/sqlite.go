@@ -390,11 +390,12 @@ func (s *SQLite) CreateSchedule(ctx context.Context, schedule *models.Schedule) 
 	schedule.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO schedules (id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		INSERT INTO schedules (id, brand_id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.ExecContext(ctx, query,
 		schedule.ID,
+		schedule.BrandID,
 		schedule.Name,
 		sliceToJSON(schedule.PromptIDs),
 		sliceToJSON(schedule.LLMIDs),
@@ -413,7 +414,7 @@ func (s *SQLite) CreateSchedule(ctx context.Context, schedule *models.Schedule) 
 // GetSchedule retrieves a schedule by ID
 func (s *SQLite) GetSchedule(ctx context.Context, id string) (*models.Schedule, error) {
 	query := `
-		SELECT id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at
+		SELECT id, brand_id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at
 		FROM schedules WHERE id = ?`
 
 	var schedule models.Schedule
@@ -421,6 +422,7 @@ func (s *SQLite) GetSchedule(ctx context.Context, id string) (*models.Schedule, 
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&schedule.ID,
+		&schedule.BrandID,
 		&schedule.Name,
 		&promptIDsJSON,
 		&llmIDsJSON,
@@ -445,16 +447,26 @@ func (s *SQLite) GetSchedule(ctx context.Context, id string) (*models.Schedule, 
 	return &schedule, nil
 }
 
-// ListSchedules lists all schedules, optionally filtered by enabled status
-func (s *SQLite) ListSchedules(ctx context.Context, enabled *bool) ([]*models.Schedule, error) {
+// ListSchedules lists all schedules, optionally filtered by brandId and enabled status
+func (s *SQLite) ListSchedules(ctx context.Context, brandId string, enabled *bool) ([]*models.Schedule, error) {
 	query := `
-		SELECT id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at
+		SELECT id, brand_id, name, prompt_ids, llm_ids, cron_expr, temperature, enabled, last_run, next_run, created_at, updated_at
 		FROM schedules`
 	args := []interface{}{}
+	whereClauses := []string{}
+
+	if brandId != "" {
+		whereClauses = append(whereClauses, "brand_id = ?")
+		args = append(args, brandId)
+	}
 
 	if enabled != nil {
-		query += " WHERE enabled = ?"
+		whereClauses = append(whereClauses, "enabled = ?")
 		args = append(args, *enabled)
+	}
+
+	if len(whereClauses) > 0 {
+		query += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
 
 	query += " ORDER BY created_at DESC"
@@ -472,6 +484,7 @@ func (s *SQLite) ListSchedules(ctx context.Context, enabled *bool) ([]*models.Sc
 
 		err := rows.Scan(
 			&schedule.ID,
+			&schedule.BrandID,
 			&schedule.Name,
 			&promptIDsJSON,
 			&llmIDsJSON,
@@ -501,10 +514,11 @@ func (s *SQLite) UpdateSchedule(ctx context.Context, schedule *models.Schedule) 
 
 	query := `
 		UPDATE schedules 
-		SET name = ?, prompt_ids = ?, llm_ids = ?, cron_expr = ?, temperature = ?, enabled = ?, last_run = ?, next_run = ?, updated_at = ?
+		SET brand_id = ?, name = ?, prompt_ids = ?, llm_ids = ?, cron_expr = ?, temperature = ?, enabled = ?, last_run = ?, next_run = ?, updated_at = ?
 		WHERE id = ?`
 
 	result, err := s.db.ExecContext(ctx, query,
+		schedule.BrandID,
 		schedule.Name,
 		sliceToJSON(schedule.PromptIDs),
 		sliceToJSON(schedule.LLMIDs),

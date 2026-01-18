@@ -75,7 +75,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		return fmt.Errorf("scheduler already running")
 	}
 
-	schedules, err := s.db.ListSchedules(ctx, boolPtr(true))
+	schedules, err := s.db.ListSchedules(ctx, "", boolPtr(true))
 	if err != nil {
 		return fmt.Errorf("failed to load schedules: %w", err)
 	}
@@ -135,7 +135,7 @@ func (s *SchedulerService) GetStatus(ctx context.Context) (bool, int, error) {
 		return false, 0, nil
 	}
 
-	schedules, err := s.db.ListSchedules(ctx, boolPtr(true))
+	schedules, err := s.db.ListSchedules(ctx, "", boolPtr(true))
 	if err != nil {
 		return s.running, 0, fmt.Errorf("failed to get schedule count: %w", err)
 	}
@@ -192,8 +192,50 @@ func (s *SchedulerService) Reload(ctx context.Context) error {
 	return s.Start(ctx)
 }
 
-// registerSchedule registers a schedule with cron and stores the entry ID
+// RegisterSchedule registers a single schedule with cron (public method for API use)
+func (s *SchedulerService) RegisterSchedule(ctx context.Context, schedule *models.Schedule) error {
+	s.mu.RLock()
+	running := s.running
+	s.mu.RUnlock()
+
+	if !running {
+		// Scheduler not running, nothing to register
+		return nil
+	}
+
+	// Check if schedule is enabled
+	if !schedule.Enabled {
+		// If schedule is disabled, remove it if it was previously registered
+		s.UnregisterSchedule(schedule.ID)
+		return nil
+	}
+
+	return s.registerSchedule(ctx, schedule)
+}
+
+// UnregisterSchedule removes a schedule from cron
+func (s *SchedulerService) UnregisterSchedule(scheduleID string) {
+	s.entriesMu.Lock()
+	defer s.entriesMu.Unlock()
+
+	if entryID, exists := s.scheduleEntries[scheduleID]; exists {
+		s.cron.Remove(entryID)
+		delete(s.scheduleEntries, scheduleID)
+		logger.Info("Unregistered schedule %s from cron", scheduleID)
+	}
+}
+
+// registerSchedule registers a schedule with cron and stores the entry ID (internal method)
 func (s *SchedulerService) registerSchedule(_ context.Context, schedule *models.Schedule) error {
+	// Check if already registered
+	s.entriesMu.RLock()
+	if _, exists := s.scheduleEntries[schedule.ID]; exists {
+		s.entriesMu.RUnlock()
+		// Already registered, skip
+		return nil
+	}
+	s.entriesMu.RUnlock()
+
 	jobFunc := func() {
 		logger.Info("Executing scheduled job: %s", schedule.Name)
 		if err := s.executeSchedule(context.Background(), schedule); err != nil {

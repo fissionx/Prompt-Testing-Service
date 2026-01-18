@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS llms (
 -- Create Schedules table for storing scheduler configurations
 CREATE TABLE IF NOT EXISTS schedules (
     id TEXT PRIMARY KEY,
+    brand_id TEXT NOT NULL,
     name TEXT NOT NULL,
     prompt_ids TEXT NOT NULL DEFAULT '[]', -- JSON array of prompt IDs
     llm_ids TEXT NOT NULL DEFAULT '[]',    -- JSON array of LLM IDs
@@ -40,6 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_llms_enabled ON llms(enabled);
 CREATE INDEX IF NOT EXISTS idx_llms_created_at ON llms(created_at);
 CREATE INDEX IF NOT EXISTS idx_llms_updated_at ON llms(updated_at);
 
+CREATE INDEX IF NOT EXISTS idx_schedules_brand_id ON schedules(brand_id);
 CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled);
 CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run);
 CREATE INDEX IF NOT EXISTS idx_schedules_created_at ON schedules(created_at);

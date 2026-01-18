@@ -66,13 +66,13 @@ type SimplifiedBrandPromptResponse struct {
 	} `json:"metadata"`
 }
 
-// getBrandPromptsWithLatestResponses handles GET /api/v1/brand/:brand/prompts
+// getBrandPromptsWithLatestResponses handles GET /api/v1/brand/:brandId/prompts/responses
 // Returns all prompts associated with a brand and their latest response including grounding sources
 // Accepts either a brand ID (UUID) or brand name
 func (s *Server) getBrandPromptsWithLatestResponses(c *gin.Context) {
-	brandParam := c.Param("brand")
+	brandParam := c.Param("brandId")
 	if brandParam == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand parameter is required")
+		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
 

@@ -37,7 +37,7 @@ func runSchedulerStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize LLM providers: %w", err)
 	}
 
-	schedules, err := database.ListSchedules(ctx, boolPtr(true))
+	schedules, err := database.ListSchedules(ctx, "", boolPtr(true))
 	if err != nil {
 		return fmt.Errorf("failed to check schedules: %w", err)
 	}

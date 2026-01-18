@@ -25,7 +25,7 @@ type SQLDatabase interface {
 	// Schedule operations
 	CreateSchedule(ctx context.Context, schedule *models.Schedule) error
 	GetSchedule(ctx context.Context, id string) (*models.Schedule, error)
-	ListSchedules(ctx context.Context, enabled *bool) ([]*models.Schedule, error)
+	ListSchedules(ctx context.Context, brandId string, enabled *bool) ([]*models.Schedule, error)
 	UpdateSchedule(ctx context.Context, schedule *models.Schedule) error
 	DeleteSchedule(ctx context.Context, id string) error
 	DeleteAllSchedules(ctx context.Context) (int, error)

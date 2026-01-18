@@ -46,7 +46,7 @@ func (s *StatsService) GetTotalLLMs(ctx context.Context) (int64, error) {
 
 // GetTotalSchedules returns the total number of schedules
 func (s *StatsService) GetTotalSchedules(ctx context.Context) (int64, error) {
-	schedules, err := s.db.ListSchedules(ctx, nil)
+	schedules, err := s.db.ListSchedules(ctx, "", nil)
 	if err != nil {
 		return 0, err
 	}
@@ -137,7 +137,7 @@ func (s *StatsService) GetOverallStats(ctx context.Context) (*OverallStats, erro
 		return nil, fmt.Errorf("failed to get LLMs: %w", err)
 	}
 
-	schedules, err := s.db.ListSchedules(ctx, nil)
+	schedules, err := s.db.ListSchedules(ctx, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schedules: %w", err)
 	}
