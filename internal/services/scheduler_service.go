@@ -84,7 +84,11 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		logger.Info("No enabled schedules found. Scheduler is running but will not execute any tasks.")
 		logger.Info("Use 'gego schedule add' to create schedules or 'gego schedule list' to check existing schedules.")
 	} else {
-		logger.Info("Loaded %d enabled schedule(s)", len(schedules))
+		logger.Info("Loaded %d enabled schedule(s) from database:", len(schedules))
+		for i, schedule := range schedules {
+			logger.Info("  %d. ID: %s, Name: %s, BrandID: %s, Cron: %s", 
+				i+1, schedule.ID, schedule.Name, schedule.BrandID, schedule.CronExpr)
+		}
 	}
 
 	registeredCount := 0

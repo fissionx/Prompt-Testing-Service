@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	"github.com/fissionx/gego/internal/api"
 	"github.com/fissionx/gego/internal/config"
@@ -40,7 +41,8 @@ var apiCmd = &cobra.Command{
 - Stats (Read-only)
 - Search (POST endpoint for keyword search)
 
-The API runs on HTTP (no authentication required for now).`,
+The API runs on HTTP with optional Clerk authentication.
+Authentication is enabled when CLERK_SECRET_KEY environment variable is set.`,
 	RunE: runAPI,
 }
 
@@ -178,7 +180,38 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("✅ LLM providers initialized!")
 
-	server := api.NewServer(database, apiLLMRegistry, selectedCORSOrigin)
+	// Load Clerk configuration from environment variables
+	clerkConfig := config.LoadClerkConfig()
+
+	// Initialize zap logger
+	zapLogger, err := zap.NewProduction()
+	if err != nil {
+		// Fallback to development logger if production fails
+		zapLogger, _ = zap.NewDevelopment()
+	}
+	defer zapLogger.Sync()
+
+	// Create logger adapter that implements config.Logger interface
+	// zap.Logger already implements the interface methods (Debug, Info, Warn, Error with zap.Field)
+	var apiLogger config.Logger = zapLogger
+
+	// Display auth configuration
+	env := strings.ToLower(os.Getenv("GEGO_ENV"))
+	isLocalEnv := env == "local"
+	
+	if isLocalEnv {
+		fmt.Printf("🔓 Authentication: Disabled (GEGO_ENV=local - local development mode)\n")
+	} else if clerkConfig.SecretKey != "" {
+		fmt.Printf("🔐 Authentication: Enabled (Clerk)\n")
+		if clerkConfig.JWKSURL != "" {
+			fmt.Printf("  JWKS URL: %s\n", clerkConfig.JWKSURL)
+		}
+	} else {
+		fmt.Printf("⚠️  Authentication: Disabled (CLERK_SECRET_KEY not set)\n")
+	}
+	fmt.Println()
+
+	server := api.NewServer(database, apiLLMRegistry, selectedCORSOrigin, clerkConfig, apiLogger)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

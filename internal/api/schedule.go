@@ -312,17 +312,22 @@ func (s *Server) deleteSchedule(c *gin.Context) {
 		return
 	}
 
-	// Unregister the schedule from cron scheduler before deleting
+	// Step 1: Unregister the schedule from cron scheduler (removes from in-memory scheduler)
 	s.schedulerService.UnregisterSchedule(id)
+	logger.GetLogger().Info("Unregistered schedule %s from scheduler", id)
 
+	// Step 2: Delete from database (SQLite or PostgreSQL - schedules are stored in SQL database only)
 	if err := s.scheduleService.DeleteSchedule(c.Request.Context(), id); err != nil {
-		s.errorResponse(c, http.StatusNotFound, "Schedule not found: "+err.Error())
+		logger.GetLogger().Error("Failed to delete schedule %s from database: %v", id, err)
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to delete schedule: "+err.Error())
 		return
 	}
 
+	logger.GetLogger().Info("Successfully deleted schedule %s from database", id)
+
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
-		Message: "Schedule deleted successfully",
+		Message: "Schedule deleted successfully and removed from scheduler",
 	})
 }
 

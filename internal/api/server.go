@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"github.com/fissionx/gego/internal/config"
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/logger"
+	applogger "github.com/fissionx/gego/internal/logger"
+	"github.com/fissionx/gego/internal/middleware"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
 )
@@ -38,36 +42,50 @@ type Server struct {
 	llmRegistry                 *llm.Registry
 	router                      *gin.Engine
 	corsOrigin                  string
+	clerkConfig                 config.ClerkConfig
+	logger                      config.Logger
 }
 
 // NewServer creates a new API server
-func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin string) *Server {
+func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin string, clerkConfig config.ClerkConfig, logger config.Logger) *Server {
 	gin.SetMode(gin.ReleaseMode)
 
 	router := gin.Default()
 
-	allowedOrigins := parseAllowedOrigins(corsOrigin)
+	// CORS configuration
+	// For production: set specific allowed origins
+	// For development: allow localhost and common dev ports
+	corsConfig := cors.Config{
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Content-Length", "Accept", "Accept-Encoding", "Authorization", "X-Requested-With", "X-Org-Id"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
+		AllowCredentials: true,  // Required for cookies
+		MaxAge:           86400, // 24 hours
+	}
 
-	// CORS middleware
-	router.Use(func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
-		allowedOrigin := getAllowedOrigin(origin, allowedOrigins, corsOrigin)
-
-		if allowedOrigin != "" {
-			c.Header("Access-Control-Allow-Origin", allowedOrigin)
-			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD")
-			c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Access-Control-Max-Age", "86400")
+	// Get allowed origins from environment or use defaults
+	if allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); allowedOrigins != "" {
+		corsConfig.AllowOrigins = strings.Split(allowedOrigins, ",")
+	} else {
+		// Default: allow common development origins + Vercel deployments
+		corsConfig.AllowOrigins = []string{
+			// Production/Staging
+			"https://app.geo.fissionx.ai",
+			"https://fissionx-geo.vercel.app",
+			// Local development
+			"http://localhost:3000",
+			"http://localhost:3001",
+			"http://localhost:3002",
+			"http://localhost:4000",
+			"http://localhost:5173",
+			"http://localhost:5174",
+			"http://localhost:8000",
+			"http://127.0.0.1:3000",
+			"http://127.0.0.1:5173",
 		}
+	}
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	router.Use(cors.New(corsConfig))
 
 	// Request latency tracking middleware
 	router.Use(func(c *gin.Context) {
@@ -89,7 +107,8 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		status := c.Writer.Status()
 
 		// Log single summary line with API time and database time
-		logger.GetLogger().Info(
+		// Use the internal logger package (not config.Logger) for request logging
+		applogger.GetLogger().Info(
 			"[REQUEST] method=%s path=%s status=%d api_time_ms=%.2f db_time_ms=%.2f",
 			method,
 			path,
@@ -123,6 +142,8 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		llmRegistry:                 llmRegistry,
 		router:                      router,
 		corsOrigin:                  corsOrigin,
+		clerkConfig:                 clerkConfig,
+		logger:                      logger,
 	}
 
 	server.setupRoutes()
@@ -131,8 +152,46 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 
 // setupRoutes configures all API routes
 func (s *Server) setupRoutes() {
+	// =========================================
+	// PUBLIC ROUTES (No authentication required)
+	// =========================================
+	public := s.router.Group("/api/v1")
+	{
+		// Health check route
+		public.GET("/health", s.healthCheck)
+	}
+
+	// =========================================
+	// PROTECTED ROUTES (Authentication required)
+	// =========================================
 	api := s.router.Group("/api/v1")
 
+	// Check environment variable to determine if auth should be enabled
+	// If GEGO_ENV is set to "local", skip authentication middleware
+	env := strings.ToLower(os.Getenv("GEGO_ENV"))
+	isLocalEnv := env == "local"
+
+	// Apply Clerk authentication middleware
+	// Skip auth if:
+	// 1. GEGO_ENV is set to "local" (local development mode)
+	// 2. CLERK_SECRET_KEY is not configured
+	authEnabled := !isLocalEnv && s.clerkConfig.SecretKey != ""
+	if authEnabled {
+		api.Use(middleware.ClerkAuth(s.clerkConfig, s.logger))
+		if s.logger != nil {
+			s.logger.Info("Clerk authentication enabled for protected routes")
+		}
+	} else {
+		if s.logger != nil {
+			if isLocalEnv {
+				s.logger.Info("Clerk authentication DISABLED - GEGO_ENV=local (local development mode)")
+			} else {
+				s.logger.Warn("Clerk authentication DISABLED - CLERK_SECRET_KEY not set")
+			}
+		}
+	}
+
+	// LLM endpoints
 	api.GET("/llms", s.listLLMs)
 	api.GET("/llms/:id", s.getLLM)
 	api.POST("/llms", s.createLLM)
@@ -140,6 +199,7 @@ func (s *Server) setupRoutes() {
 	api.DELETE("/llms/:id", s.deleteLLM)
 	api.DELETE("/llms", s.deleteAllLLMs)
 
+	// Prompt endpoints
 	api.GET("/prompts", s.listPrompts)
 	// More specific routes must come before generic :id routes
 	api.GET("/prompts/:id/responses", s.getPromptResponses)
@@ -148,22 +208,27 @@ func (s *Server) setupRoutes() {
 	api.PUT("/prompts/:id", s.updatePrompt)
 	api.DELETE("/prompts/:id", s.deletePrompt)
 
+	// Schedule endpoints
 	api.GET("/brand/:brandId/schedules", s.listSchedules)
 	api.GET("/brand/:brandId/schedules/:id", s.getSchedule)
 	api.POST("/brand/:brandId/schedules", s.createSchedule)
 	api.PUT("/brand/:brandId/schedules/:id", s.updateSchedule)
 	api.DELETE("/brand/:brandId/schedules/:id", s.deleteSchedule)
 
+	// Stats endpoint
 	api.GET("/stats", s.getStats)
 
+	// Search endpoint
 	api.POST("/search", s.search)
 
+	// Response endpoints
 	api.GET("/responses", s.listResponses)
 	api.GET("/brand/:brandId/prompts/responses", s.getBrandPromptsWithLatestResponses)
 
 	// Brand endpoints
 	api.GET("/brands/:id", s.getBrand)
 
+	// Execute endpoint
 	api.POST("/execute", s.execute)
 
 	// GEO (Generative Engine Optimization) endpoints
@@ -212,8 +277,6 @@ func (s *Server) setupRoutes() {
 		geo.DELETE("/brand/:brandId/prompts", s.deletePromptsByIDs)         // Deletes prompts by IDs (request body with promptIds array)
 		geo.DELETE("/brand/:brandId/prompts/brand", s.deletePromptsByBrand) // Deletes all prompts by brand
 	}
-
-	api.GET("/health", s.healthCheck)
 }
 
 // Run starts the API server
@@ -226,7 +289,7 @@ func (s *Server) Run(address string) error {
 	// Start the scheduler service to handle cron schedules
 	if err := s.schedulerService.Start(context.Background()); err != nil {
 		// Log error but don't fail startup - scheduler might already be running
-		logger.GetLogger().Info("Failed to start scheduler service (may already be running): %v", err)
+		applogger.GetLogger().Info("Failed to start scheduler service (may already be running): %v", err)
 	}
 
 	return s.router.Run(address)
@@ -265,38 +328,4 @@ func (s *Server) parsePagination(c *gin.Context) (int, int) {
 	}
 
 	return page, limit
-}
-
-func parseAllowedOrigins(corsOrigin string) []string {
-	if corsOrigin == "" || corsOrigin == "*" {
-		return nil
-	}
-
-	origins := strings.Split(corsOrigin, ",")
-	allowed := make([]string, 0, len(origins))
-	for _, origin := range origins {
-		trimmed := strings.TrimSpace(origin)
-		if trimmed != "" {
-			allowed = append(allowed, trimmed)
-		}
-	}
-	return allowed
-}
-
-func getAllowedOrigin(requestOrigin string, allowedOrigins []string, corsOrigin string) string {
-	if corsOrigin == "*" {
-		return "*"
-	}
-
-	if requestOrigin == "" {
-		return ""
-	}
-
-	for _, allowed := range allowedOrigins {
-		if requestOrigin == allowed {
-			return allowed
-		}
-	}
-
-	return ""
 }

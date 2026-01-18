@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -23,6 +24,21 @@ type DatabaseConfig struct {
 	URI      string            `yaml:"uri"`
 	Database string            `yaml:"database"`
 	Options  map[string]string `yaml:"options,omitempty"`
+}
+
+// ClerkConfig represents Clerk authentication configuration
+type ClerkConfig struct {
+	SecretKey      string `mapstructure:"secret_key"`      // CLERK_SECRET_KEY for JWT verification
+	PublishableKey string `mapstructure:"publishable_key"` // CLERK_PUBLISHABLE_KEY (optional)
+	JWKSURL        string `mapstructure:"jwks_url"`        // Clerk JWKS endpoint (auto-derived if empty)
+}
+
+// Logger interface for structured logging (wraps zap.Logger)
+type Logger interface {
+	Debug(msg string, fields ...zap.Field)
+	Info(msg string, fields ...zap.Field)
+	Warn(msg string, fields ...zap.Field)
+	Error(msg string, fields ...zap.Field)
 }
 
 // DefaultConfig returns a default configuration
@@ -121,6 +137,15 @@ func applyEnvironmentOverrides(cfg *Config) {
 	// CORS origin override
 	if corsOrigin := os.Getenv("CORS_ORIGIN"); corsOrigin != "" {
 		cfg.CORSOrigin = corsOrigin
+	}
+}
+
+// LoadClerkConfig loads Clerk configuration from environment variables
+func LoadClerkConfig() ClerkConfig {
+	return ClerkConfig{
+		SecretKey:      os.Getenv("CLERK_SECRET_KEY"),
+		PublishableKey: os.Getenv("CLERK_PUBLISHABLE_KEY"),
+		JWKSURL:        os.Getenv("CLERK_JWKS_URL"),
 	}
 }
 
