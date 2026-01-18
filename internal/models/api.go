@@ -670,6 +670,13 @@ type DashboardOverviewResponse struct {
 	LastRunStatus string     `json:"lastRunStatus,omitempty"` // "completed" or "running"
 }
 
+// PromptExecutionStatusResponse represents the prompt execution status for a brand
+type PromptExecutionStatusResponse struct {
+	Brand         string     `json:"brand"`
+	LastRunDate   *time.Time `json:"lastRunDate,omitempty"`
+	LastRunStatus string     `json:"lastRunStatus,omitempty"` // "completed" or "running"
+}
+
 // DashboardMetric represents a single dashboard metric with trend
 type DashboardMetric struct {
 	Value       float64 `json:"value"`

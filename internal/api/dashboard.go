@@ -55,6 +55,37 @@ func (s *Server) getDashboardOverview(c *gin.Context) {
 	})
 }
 
+// getPromptExecutionStatus handles GET /api/v1/geo/brand/:brandId/prompts/execution/status
+func (s *Server) getPromptExecutionStatus(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "brandId is required")
+		return
+	}
+
+	// Get brand info from external API
+	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
+		return
+	}
+
+	brandName := brandInfo.Name
+	ctx := c.Request.Context()
+
+	status, err := s.dashboardService.GetPromptExecutionStatus(ctx, brandName)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompt execution status: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, models.APIResponse{
+		Success: true,
+		Data:    status,
+		Message: "Prompt execution status retrieved successfully",
+	})
+}
+
 // getModelAnalytics handles GET /api/v1/geo/brand/:brandId/analytics/models
 func (s *Server) getModelAnalytics(c *gin.Context) {
 	brandID := c.Param("brandId")

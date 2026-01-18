@@ -1595,6 +1595,27 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 	}
 }
 
+// GetPromptExecutionStatus returns the prompt execution status for a given brand
+func (s *DashboardService) GetPromptExecutionStatus(
+	ctx context.Context,
+	brand string,
+) (*models.PromptExecutionStatusResponse, error) {
+	response := &models.PromptExecutionStatusResponse{
+		Brand: brand,
+	}
+	
+	// Use a temporary DashboardOverviewResponse to reuse setLastRunInfo logic
+	tempResponse := &models.DashboardOverviewResponse{
+		Brand: brand,
+	}
+	s.setLastRunInfo(ctx, brand, tempResponse)
+	
+	response.LastRunDate = tempResponse.LastRunDate
+	response.LastRunStatus = tempResponse.LastRunStatus
+	
+	return response, nil
+}
+
 // getTopPerformingPrompts calculates the top performing prompts based on visibility and mention rate
 func (s *DashboardService) getTopPerformingPrompts(responses []*models.Response) []string {
 	if len(responses) == 0 {

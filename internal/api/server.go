@@ -189,6 +189,7 @@ func (s *Server) setupRoutes() {
 
 		// Dashboard & Overview
 		geo.GET("/brand/:brandId/dashboard/overview", s.getDashboardOverview)
+		geo.GET("/brand/:brandId/prompts/execution/status", s.getPromptExecutionStatus)
 		geo.GET("/brand/:brandId/analytics/models", s.getModelAnalytics)
 		geo.POST("/analytics/competitor-matrix", s.getCompetitorMatrix)
 		geo.GET("/brand/:brandId/analytics/trend-comparison", s.getTrendComparison)
