@@ -672,6 +672,7 @@ type DashboardOverviewResponse struct {
 
 // PromptExecutionStatusResponse represents the prompt execution status for a brand
 type PromptExecutionStatusResponse struct {
+	BrandID       string     `json:"brandId"`
 	Brand         string     `json:"brand"`
 	LastRunDate   *time.Time `json:"lastRunDate,omitempty"`
 	LastRunStatus string     `json:"lastRunStatus,omitempty"` // "completed" or "running"

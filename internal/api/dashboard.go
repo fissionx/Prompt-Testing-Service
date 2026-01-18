@@ -73,7 +73,7 @@ func (s *Server) getPromptExecutionStatus(c *gin.Context) {
 	brandName := brandInfo.Name
 	ctx := c.Request.Context()
 
-	status, err := s.dashboardService.GetPromptExecutionStatus(ctx, brandName)
+	status, err := s.dashboardService.GetPromptExecutionStatus(ctx, brandID, brandName)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompt execution status: "+err.Error())
 		return

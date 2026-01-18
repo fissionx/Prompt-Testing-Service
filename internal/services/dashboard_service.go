@@ -82,7 +82,7 @@ func (s *DashboardService) GetDashboardOverview(
 
 	// Get competitors for ranking calculation
 	competitors := s.getCompetitorsForRanking(ctx, brand, brandResponses)
-	
+
 	// Calculate metrics with rankings
 	metrics := s.calculateMetricsWithRankings(ctx, brand, competitors, allResponses, startTime, endTime)
 	response.Visibility = metrics.visibility
@@ -218,7 +218,7 @@ func (s *DashboardService) getCompetitorsForRanking(ctx context.Context, brand s
 		parsedCompetitors, _ := parseCompetitorStrings(savedCompetitors.Competitors)
 		return parsedCompetitors
 	}
-	
+
 	// Fall back to auto-detection from responses
 	competitorSet := make(map[string]bool)
 	for _, resp := range brandResponses {
@@ -229,22 +229,22 @@ func (s *DashboardService) getCompetitorsForRanking(ctx context.Context, brand s
 			}
 		}
 	}
-	
+
 	competitors := make([]string, 0, len(competitorSet))
 	for comp := range competitorSet {
 		competitors = append(competitors, comp)
 	}
-	
+
 	return competitors
 }
 
 // brandMetrics represents metrics for a single brand
 type brandMetrics struct {
-	brand          string
-	visibility     float64
-	sentiment      float64
-	position       float64
-	groundingRate  float64
+	brand         string
+	visibility    float64
+	sentiment     float64
+	position      float64
+	groundingRate float64
 }
 
 // calculateMetricsWithRankings calculates metrics for the main brand and determines rankings
@@ -262,23 +262,23 @@ func (s *DashboardService) calculateMetricsWithRankings(
 			mainBrandResponses = append(mainBrandResponses, resp)
 		}
 	}
-	
+
 	baseMetrics := s.calculateMetrics(mainBrandResponses)
-	
+
 	// If no competitors, return base metrics without rankings
 	if len(competitors) == 0 {
 		return baseMetrics
 	}
-	
+
 	// Calculate metrics for all brands (main brand + competitors)
 	allBrands := append([]string{mainBrand}, competitors...)
 	brandMetricsMap := make(map[string]*brandMetrics)
-	
+
 	// Initialize metrics for all brands
 	for _, brand := range allBrands {
 		brandMetricsMap[brand] = &brandMetrics{brand: brand}
 	}
-	
+
 	// Filter responses by time if needed
 	var filteredResponses []*models.Response
 	for _, resp := range allResponses {
@@ -291,7 +291,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 		}
 		filteredResponses = append(filteredResponses, resp)
 	}
-	
+
 	// Aggregate metrics for each brand
 	// We'll use main brand's responses as the baseline for comparison
 	brandResponseCounts := make(map[string]int)
@@ -301,16 +301,16 @@ func (s *DashboardService) calculateMetricsWithRankings(
 	brandPositionCounts := make(map[string]int)
 	brandSentimentSums := make(map[string]float64)
 	brandSentimentCounts := make(map[string]int)
-	
+
 	// Track which brands have full response data (not just mentions)
 	brandsWithFullData := make(map[string]bool)
-	
+
 	// First, collect metrics from actual responses (main brand and competitors if they have responses)
 	for _, resp := range filteredResponses {
 		if _, exists := brandMetricsMap[resp.Brand]; exists {
 			brandResponseCounts[resp.Brand]++
 			brandsWithFullData[resp.Brand] = true
-			
+
 			if resp.BrandMentioned {
 				brandMentionCounts[resp.Brand]++
 			}
@@ -327,7 +327,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 			}
 		}
 	}
-	
+
 	// For visibility ranking, count mentions of competitors in main brand's responses
 	// This gives us a fair comparison: how often each brand appears in the same set of responses
 	// Count filtered main brand responses
@@ -341,7 +341,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 	if totalResponsesForComparison == 0 {
 		totalResponsesForComparison = len(filteredResponses)
 	}
-	
+
 	for _, resp := range filteredResponses {
 		// Count competitor mentions for visibility calculation
 		for _, comp := range resp.CompetitorsMention {
@@ -356,7 +356,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 			}
 		}
 	}
-	
+
 	// Set response counts for competitors based on total responses (for fair visibility comparison)
 	for _, comp := range competitors {
 		if !brandsWithFullData[comp] {
@@ -364,44 +364,44 @@ func (s *DashboardService) calculateMetricsWithRankings(
 			brandResponseCounts[comp] = totalResponsesForComparison
 		}
 	}
-	
+
 	// Calculate metrics for each brand
 	var allBrandMetrics []*brandMetrics
 	for _, brand := range allBrands {
 		bm := brandMetricsMap[brand]
 		total := float64(brandResponseCounts[brand])
-		
+
 		if total > 0 {
 			bm.visibility = roundToTwo(float64(brandMentionCounts[brand]) / total * 100)
 			bm.groundingRate = roundToTwo(float64(brandGroundingCounts[brand]) / total * 100)
-			
+
 			if brandPositionCounts[brand] > 0 {
 				bm.position = roundToTwo(brandPositionSums[brand] / float64(brandPositionCounts[brand]))
 			}
-			
+
 			if brandSentimentCounts[brand] > 0 {
 				// Convert from -1 to 1 scale to 0 to 100 scale
 				bm.sentiment = roundToTwo((brandSentimentSums[brand]/float64(brandSentimentCounts[brand]) + 1) * 50)
 			}
 		}
-		
+
 		allBrandMetrics = append(allBrandMetrics, bm)
 	}
-	
+
 	// Calculate rankings for each metric
 	totalBrands := len(allBrandMetrics)
-	
+
 	// Visibility ranking (higher is better) - we can rank all brands
 	sort.Slice(allBrandMetrics, func(i, j int) bool {
 		return allBrandMetrics[i].visibility > allBrandMetrics[j].visibility
 	})
 	visibilityRank := s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.visibility }, true)
-	
+
 	// For other metrics, only rank if we have full data for at least 2 brands
 	brandsWithSentimentData := 0
 	brandsWithPositionData := 0
 	brandsWithGroundingData := 0
-	
+
 	for _, bm := range allBrandMetrics {
 		if bm.sentiment > 0 {
 			brandsWithSentimentData++
@@ -413,7 +413,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 			brandsWithGroundingData++
 		}
 	}
-	
+
 	// Sentiment ranking (higher is better) - only if we have data for multiple brands
 	var sentimentRank int
 	if brandsWithSentimentData >= 2 {
@@ -422,7 +422,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 		})
 		sentimentRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.sentiment }, true)
 	}
-	
+
 	// Position ranking (lower is better) - only if we have data for multiple brands
 	var positionRank int
 	if brandsWithPositionData >= 2 {
@@ -441,7 +441,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 		})
 		positionRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.position }, false)
 	}
-	
+
 	// Grounding rate ranking (higher is better) - only if we have data for multiple brands
 	var groundingRank int
 	if brandsWithGroundingData >= 2 {
@@ -450,7 +450,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 		})
 		groundingRank = s.findRank(allBrandMetrics, mainBrand, func(bm *brandMetrics) float64 { return bm.groundingRate }, true)
 	}
-	
+
 	// Update base metrics with rankings
 	baseMetrics.visibility.Rank = visibilityRank
 	baseMetrics.visibility.TotalBrands = totalBrands
@@ -460,7 +460,7 @@ func (s *DashboardService) calculateMetricsWithRankings(
 	baseMetrics.position.TotalBrands = totalBrands
 	baseMetrics.grounding.Rank = groundingRank
 	baseMetrics.grounding.TotalBrands = totalBrands
-	
+
 	return baseMetrics
 }
 
@@ -477,7 +477,7 @@ func (s *DashboardService) findRank(
 			// Check for ties - if multiple brands have the same value, they share the same rank
 			mainBrandValue := getValue(bm)
 			rank := i + 1
-			
+
 			// Adjust for ties (count how many brands before this one have the same value)
 			for j := i - 1; j >= 0; j-- {
 				if getValue(brandMetrics[j]) == mainBrandValue {
@@ -486,7 +486,7 @@ func (s *DashboardService) findRank(
 					break
 				}
 			}
-			
+
 			return rank
 		}
 	}
@@ -839,7 +839,7 @@ func (s *DashboardService) GetCompetitorMatrix(
 		}
 
 		logo := logoMap[brand]
-		
+
 		// Get domain from map or derive it
 		domain := ""
 		if competitorMap != nil {
@@ -850,7 +850,7 @@ func (s *DashboardService) GetCompetitorMatrix(
 		if domain == "" {
 			domain = deriveCompetitorDomainFromName(brand)
 		}
-		
+
 		matrixBrand := models.CompetitorMatrixBrand{
 			Brand:           brand,
 			Domain:          domain,
@@ -1080,7 +1080,7 @@ func (s *DashboardService) GetTrendComparison(
 	var trends []models.BrandTrendData
 	for _, brand := range allBrands {
 		logo := logoMap[brand]
-		
+
 		// Get domain from map or derive it
 		domain := ""
 		if competitorMap != nil {
@@ -1091,7 +1091,7 @@ func (s *DashboardService) GetTrendComparison(
 		if domain == "" {
 			domain = deriveCompetitorDomainFromName(brand)
 		}
-		
+
 		trend := models.BrandTrendData{
 			Brand:           brand,
 			Domain:          domain,
@@ -1122,7 +1122,7 @@ func (s *DashboardService) GetTrendComparison(
 
 			// Convert date to appropriate format based on granularity
 			displayDate := s.convertDateForDisplay(date, granularity)
-			
+
 			trendValues = append(trendValues, models.TrendValue{
 				Value: roundToTwo(value),
 				Date:  displayDate,
@@ -1268,13 +1268,13 @@ func deriveCompetitorDomain(competitorName string) string {
 		}
 		return normalized
 	}
-	
+
 	// Clean the competitor name to extract core brand name
 	cleaned := cleanCompetitorName(competitorName)
-	
+
 	// Convert to lowercase and remove spaces
 	normalized := strings.ToLower(strings.TrimSpace(cleaned))
-	
+
 	// Check if the cleaned name already looks like a domain (e.g., from special cases)
 	if strings.Contains(normalized, ".") {
 		// It's already a domain-like string, add www. prefix and .com suffix if needed
@@ -1282,20 +1282,20 @@ func deriveCompetitorDomain(competitorName string) string {
 			normalized = "www." + normalized
 		}
 		// Add .com if it doesn't already have a TLD
-		if !strings.HasSuffix(normalized, ".com") && !strings.HasSuffix(normalized, ".org") && 
-		   !strings.HasSuffix(normalized, ".net") && !strings.HasSuffix(normalized, ".io") &&
-		   !strings.HasSuffix(normalized, ".ai") && !strings.HasSuffix(normalized, ".co") {
+		if !strings.HasSuffix(normalized, ".com") && !strings.HasSuffix(normalized, ".org") &&
+			!strings.HasSuffix(normalized, ".net") && !strings.HasSuffix(normalized, ".io") &&
+			!strings.HasSuffix(normalized, ".ai") && !strings.HasSuffix(normalized, ".co") {
 			normalized = normalized + ".com"
 		}
 		return normalized
 	}
-	
+
 	// Remove spaces for single-word or multi-word names
 	normalized = strings.ReplaceAll(normalized, " ", "")
-	
+
 	// Remove any remaining invalid characters for domain names
 	normalized = sanitizeDomainName(normalized)
-	
+
 	// Construct www.{name}.com
 	return "www." + normalized + ".com"
 }
@@ -1316,49 +1316,49 @@ func cleanCompetitorName(name string) string {
 		closeIdx += openIdx
 		cleaned = cleaned[:openIdx] + cleaned[closeIdx+1:]
 	}
-	
+
 	// Remove common prefixes/suffixes that might not be part of the domain
 	cleaned = strings.TrimSpace(cleaned)
-	
+
 	// Remove common suffixes like " (VS Code)", " - ", etc.
 	cleaned = strings.Split(cleaned, " - ")[0]
 	cleaned = strings.Split(cleaned, " | ")[0]
 	cleaned = strings.TrimSpace(cleaned)
-	
+
 	// For multi-word names, try to extract the main brand name
 	// Special handling for known cases
 	cleaned = handleSpecialBrandNames(cleaned)
-	
+
 	// If it's a special case that returned a domain-like string, return as-is
 	if strings.Contains(cleaned, ".") {
 		return cleaned
 	}
-	
+
 	// For simple names, extract the first word
 	// This handles cases like "Windsurf (by Codeium)" -> "Windsurf"
 	words := strings.Fields(cleaned)
 	if len(words) >= 1 {
 		return words[0]
 	}
-	
+
 	return strings.TrimSpace(cleaned)
 }
 
 // handleSpecialBrandNames handles special cases for well-known brands
 func handleSpecialBrandNames(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	
+
 	// Special cases for known brands
 	specialCases := map[string]string{
 		"visual studio code": "code.visualstudio",
 		"vs code":            "code.visualstudio",
 		"vscode":             "code.visualstudio",
 	}
-	
+
 	if domain, ok := specialCases[name]; ok {
 		return domain
 	}
-	
+
 	// For other multi-word names, try to extract the main identifier
 	// Usually the first word or first two words
 	words := strings.Fields(name)
@@ -1366,7 +1366,7 @@ func handleSpecialBrandNames(name string) string {
 		// Take first two words for very long names
 		return strings.Join(words[:2], "")
 	}
-	
+
 	// Return the original name (will be processed further)
 	return name
 }
@@ -1381,14 +1381,14 @@ func sanitizeDomainName(name string) string {
 		}
 	}
 	sanitized := result.String()
-	
+
 	// Remove consecutive dots or hyphens
 	sanitized = strings.ReplaceAll(sanitized, "..", ".")
 	sanitized = strings.ReplaceAll(sanitized, "--", "-")
-	
+
 	// Remove leading/trailing dots or hyphens
 	sanitized = strings.Trim(sanitized, ".-")
-	
+
 	return sanitized
 }
 
@@ -1397,10 +1397,10 @@ func sanitizeDomainName(name string) string {
 func parseCompetitorStrings(competitorStrings []string) ([]string, map[string]string) {
 	names := make([]string, 0, len(competitorStrings))
 	domainMap := make(map[string]string)
-	
+
 	for _, str := range competitorStrings {
 		var name, domain string
-		
+
 		// Check if it's in "name|domain" format
 		if idx := strings.Index(str, "|"); idx != -1 {
 			name = strings.TrimSpace(str[:idx])
@@ -1409,7 +1409,7 @@ func parseCompetitorStrings(competitorStrings []string) ([]string, map[string]st
 			// Old format: just the name
 			name = strings.TrimSpace(str)
 		}
-		
+
 		if name != "" {
 			names = append(names, name)
 			if domain != "" {
@@ -1417,7 +1417,7 @@ func parseCompetitorStrings(competitorStrings []string) ([]string, map[string]st
 			}
 		}
 	}
-	
+
 	return names, domainMap
 }
 
@@ -1427,22 +1427,22 @@ func normalizeCitationDomain(domain string) string {
 	// Remove protocol if present
 	normalized := strings.TrimPrefix(domain, "http://")
 	normalized = strings.TrimPrefix(normalized, "https://")
-	
+
 	// Remove path if present (everything after first /)
 	if idx := strings.Index(normalized, "/"); idx != -1 {
 		normalized = normalized[:idx]
 	}
-	
+
 	// Remove port if present (everything after :)
 	if idx := strings.Index(normalized, ":"); idx != -1 {
 		normalized = normalized[:idx]
 	}
-	
+
 	// Add www. prefix if not present
 	if !strings.HasPrefix(normalized, "www.") {
 		normalized = "www." + normalized
 	}
-	
+
 	return normalized
 }
 
@@ -1452,20 +1452,20 @@ func extractSourceName(domain string) string {
 	// Remove protocol if present
 	domain = strings.TrimPrefix(domain, "http://")
 	domain = strings.TrimPrefix(domain, "https://")
-	
+
 	// Remove www. prefix if present
 	domain = strings.TrimPrefix(domain, "www.")
-	
+
 	// Remove path if present (everything after first /)
 	if idx := strings.Index(domain, "/"); idx != -1 {
 		domain = domain[:idx]
 	}
-	
+
 	// Remove port if present (everything after :)
 	if idx := strings.Index(domain, ":"); idx != -1 {
 		domain = domain[:idx]
 	}
-	
+
 	// Extract the main domain name (before first dot if it's a subdomain)
 	parts := strings.Split(domain, ".")
 	if len(parts) >= 2 {
@@ -1476,7 +1476,7 @@ func extractSourceName(domain string) string {
 		}
 		return parts[0]
 	}
-	
+
 	return domain
 }
 
@@ -1598,21 +1598,23 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 // GetPromptExecutionStatus returns the prompt execution status for a given brand
 func (s *DashboardService) GetPromptExecutionStatus(
 	ctx context.Context,
+	brandID string,
 	brand string,
 ) (*models.PromptExecutionStatusResponse, error) {
 	response := &models.PromptExecutionStatusResponse{
-		Brand: brand,
+		BrandID: brandID,
+		Brand:   brand,
 	}
-	
+
 	// Use a temporary DashboardOverviewResponse to reuse setLastRunInfo logic
 	tempResponse := &models.DashboardOverviewResponse{
 		Brand: brand,
 	}
 	s.setLastRunInfo(ctx, brand, tempResponse)
-	
+
 	response.LastRunDate = tempResponse.LastRunDate
 	response.LastRunStatus = tempResponse.LastRunStatus
-	
+
 	return response, nil
 }
 
@@ -1679,7 +1681,7 @@ func (s *DashboardService) getTopPerformingPrompts(responses []*models.Response)
 
 		scores = append(scores, promptScore{
 			promptText: promptText,
-			score:     compositeScore,
+			score:      compositeScore,
 		})
 	}
 
@@ -1714,7 +1716,7 @@ func (s *DashboardService) convertDateForDisplay(dateStr, granularity string) st
 	case "daily":
 		// Already in correct format: "2006-01-02"
 		return dateStr
-		
+
 	case "weekly":
 		// Parse ISO week format: "2006-W02"
 		// Format: "2006-W02" where 02 is the week number
@@ -1722,44 +1724,44 @@ func (s *DashboardService) convertDateForDisplay(dateStr, granularity string) st
 		if len(parts) != 2 {
 			return dateStr // Return as-is if format is unexpected
 		}
-		
+
 		yearStr := parts[0]
 		weekStr := parts[1]
-		
+
 		year, err := strconv.Atoi(yearStr)
 		if err != nil {
 			return dateStr
 		}
-		
+
 		week, err := strconv.Atoi(weekStr)
 		if err != nil {
 			return dateStr
 		}
-		
+
 		// Calculate the start date of the ISO week
 		// ISO week: Week 1 is the week containing January 4th
 		// Weeks start on Monday
 		jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, time.UTC)
-		
+
 		// Find the Monday of the week containing Jan 4 (this is week 1)
 		daysFromMonday := (int(jan4.Weekday()) + 6) % 7 // Convert Sunday=0 to Monday=0
 		week1Monday := jan4.AddDate(0, 0, -daysFromMonday)
-		
+
 		// Calculate the start date of the requested week
 		weekStart := week1Monday.AddDate(0, 0, (week-1)*7)
-		
+
 		return weekStart.Format("2006-01-02")
-		
+
 	case "monthly":
 		// Parse format: "2006-01"
 		parts := strings.Split(dateStr, "-")
 		if len(parts) != 2 {
 			return dateStr
 		}
-		
+
 		// Return first day of month: "2006-01-01"
 		return dateStr + "-01"
-		
+
 	default:
 		return dateStr
 	}
