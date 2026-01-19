@@ -93,7 +93,7 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		path := c.Request.URL.Path
 		method := c.Request.Method
 
-		// Initialize database total time tracking in context (works for both MongoDB and PostgreSQL)
+		// Initialize database total time tracking in context (for PostgreSQL)
 		dbTotalTime := time.Duration(0)
 		ctx := context.WithValue(c.Request.Context(), "mongo_total_time", &dbTotalTime)
 		c.Request = c.Request.WithContext(ctx)

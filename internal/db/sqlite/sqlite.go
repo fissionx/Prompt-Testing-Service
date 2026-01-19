@@ -585,34 +585,34 @@ func (s *SQLite) DeleteAllSchedules(ctx context.Context) (int, error) {
 
 // ==================== Brand Competitors Operations ====================
 // Note: SQLite only handles SQL operations (LLMs, Schedules).
-// NoSQL operations including competitors are handled by MongoDB/Hybrid database.
+// NoSQL operations including competitors are handled by PostgreSQL/Hybrid database.
 
-// SaveBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+// SaveBrandCompetitors - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error {
 	return fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
 }
 
-// GetBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+// GetBrandCompetitors - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
 	return nil, fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
 }
 
-// SaveBrandPrompts - Not implemented in SQLite (use MongoDB/Hybrid)
+// SaveBrandPrompts - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error {
 	return fmt.Errorf("brand prompts operations not supported in SQLite-only mode")
 }
 
-// GetBrandPrompts - Not implemented in SQLite (use MongoDB/Hybrid)
+// GetBrandPrompts - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
 	return nil, fmt.Errorf("brand prompts operations not supported in SQLite-only mode")
 }
 
-// DeleteBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+// DeleteBrandCompetitors - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) DeleteBrandCompetitors(ctx context.Context, brand string) error {
 	return fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
 }
 
-// ListBrandCompetitors - Not implemented in SQLite (use MongoDB/Hybrid)
+// ListBrandCompetitors - Not implemented in SQLite (use PostgreSQL/Hybrid)
 func (s *SQLite) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
 	return nil, fmt.Errorf("brand competitors operations not supported in SQLite-only mode")
 }

@@ -683,7 +683,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [ ] Schedules cost forecast
 - [ ] Prompts batches to optimize costs
 - [ ] Prompts threading per provider for speed
-- [ ] Additional NoSQL database support (Cassandra, etc.)
+- [ ] Additional database optimizations
 - [ ] Web dashboard for visualizations (another repo)
 - [ ] Export statistics to CSV/JSON
 - [ ] Webhook notifications

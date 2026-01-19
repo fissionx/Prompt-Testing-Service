@@ -48,7 +48,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("--------------------------")
 	fmt.Println("Gego uses a hybrid approach:")
 	fmt.Println("  • SQLite for LLMs and Schedules (structured data)")
-	fmt.Println("  • MongoDB for Prompts and Responses (unstructured data)")
+	fmt.Println("  • PostgreSQL for Prompts and Responses (unstructured data)")
 	fmt.Println()
 
 	fmt.Println("🗄️  SQLite Configuration (for LLMs and Schedules)")
@@ -60,13 +60,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	cfg.SQLDatabase.URI = sqlitePath
 	cfg.SQLDatabase.Database = "gego"
 
-	fmt.Println("\n🍃 MongoDB Configuration (for Prompts and Responses)")
-	mongoURI, err2 := promptOptional(reader, "MongoDB URI [mongodb://localhost:27017]: ", "mongodb://localhost:27017")
+	fmt.Println("\n🐘 PostgreSQL Configuration (for Prompts and Responses)")
+	pgURI, err2 := promptOptional(reader, "PostgreSQL URI [postgres://localhost:5432/gego?sslmode=disable]: ", "postgres://localhost:5432/gego?sslmode=disable")
 	if err2 != nil {
 		return err2
 	}
-	cfg.NoSQLDatabase.Provider = "mongodb"
-	cfg.NoSQLDatabase.URI = mongoURI
+	cfg.NoSQLDatabase.Provider = "postgresql"
+	cfg.NoSQLDatabase.URI = pgURI
 	cfg.NoSQLDatabase.Database = "gego"
 
 	fmt.Println("\n🔌 Testing database connections...")
@@ -127,7 +127,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("ℹ️  Gego uses a hybrid database approach:")
 	fmt.Println("   • SQLite stores LLM configurations and schedules")
-	fmt.Println("   • MongoDB stores prompts and responses for keyword analysis")
+	fmt.Println("   • PostgreSQL stores prompts and responses for keyword analysis")
 	fmt.Println()
 	fmt.Println("Next steps:")
 	fmt.Println("  1. Add LLM providers: gego llm add")

@@ -17,9 +17,9 @@ import (
 // trackLatency accumulates PostgreSQL operation latency in context for summary logging
 func trackLatency(ctx context.Context, operation, table string, start time.Time, err error) {
 	duration := time.Since(start)
-	
+
 	// Accumulate time in context if available (from API requests)
-	// Uses same context key as MongoDB for compatibility
+	// Uses context key for database operation latency tracking
 	if dbTotalTime, ok := ctx.Value("mongo_total_time").(*time.Duration); ok {
 		*dbTotalTime += duration
 	}
@@ -68,7 +68,7 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(3 * time.Minute) // Reduced from 5 to 3 minutes to clear stale connections faster
-	db.SetConnMaxIdleTime(1 * time.Minute)  // Close idle connections after 1 minute
+	db.SetConnMaxIdleTime(1 * time.Minute) // Close idle connections after 1 minute
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("failed to ping PostgreSQL database: %w", err)
@@ -335,7 +335,7 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_prompts_brand ON prompts(brand)",
 		"CREATE INDEX IF NOT EXISTS idx_prompts_brand_created_at ON prompts(brand, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_prompts_enabled ON prompts(enabled)",
-		
+
 		// Responses indexes
 		"CREATE INDEX IF NOT EXISTS idx_responses_prompt_id_created_at ON responses(prompt_id, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_responses_created_at ON responses(created_at DESC)",
@@ -344,22 +344,22 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_responses_schedule_id ON responses(schedule_id) WHERE schedule_id IS NOT NULL",
 		"CREATE INDEX IF NOT EXISTS idx_responses_llm_id ON responses(llm_id) WHERE llm_id IS NOT NULL",
 		"CREATE INDEX IF NOT EXISTS idx_responses_response_text_gin ON responses USING gin(to_tsvector('english', response_text))",
-		
+
 		// Prompt Library indexes
 		"CREATE INDEX IF NOT EXISTS idx_prompt_library_domain_category ON prompt_library(domain, category)",
-		
+
 		// Brand Profiles indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_profiles_brand_name ON brand_profiles(brand_name)",
-		
+
 		// Brand Logos indexes (unique constraint already exists)
 		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_name ON brand_logos(brand_name)",
-		
+
 		// Brand Competitors indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_competitors_brand ON brand_competitors(brand)",
-		
+
 		// Brand Prompts indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_prompts_brand ON brand_prompts(brand)",
-		
+
 		// GEO Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand ON geo_campaigns(brand)",
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_status ON geo_campaigns(status)",
@@ -381,24 +381,24 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		// Cached GEO Insights indexes
 		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_campaign ON cached_geo_insights(brand, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_time ON cached_geo_insights(brand, start_time DESC, end_time DESC)",
-		
+
 		// Cached Source Analytics indexes
 		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_campaign ON cached_source_analytics(brand, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_time ON cached_source_analytics(brand, start_time DESC, end_time DESC)",
-		
+
 		// Cached Competitive Benchmark indexes
 		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_main_brand_campaign ON cached_competitive_benchmark(main_brand, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_main_brand_time ON cached_competitive_benchmark(main_brand, start_time DESC, end_time DESC)",
-		
+
 		// Cached Prompt Performance indexes
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_campaign ON cached_prompt_performance(brand, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_time ON cached_prompt_performance(brand, start_time DESC, end_time DESC)",
-		
+
 		// Scheduled Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_brand ON scheduled_campaigns(brand)",
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_status ON scheduled_campaigns(status)",
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_next_run_at ON scheduled_campaigns(next_run_at) WHERE next_run_at IS NOT NULL",
-		
+
 		// Cached Prompt Time Series indexes
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_brand ON cached_prompt_time_series(prompt_id, brand)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_campaign ON cached_prompt_time_series(prompt_id, campaign_id)",
@@ -845,4 +845,3 @@ func (p *PostgreSQL) DeletePromptsByBrand(ctx context.Context, brand string) (in
 	trackLatency(ctx, "DeletePromptsByBrand", "prompts", start, nil)
 	return int(rowsAffected), nil
 }
-

@@ -13,14 +13,14 @@ import (
 // Config represents the application configuration
 type Config struct {
 	SQLDatabase           DatabaseConfig `yaml:"sql_database"`                      // SQLite for LLMs and Schedules
-	NoSQLDatabase         DatabaseConfig `yaml:"nosql_database"`                    // MongoDB for Prompts and Responses
+	NoSQLDatabase         DatabaseConfig `yaml:"nosql_database"`                    // PostgreSQL for Prompts and Responses
 	CORSOrigin            string         `yaml:"cors_origin,omitempty"`             // CORS origin for API server
 	KeywordsExclusionPath string         `yaml:"keywords_exclusion_path,omitempty"` // Path to keywords exclusion file
 }
 
 // DatabaseConfig represents database configuration
 type DatabaseConfig struct {
-	Provider string            `yaml:"provider"` // sqlite, mongodb, cassandra
+	Provider string            `yaml:"provider"` // sqlite, postgresql, postgres
 	URI      string            `yaml:"uri"`
 	Database string            `yaml:"database"`
 	Options  map[string]string `yaml:"options,omitempty"`
@@ -52,8 +52,8 @@ func DefaultConfig() *Config {
 			Database: "gego",
 		},
 		NoSQLDatabase: DatabaseConfig{
-			Provider: "mongodb",
-			URI:      "mongodb://localhost:27017",
+			Provider: "postgresql",
+			URI:      "postgres://localhost:5432/gego?sslmode=disable",
 			Database: "gego",
 		},
 		CORSOrigin:            "*",
@@ -84,44 +84,34 @@ func applyEnvironmentOverrides(cfg *Config) {
 	// Check for GEGO_ENV to determine environment (local, dev, prod)
 	env := strings.ToLower(os.Getenv("GEGO_ENV"))
 
-	// MongoDB URI override based on environment or direct variable
-	if mongoURI := os.Getenv("MONGODB_URI"); mongoURI != "" {
-		// Direct override takes precedence
-		cfg.NoSQLDatabase.URI = mongoURI
-	} else if env != "" {
-		// Environment-based configuration
-		switch env {
-		case "local":
-			cfg.NoSQLDatabase.URI = "mongodb://localhost:27017"
-		case "dev", "development":
-			// Use Atlas cloud URI from environment or keep existing config
-			if cloudURI := os.Getenv("MONGODB_CLOUD_URI"); cloudURI != "" {
-				cfg.NoSQLDatabase.URI = cloudURI
-			}
-		case "prod", "production":
-			// Use production Atlas URI from environment
-			if prodURI := os.Getenv("MONGODB_PROD_URI"); prodURI != "" {
-				cfg.NoSQLDatabase.URI = prodURI
-			}
-		}
-	}
-
-	// MongoDB Database name override
-	if dbName := os.Getenv("MONGODB_DATABASE"); dbName != "" {
-		cfg.NoSQLDatabase.Database = dbName
-	}
-
 	// PostgreSQL/NoSQL Database Provider override (takes precedence)
 	if nosqlProvider := os.Getenv("NOSQL_DATABASE_PROVIDER"); nosqlProvider != "" {
 		cfg.NoSQLDatabase.Provider = nosqlProvider
+	} else if cfg.NoSQLDatabase.Provider == "" {
+		// Default to postgresql if not set
+		cfg.NoSQLDatabase.Provider = "postgresql"
 	}
 
-	// PostgreSQL URI override (sets provider to postgresql if not already set)
+	// PostgreSQL URI override
 	if pgURI := os.Getenv("POSTGRESQL_URI"); pgURI != "" {
-		if cfg.NoSQLDatabase.Provider == "" || cfg.NoSQLDatabase.Provider == "mongodb" {
-			cfg.NoSQLDatabase.Provider = "postgresql"
-		}
+		cfg.NoSQLDatabase.Provider = "postgresql"
 		cfg.NoSQLDatabase.URI = pgURI
+	} else if env != "" && cfg.NoSQLDatabase.URI == "" {
+		// Environment-based configuration
+		switch env {
+		case "local":
+			cfg.NoSQLDatabase.URI = "postgres://localhost:5432/gego?sslmode=disable"
+		case "dev", "development":
+			// Use cloud URI from environment or keep existing config
+			if cloudURI := os.Getenv("POSTGRESQL_CLOUD_URI"); cloudURI != "" {
+				cfg.NoSQLDatabase.URI = cloudURI
+			}
+		case "prod", "production":
+			// Use production URI from environment
+			if prodURI := os.Getenv("POSTGRESQL_PROD_URI"); prodURI != "" {
+				cfg.NoSQLDatabase.URI = prodURI
+			}
+		}
 	}
 
 	// PostgreSQL Database name override

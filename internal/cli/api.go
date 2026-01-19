@@ -120,10 +120,8 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  PostgreSQL URI: %s\n", maskedURI)
 		fmt.Printf("  Database Name: %s\n", nosqlConfig.Database)
 		fmt.Printf("  ✅ Using PostgreSQL for NoSQL operations\n")
-	} else if nosqlConfig.Provider == "mongodb" {
-		fmt.Printf("  MongoDB URI: %s\n", nosqlConfig.URI)
-		fmt.Printf("  Database Name: %s\n", nosqlConfig.Database)
-		fmt.Printf("  ℹ️  Using MongoDB for NoSQL operations\n")
+	} else {
+		fmt.Printf("  ⚠️  Unsupported NoSQL database provider: %s (only postgresql/postgres is supported)\n", nosqlConfig.Provider)
 	}
 	fmt.Println()
 

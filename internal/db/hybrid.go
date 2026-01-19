@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fissionx/gego/internal/db/mongodb"
 	"github.com/fissionx/gego/internal/db/postgresql"
 	"github.com/fissionx/gego/internal/db/sqlite"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
 
-// HybridDB implements the Database interface using both SQLite and NoSQL
+// HybridDB implements the Database interface using both SQLite and PostgreSQL
 type HybridDB struct {
 	sqlDB   SQLDatabase   // SQLite for LLMs and Schedules
-	nosqlDB NoSQLDatabase // MongoDB for Prompts and Responses
+	nosqlDB NoSQLDatabase // PostgreSQL for Prompts and Responses
 }
 
 // New creates a new hybrid database instance
@@ -34,19 +33,15 @@ func New(sqlConfig, nosqlConfig *models.Config) (*HybridDB, error) {
 		return nil, fmt.Errorf("unsupported SQL database provider: %s", sqlConfig.Provider)
 	}
 
+	// Only PostgreSQL is supported for NoSQL operations
 	switch nosqlConfig.Provider {
-	case "mongodb":
-		nosqlDB, err = mongodb.New(nosqlConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create NoSQL database: %w", err)
-		}
 	case "postgresql", "postgres":
 		nosqlDB, err = postgresql.New(nosqlConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL database: %w", err)
 		}
 	default:
-		return nil, fmt.Errorf("unsupported NoSQL database provider: %s", nosqlConfig.Provider)
+		return nil, fmt.Errorf("unsupported NoSQL database provider: %s (only postgresql/postgres is supported)", nosqlConfig.Provider)
 	}
 
 	return &HybridDB{
@@ -221,13 +216,6 @@ func (h *HybridDB) GetPromptStats(ctx context.Context, promptID string) (*models
 
 func (h *HybridDB) GetLLMStats(ctx context.Context, llmID string) (*models.LLMStats, error) {
 	return h.nosqlDB.GetLLMStats(ctx, llmID)
-}
-
-func (h *HybridDB) GetNoSQLDatabase() *mongodb.MongoDB {
-	if mongoDB, ok := h.nosqlDB.(*mongodb.MongoDB); ok {
-		return mongoDB
-	}
-	return nil
 }
 
 func (h *HybridDB) GetPostgreSQLDatabase() *postgresql.PostgreSQL {
