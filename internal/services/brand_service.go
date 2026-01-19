@@ -11,13 +11,15 @@ import (
 
 // BrandInfo represents brand information from the external API
 type BrandInfo struct {
-	ID        string    `json:"id"` // UUID string
-	Name      string    `json:"name"`
-	Domain    string    `json:"domain"`
-	Language  string    `json:"language"`
-	Category  string    `json:"category"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          string    `json:"id"` // UUID string
+	Name        string    `json:"name"`
+	Domain      string    `json:"domain"`
+	Language    string    `json:"language"`
+	Category    string    `json:"category"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	OrgID       string    `json:"orgId"`
+	Description string    `json:"description"`
 }
 
 // BrandService handles brand information retrieval and caching
