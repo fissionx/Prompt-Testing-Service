@@ -239,9 +239,6 @@ func (s *Server) setupRoutes() {
 		geo.GET("/libraries", s.listPromptLibraries)
 
 		// Brand Profiles
-		geo.GET("/profiles", s.listBrandProfiles)
-		geo.GET("/profiles/:brand", s.getBrandProfile)
-
 		// Bulk Execution
 		geo.POST("/execute/bulk", s.bulkExecute)
 

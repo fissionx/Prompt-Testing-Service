@@ -47,12 +47,6 @@ type NoSQLDatabase interface {
 	UpdatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error
 	ListPromptLibraries(ctx context.Context) ([]*models.PromptLibrary, error)
 
-	// Brand Profile operations (for metadata and categorization)
-	CreateBrandProfile(ctx context.Context, profile *models.BrandProfile) error
-	GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error)
-	UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error
-	ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error)
-
 	// Brand Logo cache operations
 	SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error
 	GetBrandLogo(ctx context.Context, brandID string) (*models.BrandLogoCache, error)

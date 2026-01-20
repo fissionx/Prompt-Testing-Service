@@ -250,22 +250,6 @@ func (h *HybridDB) ListPromptLibraries(ctx context.Context) ([]*models.PromptLib
 }
 
 // Brand Profile operations - Use NoSQL
-func (h *HybridDB) CreateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
-	return h.nosqlDB.CreateBrandProfile(ctx, profile)
-}
-
-func (h *HybridDB) GetBrandProfile(ctx context.Context, brandName string) (*models.BrandProfile, error) {
-	return h.nosqlDB.GetBrandProfile(ctx, brandName)
-}
-
-func (h *HybridDB) UpdateBrandProfile(ctx context.Context, profile *models.BrandProfile) error {
-	return h.nosqlDB.UpdateBrandProfile(ctx, profile)
-}
-
-func (h *HybridDB) ListBrandProfiles(ctx context.Context) ([]*models.BrandProfile, error) {
-	return h.nosqlDB.ListBrandProfiles(ctx)
-}
-
 func (h *HybridDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error {
 	return h.nosqlDB.SaveBrandLogo(ctx, logo)
 }

@@ -181,19 +181,6 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
 
-	-- Brand Profiles table
-	CREATE TABLE IF NOT EXISTS brand_profiles (
-		id TEXT PRIMARY KEY,
-		brand_name TEXT NOT NULL,
-		domain TEXT,
-		category TEXT,
-		website TEXT,
-		description TEXT,
-		competitors JSONB DEFAULT '[]'::jsonb,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);
-
 	-- Brand Logos table
 	CREATE TABLE IF NOT EXISTS brand_logos (
 		id TEXT PRIMARY KEY,
@@ -353,9 +340,6 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 
 		// Prompt Library indexes
 		"CREATE INDEX IF NOT EXISTS idx_prompt_library_domain_category ON prompt_library(domain, category)",
-
-		// Brand Profiles indexes
-		"CREATE INDEX IF NOT EXISTS idx_brand_profiles_brand_name ON brand_profiles(brand_name)",
 
 		// Brand Logos indexes (unique constraint on brand_id already exists)
 		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_id ON brand_logos(brand_id)",

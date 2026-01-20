@@ -412,47 +412,6 @@ func (s *Server) listPromptLibraries(c *gin.Context) {
 	})
 }
 
-// listBrandProfiles handles GET /api/v1/geo/profiles
-func (s *Server) listBrandProfiles(c *gin.Context) {
-	profiles, err := s.db.ListBrandProfiles(c.Request.Context())
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to list profiles: "+err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    profiles,
-		Message: "Brand profiles retrieved successfully",
-	})
-}
-
-// getBrandProfile handles GET /api/v1/geo/profiles/:brand
-func (s *Server) getBrandProfile(c *gin.Context) {
-	brandName := c.Param("brand")
-	if brandName == "" {
-		s.errorResponse(c, http.StatusBadRequest, "Brand name is required")
-		return
-	}
-
-	profile, err := s.db.GetBrandProfile(c.Request.Context(), brandName)
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to get profile: "+err.Error())
-		return
-	}
-
-	if profile == nil {
-		s.errorResponse(c, http.StatusNotFound, "Brand profile not found")
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    profile,
-		Message: "Brand profile retrieved successfully",
-	})
-}
-
 // listScheduledCampaigns handles GET /api/v1/geo/campaigns
 // Returns all scheduled campaigns with full prompt and LLM details
 func (s *Server) listScheduledCampaigns(c *gin.Context) {

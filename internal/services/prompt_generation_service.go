@@ -61,18 +61,26 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		}
 	}
 
-	// Step 2: Get or derive brand profile (determines domain/category if not provided)
-	brandProfile, err := s.getOrCreateBrandProfile(ctx, brand, website, category, domain, description, websiteContent, llmConfig)
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to get brand profile: %w", err)
-	}
-
-	// Use profile's domain/category if not explicitly provided
-	if domain == "" && brandProfile.Domain != "" {
-		domain = brandProfile.Domain
-	}
-	if category == "" && brandProfile.Category != "" {
-		category = brandProfile.Category
+	// Step 2: Derive domain/category if not provided (using LLM if needed)
+	// Since we now use API to get brand details, we derive domain/category directly
+	if domain == "" || category == "" {
+		derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description, websiteContent, llmConfig)
+		if err != nil {
+			// Fallback to defaults if derivation fails
+			if domain == "" {
+				domain = "general"
+			}
+			if category == "" {
+				category = "general"
+			}
+		} else {
+			if domain == "" {
+				domain = derivedDomain
+			}
+			if category == "" {
+				category = derivedCategory
+			}
+		}
 	}
 
 	fmt.Printf("🔍 Looking for prompts: brand=%s, domain=%s, category=%s\n", brand, domain, category)
@@ -182,65 +190,6 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	return savedPrompts, 0, len(savedPrompts), nil
 }
 
-// getOrCreateBrandProfile gets existing profile or derives one using LLM
-func (s *PromptGenerationService) getOrCreateBrandProfile(ctx context.Context, brand, website, category, domain, description string, websiteContent *WebsiteContent, llmConfig *models.LLMConfig) (*models.BrandProfile, error) {
-	// Check if profile already exists
-	profile, err := s.db.GetBrandProfile(ctx, brand)
-	if err != nil {
-		return nil, err
-	}
-
-	if profile != nil {
-		// Update website if provided and not set
-		if website != "" && profile.Website == "" {
-			profile.Website = website
-			_ = s.db.UpdateBrandProfile(ctx, profile)
-		}
-		return profile, nil
-	}
-
-	// Profile doesn't exist - create one
-	// If domain and category provided, use them
-	if domain != "" && category != "" {
-		profile = &models.BrandProfile{
-			ID:          uuid.New().String(),
-			BrandName:   brand,
-			Website:     website,
-			Domain:      domain,
-			Category:    category,
-			Description: description,
-		}
-
-		if err := s.db.CreateBrandProfile(ctx, profile); err != nil {
-			return nil, fmt.Errorf("failed to create brand profile: %w", err)
-		}
-
-		return profile, nil
-	}
-
-	// Otherwise, derive domain/category using LLM with enriched context
-	derivedDomain, derivedCategory, err := s.deriveBrandMetadata(ctx, brand, description, websiteContent, llmConfig)
-	if err != nil {
-		// Fallback to defaults if derivation fails
-		derivedDomain = "general"
-		derivedCategory = "general"
-	}
-
-	profile = &models.BrandProfile{
-		ID:          uuid.New().String(),
-		BrandName:   brand,
-		Website:     website,
-		Domain:      derivedDomain,
-		Category:    derivedCategory,
-		Description: description,
-	}
-
-	if err := s.db.CreateBrandProfile(ctx, profile); err != nil {
-		return nil, fmt.Errorf("failed to create brand profile: %w", err)
-	}
-
-	return profile, nil
-}
 
 // createProviderFromConfig creates an LLM provider instance from LLMConfig
 func (s *PromptGenerationService) createProviderFromConfig(llmConfig *models.LLMConfig) (llm.Provider, error) {
