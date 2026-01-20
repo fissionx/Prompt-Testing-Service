@@ -30,38 +30,62 @@ func NewBrandPromptService(database db.Database, llmRegistry *llm.Registry) *Bra
 }
 
 // GetPrompts retrieves both active and suggested prompts for a brand
-func (s *BrandPromptService) GetPrompts(ctx context.Context, brand string) (*models.GetPromptsResponse, error) {
-	// Get active prompts (enabled prompts with brand set) - optimized: filter at database level
-	enabled := true
-	brandPrompts, err := s.db.ListPromptsByBrand(ctx, brand, &enabled)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list prompts by brand: %w", err)
-	}
-
-	// Use a map to track unique templates (normalized) and keep the first occurrence
-	templateMap := make(map[string]models.PromptDetail)
-	var activePrompts []models.PromptDetail
-	
-	for _, prompt := range brandPrompts {
-		normalizedTemplate := normalizeTemplate(prompt.Template)
-		
-		// Only add if we haven't seen this template before
-		if _, exists := templateMap[normalizedTemplate]; !exists {
-			detail := models.PromptDetail{
-				ID:         prompt.ID,
-				Template:   prompt.Template,
-				PromptType: prompt.PromptType,
-				Category:   prompt.Category,
-			}
-			templateMap[normalizedTemplate] = detail
-			activePrompts = append(activePrompts, detail)
-		}
-	}
-
-	// Get suggested prompts from BrandPrompts
-	brandPromptsRecord, err := s.db.GetBrandPrompts(ctx, brand)
+func (s *BrandPromptService) GetPrompts(ctx context.Context, brandID string) (*models.GetPromptsResponse, error) {
+	// Get brand prompts record first to get brand name and prompt IDs
+	brandPromptsRecord, err := s.db.GetBrandPrompts(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get brand prompts: %w", err)
+	}
+
+	var brand string
+	var activePrompts []models.PromptDetail
+
+	if brandPromptsRecord != nil {
+		brand = brandPromptsRecord.Brand
+
+		// Get active prompts from active_prompt_ids in brand_prompts table
+		if len(brandPromptsRecord.ActivePromptIDs) > 0 {
+			// Fetch prompt details for active prompt IDs - optimized: batch fetch instead of N+1 queries
+			prompts, err := s.db.GetPromptsByIDs(ctx, brandPromptsRecord.ActivePromptIDs)
+			if err != nil {
+				// If batch fetch fails, fall back to individual fetches (backward compatibility)
+				for _, promptID := range brandPromptsRecord.ActivePromptIDs {
+					prompt, err := s.db.GetPrompt(ctx, promptID)
+					if err != nil || prompt == nil {
+						continue // Skip invalid prompts
+					}
+					activePrompts = append(activePrompts, models.PromptDetail{
+						ID:         prompt.ID,
+						Template:   prompt.Template,
+						PromptType: prompt.PromptType,
+						Category:   prompt.Category,
+					})
+				}
+			} else {
+				// Use a map to track unique templates (normalized) and keep the first occurrence
+				templateMap := make(map[string]models.PromptDetail)
+				for _, prompt := range prompts {
+					normalizedTemplate := normalizeTemplate(prompt.Template)
+
+					// Only add if we haven't seen this template before
+					if _, exists := templateMap[normalizedTemplate]; !exists {
+						detail := models.PromptDetail{
+							ID:         prompt.ID,
+							Template:   prompt.Template,
+							PromptType: prompt.PromptType,
+							Category:   prompt.Category,
+						}
+						templateMap[normalizedTemplate] = detail
+						activePrompts = append(activePrompts, detail)
+					}
+				}
+			}
+		}
+	} else {
+		// Fallback: If no brand_prompts record exists, try to get prompts by brand name
+		// This is for backward compatibility with existing data
+		// Note: This requires brand name, which we don't have without brandID lookup
+		// So we'll return empty active prompts if no record exists
 	}
 
 	var suggestedPrompts []models.PromptDetail
@@ -96,11 +120,11 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brand string) (*mod
 	}
 
 	return &models.GetPromptsResponse{
-		Brand:          brand,
-		ActivePrompts:  activePrompts,
+		Brand:            brand,
+		ActivePrompts:    activePrompts,
 		SuggestedPrompts: suggestedPrompts,
-		Source:         "database",
-		UpdatedAt:      time.Now(),
+		Source:           "database",
+		UpdatedAt:        time.Now(),
 	}, nil
 }
 
@@ -109,6 +133,8 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brand string) (*mod
 func (s *BrandPromptService) SuggestPrompts(
 	ctx context.Context,
 	brand string,
+	brandID string,
+	orgID string,
 	website string,
 	category string,
 	domain string,
@@ -121,7 +147,7 @@ func (s *BrandPromptService) SuggestPrompts(
 	var err error
 
 	if !forceRefresh {
-		existing, err = s.db.GetBrandPrompts(ctx, brand)
+		existing, err = s.db.GetBrandPrompts(ctx, brandID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing prompts: %w", err)
 		}
@@ -157,16 +183,16 @@ func (s *BrandPromptService) SuggestPrompts(
 				}
 			}
 			return &models.SuggestPromptsResponse{
-				Brand:       brand,
-				Prompts:     prompts,
-				Source:      "cached",
-				Message:     "Returning cached prompt suggestions",
-				LLMDetails:   nil, // LLM details not available for cached responses
+				Brand:      brand,
+				Prompts:    prompts,
+				Source:     "cached",
+				Message:    "Returning cached prompt suggestions",
+				LLMDetails: nil, // LLM details not available for cached responses
 			}, nil
 		}
 	} else {
 		// Even if force refresh, we need to get existing record to preserve active prompts
-		existing, err = s.db.GetBrandPrompts(ctx, brand)
+		existing, err = s.db.GetBrandPrompts(ctx, brandID)
 		if err != nil {
 			fmt.Printf("Warning: failed to check existing prompts when caching: %v\n", err)
 		}
@@ -181,11 +207,11 @@ func (s *BrandPromptService) SuggestPrompts(
 
 	if len(promptTemplates) == 0 {
 		return &models.SuggestPromptsResponse{
-			Brand:       brand,
-			Prompts:     []models.PromptDetail{},
-			Source:      "llm",
-			Message:     "No prompts could be generated. Please provide more details about your brand.",
-			LLMDetails:   llmDetails,
+			Brand:      brand,
+			Prompts:    []models.PromptDetail{},
+			Source:     "llm",
+			Message:    "No prompts could be generated. Please provide more details about your brand.",
+			LLMDetails: llmDetails,
 		}, nil
 	}
 
@@ -245,13 +271,15 @@ func (s *BrandPromptService) SuggestPrompts(
 	}
 
 	brandPrompts := &models.BrandPrompts{
-		ID:                  id,
-		Brand:               brand,
-		ActivePromptIDs:     activePromptIDs, // Preserve existing active prompts
-		SuggestedPromptIDs: promptIDs,        // LLM-suggested list - cache for deterministic behavior
-		Source:              source,
-		CreatedAt:           createdAt,
-		UpdatedAt:           time.Now(),
+		ID:                 id,
+		Brand:              brand,
+		BrandID:            brandID,
+		OrgID:              orgID,
+		ActivePromptIDs:    activePromptIDs, // Preserve existing active prompts
+		SuggestedPromptIDs: promptIDs,       // LLM-suggested list - cache for deterministic behavior
+		Source:             source,
+		CreatedAt:          createdAt,
+		UpdatedAt:          time.Now(),
 	}
 
 	if err := s.db.SaveBrandPrompts(ctx, brandPrompts); err != nil {
@@ -260,11 +288,11 @@ func (s *BrandPromptService) SuggestPrompts(
 	}
 
 	return &models.SuggestPromptsResponse{
-		Brand:       brand,
-		Prompts:     promptDetails,
-		Source:      "llm",
-		Message:     fmt.Sprintf("Found %d prompts for %s", len(promptDetails), brand),
-		LLMDetails:   llmDetails,
+		Brand:      brand,
+		Prompts:    promptDetails,
+		Source:     "llm",
+		Message:    fmt.Sprintf("Found %d prompts for %s", len(promptDetails), brand),
+		LLMDetails: llmDetails,
 	}, nil
 }
 
@@ -450,7 +478,7 @@ RESPOND NOW:`, count, brandContext, count)
 func parsePromptResponse(response string) ([]string, error) {
 	// Clean up the response
 	response = strings.TrimSpace(response)
-	
+
 	// Remove markdown code blocks if present
 	response = strings.TrimPrefix(response, "```json")
 	response = strings.TrimPrefix(response, "```")
@@ -499,12 +527,14 @@ func parsePromptResponse(response string) ([]string, error) {
 func (s *BrandPromptService) SavePrompts(
 	ctx context.Context,
 	brand string,
+	brandID string,
+	orgID string,
 	promptIDs []string,
 	customPrompts []models.CustomPrompt,
 	source string,
 ) (*models.SavePromptsResponse, error) {
 	// Get existing brand prompts
-	existing, err := s.db.GetBrandPrompts(ctx, brand)
+	existing, err := s.db.GetBrandPrompts(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing prompts: %w", err)
 	}
@@ -668,13 +698,15 @@ func (s *BrandPromptService) SavePrompts(
 
 	// Update brand prompts record
 	brandPrompts := &models.BrandPrompts{
-		ID:                  id,
-		Brand:               brand,
-		ActivePromptIDs:     existingActivePromptIDs,
+		ID:                 id,
+		Brand:              brand,
+		BrandID:            brandID,
+		OrgID:              orgID,
+		ActivePromptIDs:    existingActivePromptIDs,
 		SuggestedPromptIDs: existingSuggestedPromptIDs,
-		Source:              source,
-		CreatedAt:           createdAt,
-		UpdatedAt:           time.Now(),
+		Source:             source,
+		CreatedAt:          createdAt,
+		UpdatedAt:          time.Now(),
 	}
 
 	if err := s.db.SaveBrandPrompts(ctx, brandPrompts); err != nil {
@@ -690,15 +722,15 @@ func (s *BrandPromptService) SavePrompts(
 }
 
 // DeletePrompt deletes a prompt from active list and moves it back to suggested list
-func (s *BrandPromptService) DeletePrompt(ctx context.Context, brand string, promptID string) error {
+func (s *BrandPromptService) DeletePrompt(ctx context.Context, brandID string, promptID string) error {
 	// Get existing brand prompts
-	existing, err := s.db.GetBrandPrompts(ctx, brand)
+	existing, err := s.db.GetBrandPrompts(ctx, brandID)
 	if err != nil {
 		return fmt.Errorf("failed to get existing prompts: %w", err)
 	}
 
 	if existing == nil {
-		return fmt.Errorf("no prompts found for brand: %s", brand)
+		return fmt.Errorf("no prompts found for brandID: %s", brandID)
 	}
 
 	// Find and remove from active list
@@ -714,7 +746,7 @@ func (s *BrandPromptService) DeletePrompt(ctx context.Context, brand string, pro
 	}
 
 	if !found {
-		return fmt.Errorf("prompt %s not found in active list for brand %s", promptID, brand)
+		return fmt.Errorf("prompt %s not found in active list for brandID %s", promptID, brandID)
 	}
 
 	// Add back to suggested list (if not already present)
@@ -741,22 +773,24 @@ func (s *BrandPromptService) DeletePrompt(ctx context.Context, brand string, pro
 
 	// Update brand prompts record
 	brandPrompts := &models.BrandPrompts{
-		ID:                  existing.ID,
-		Brand:               brand,
-		ActivePromptIDs:     newActive,
+		ID:                 existing.ID,
+		Brand:              existing.Brand,
+		BrandID:            existing.BrandID,
+		OrgID:              existing.OrgID,
+		ActivePromptIDs:    newActive,
 		SuggestedPromptIDs: newSuggested,
-		Source:              existing.Source,
-		CreatedAt:           existing.CreatedAt,
-		UpdatedAt:           time.Now(),
+		Source:             existing.Source,
+		CreatedAt:          existing.CreatedAt,
+		UpdatedAt:          time.Now(),
 	}
 
 	return s.db.SaveBrandPrompts(ctx, brandPrompts)
 }
 
 // DeleteAllPrompts deletes all active prompts for a brand and moves them to suggested list
-func (s *BrandPromptService) DeleteAllPrompts(ctx context.Context, brand string) error {
+func (s *BrandPromptService) DeleteAllPrompts(ctx context.Context, brandID string) error {
 	// Get existing brand prompts
-	existing, err := s.db.GetBrandPrompts(ctx, brand)
+	existing, err := s.db.GetBrandPrompts(ctx, brandID)
 	if err != nil {
 		return fmt.Errorf("failed to get existing prompts: %w", err)
 	}
@@ -769,7 +803,7 @@ func (s *BrandPromptService) DeleteAllPrompts(ctx context.Context, brand string)
 	// Move all active prompts to suggested list (deduplicate)
 	var newSuggested []string
 	suggestedMap := make(map[string]bool)
-	
+
 	// Add existing suggested prompts
 	for _, id := range existing.SuggestedPromptIDs {
 		if !suggestedMap[id] {
@@ -796,13 +830,15 @@ func (s *BrandPromptService) DeleteAllPrompts(ctx context.Context, brand string)
 
 	// Update brand prompts record
 	brandPrompts := &models.BrandPrompts{
-		ID:                  existing.ID,
-		Brand:               brand,
-		ActivePromptIDs:     []string{}, // Clear active list
+		ID:                 existing.ID,
+		Brand:              existing.Brand,
+		BrandID:            existing.BrandID,
+		OrgID:              existing.OrgID,
+		ActivePromptIDs:    []string{}, // Clear active list
 		SuggestedPromptIDs: newSuggested,
-		Source:              existing.Source,
-		CreatedAt:           existing.CreatedAt,
-		UpdatedAt:           time.Now(),
+		Source:             existing.Source,
+		CreatedAt:          existing.CreatedAt,
+		UpdatedAt:          time.Now(),
 	}
 
 	return s.db.SaveBrandPrompts(ctx, brandPrompts)
@@ -818,4 +854,3 @@ func normalizeTemplate(template string) string {
 	normalized = strings.Join(strings.Fields(normalized), " ")
 	return normalized
 }
-

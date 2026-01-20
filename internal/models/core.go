@@ -191,6 +191,8 @@ type BrandCompetitors struct {
 type BrandPrompts struct {
 	ID                 string    `json:"id" bson:"_id"`
 	Brand              string    `json:"brand" bson:"brand"`
+	BrandID            string    `json:"brandId" bson:"brand_id"`
+	OrgID              string    `json:"orgId" bson:"org_id"`                            // Organization ID
 	ActivePromptIDs    []string  `json:"activePromptIds" bson:"active_prompt_ids"`       // Active prompt IDs (enabled prompts)
 	SuggestedPromptIDs []string  `json:"suggestedPromptIds" bson:"suggested_prompt_ids"` // Suggested prompt IDs (cached from LLM)
 	Source             string    `json:"source" bson:"source"`                           // "suggested", "custom", or "mixed"

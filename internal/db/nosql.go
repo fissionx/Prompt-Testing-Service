@@ -99,7 +99,7 @@ type NoSQLDatabase interface {
 	SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error
 	GetBrandCompetitors(ctx context.Context, brandID string) (*models.BrandCompetitors, error)
 	SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error
-	GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error)
+	GetBrandPrompts(ctx context.Context, brandID string) (*models.BrandPrompts, error)
 	DeleteBrandCompetitors(ctx context.Context, brandID string) error
 	ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error)
 

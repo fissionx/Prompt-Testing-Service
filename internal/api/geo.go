@@ -584,6 +584,8 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 	_, err = s.brandPromptService.SavePrompts(
 		ctx,
 		brandName,
+		brandID,
+		brandInfo.OrgID,
 		req.PromptIDs,
 		req.CustomPrompts,
 		source,
@@ -594,7 +596,7 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 	}
 
 	// Return the updated prompts list in the same format as GET endpoint
-	s.getBrandPromptsResponse(c, brandName, website, category, domain, "", 20, false)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
 }
 
 // deletePromptsByIDs handles DELETE /api/v1/geo/prompts
@@ -645,7 +647,7 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 			// Multiple prompt IDs from body
 			deletedCount := 0
 			for _, id := range req.PromptIDs {
-				if err := s.brandPromptService.DeletePrompt(ctx, brandName, id); err != nil {
+				if err := s.brandPromptService.DeletePrompt(ctx, brandID, id); err != nil {
 					// Continue with other IDs even if one fails
 					continue
 				}
@@ -658,29 +660,29 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 			}
 
 			// Return the updated prompts list in the same format as GET endpoint
-			s.getBrandPromptsResponse(c, brandName, website, category, domain, "", 20, false)
+			s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
 			return
 		}
 
 		// No body or empty body - delete all prompts for brand
-		if err := s.brandPromptService.DeleteAllPrompts(ctx, brandName); err != nil {
+		if err := s.brandPromptService.DeleteAllPrompts(ctx, brandID); err != nil {
 			s.errorResponse(c, http.StatusInternalServerError, "Failed to delete prompts: "+err.Error())
 			return
 		}
 
 		// Return the updated prompts list in the same format as GET endpoint
-		s.getBrandPromptsResponse(c, brandName, website, category, domain, "", 20, false)
+		s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
 		return
 	}
 
 	// Delete single prompt by ID from query parameter
-	if err := s.brandPromptService.DeletePrompt(ctx, brandName, promptID); err != nil {
+	if err := s.brandPromptService.DeletePrompt(ctx, brandID, promptID); err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to delete prompt: "+err.Error())
 		return
 	}
 
 	// Return the updated prompts list in the same format as GET endpoint
-	s.getBrandPromptsResponse(c, brandName, website, category, domain, "", 20, false)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
 }
 
 // cronToDescription converts a cron expression to human-readable text

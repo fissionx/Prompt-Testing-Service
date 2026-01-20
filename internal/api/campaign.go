@@ -102,16 +102,16 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 	// Parse forceRefresh parameter (default: false)
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getBrandPromptsResponse(c, brandName, website, category, domain, description, count, forceRefresh)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, description, count, forceRefresh)
 }
 
 // getBrandPromptsResponse is a helper function that builds and returns the prompts response
 // This is used by both GET and POST/DELETE endpoints to ensure consistent response format
-func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, category, domain, description string, count int, forceRefresh bool) {
+func (s *Server) getBrandPromptsResponse(c *gin.Context, brandID, orgID, brand, website, category, domain, description string, count int, forceRefresh bool) {
 	ctx := c.Request.Context()
 
 	// Get active and suggested prompts
-	response, err := s.brandPromptService.GetPrompts(ctx, brand)
+	response, err := s.brandPromptService.GetPrompts(ctx, brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompts: "+err.Error())
 		return
@@ -132,6 +132,8 @@ func (s *Server) getBrandPromptsResponse(c *gin.Context, brand, website, categor
 		suggestResponse, err := s.brandPromptService.SuggestPrompts(
 			ctx,
 			brand,
+			brandID,
+			orgID,
 			website,
 			category,
 			domain,
@@ -294,7 +296,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 
 	// Use BrandPromptService to properly manage prompts and preserve suggested prompts
 	// First, delete all active prompts (but preserve suggested prompts in BrandPrompts record)
-	if err := s.brandPromptService.DeleteAllPrompts(ctx, brandName); err != nil {
+	if err := s.brandPromptService.DeleteAllPrompts(ctx, brandID); err != nil {
 		// If no BrandPrompts record exists, that's okay - we'll create one
 		fmt.Printf("Warning: failed to delete existing prompts: %v\n", err)
 	}
@@ -343,6 +345,8 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 	saveResponse, err := s.brandPromptService.SavePrompts(
 		ctx,
 		brandName,
+		brandID,
+		brandInfo.OrgID,
 		promptIDsFromSuggested,
 		customPromptsToSave,
 		source,

@@ -222,7 +222,9 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	-- Brand Prompts table
 	CREATE TABLE IF NOT EXISTS brand_prompts (
 		id TEXT PRIMARY KEY,
-		brand TEXT NOT NULL UNIQUE,
+		brand TEXT NOT NULL,
+		brand_id TEXT NOT NULL UNIQUE,
+		org_id TEXT,
 		active_prompt_ids JSONB DEFAULT '[]'::jsonb,
 		suggested_prompt_ids JSONB DEFAULT '[]'::jsonb,
 		source TEXT,
@@ -360,6 +362,7 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 
 		// Brand Prompts indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_prompts_brand ON brand_prompts(brand)",
+		"CREATE INDEX IF NOT EXISTS idx_brand_prompts_brand_id ON brand_prompts(brand_id)",
 
 		// GEO Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand ON geo_campaigns(brand)",

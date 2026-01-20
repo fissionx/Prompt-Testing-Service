@@ -491,9 +491,11 @@ func (p *PostgreSQL) SaveBrandPrompts(ctx context.Context, prompts *models.Brand
 	prompts.UpdatedAt = now
 
 	query := `
-		INSERT INTO brand_prompts (id, brand, active_prompt_ids, suggested_prompt_ids, source, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (brand) DO UPDATE SET
+		INSERT INTO brand_prompts (id, brand, brand_id, org_id, active_prompt_ids, suggested_prompt_ids, source, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (brand_id) DO UPDATE SET
+			brand = EXCLUDED.brand,
+			org_id = EXCLUDED.org_id,
 			active_prompt_ids = EXCLUDED.active_prompt_ids,
 			suggested_prompt_ids = EXCLUDED.suggested_prompt_ids,
 			source = EXCLUDED.source,
@@ -503,6 +505,8 @@ func (p *PostgreSQL) SaveBrandPrompts(ctx context.Context, prompts *models.Brand
 	_, err := p.db.ExecContext(ctx, query,
 		prompts.ID,
 		prompts.Brand,
+		prompts.BrandID,
+		prompts.OrgID,
 		sliceToJSON(prompts.ActivePromptIDs),
 		sliceToJSON(prompts.SuggestedPromptIDs),
 		prompts.Source,
@@ -513,19 +517,21 @@ func (p *PostgreSQL) SaveBrandPrompts(ctx context.Context, prompts *models.Brand
 	return err
 }
 
-func (p *PostgreSQL) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
+func (p *PostgreSQL) GetBrandPrompts(ctx context.Context, brandID string) (*models.BrandPrompts, error) {
 	query := `
-		SELECT id, brand, active_prompt_ids, suggested_prompt_ids, source, created_at, updated_at
+		SELECT id, brand, brand_id, org_id, active_prompt_ids, suggested_prompt_ids, source, created_at, updated_at
 		FROM brand_prompts
-		WHERE brand = $1
+		WHERE brand_id = $1
 	`
 
 	var prompts models.BrandPrompts
 	var activePromptIDsJSON, suggestedPromptIDsJSON string
 
-	err := p.db.QueryRowContext(ctx, query, brand).Scan(
+	err := p.db.QueryRowContext(ctx, query, brandID).Scan(
 		&prompts.ID,
 		&prompts.Brand,
+		&prompts.BrandID,
+		&prompts.OrgID,
 		&activePromptIDsJSON,
 		&suggestedPromptIDsJSON,
 		&prompts.Source,

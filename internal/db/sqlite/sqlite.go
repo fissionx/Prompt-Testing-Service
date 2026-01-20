@@ -603,7 +603,7 @@ func (s *SQLite) SaveBrandPrompts(ctx context.Context, prompts *models.BrandProm
 }
 
 // GetBrandPrompts - Not implemented in SQLite (use PostgreSQL/Hybrid)
-func (s *SQLite) GetBrandPrompts(ctx context.Context, brand string) (*models.BrandPrompts, error) {
+func (s *SQLite) GetBrandPrompts(ctx context.Context, brandID string) (*models.BrandPrompts, error) {
 	return nil, fmt.Errorf("brand prompts operations not supported in SQLite-only mode")
 }
 
