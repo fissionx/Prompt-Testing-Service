@@ -69,6 +69,8 @@ type Schedule struct {
 // Response represents an LLM response to a prompt
 type Response struct {
 	ID           string                 `json:"id" bson:"_id"`
+	BrandID      string                 `json:"brandId,omitempty" bson:"brand_id,omitempty"` // Brand ID (UUID)
+	OrgID        string                 `json:"orgId,omitempty" bson:"org_id,omitempty"`     // Organization ID
 	PromptID     string                 `json:"promptId" bson:"prompt_id"`
 	PromptText   string                 `json:"promptText" bson:"prompt_text"`
 	LLMID        string                 `json:"llmId" bson:"llm_id"`
@@ -76,7 +78,7 @@ type Response struct {
 	LLMProvider  string                 `json:"llmProvider" bson:"llm_provider"`
 	LLMModel     string                 `json:"llmModel" bson:"llm_model"`
 	ResponseText string                 `json:"responseText" bson:"response_text"`
-	Brand        string                 `json:"brand,omitempty" bson:"brand,omitempty"`
+	Brand        string                 `json:"brand,omitempty" bson:"brand,omitempty"` // Brand name (kept for backward compatibility)
 	Temperature  float64                `json:"temperature,omitempty" bson:"temperature,omitempty"`
 	Metadata     map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"`
 	ScheduleID   string                 `json:"scheduleId,omitempty" bson:"schedule_id,omitempty"`

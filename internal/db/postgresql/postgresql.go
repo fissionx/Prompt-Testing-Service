@@ -137,6 +137,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	-- Responses table
 	CREATE TABLE IF NOT EXISTS responses (
 		id TEXT PRIMARY KEY,
+		brand_id TEXT,
+		org_id TEXT,
 		prompt_id TEXT NOT NULL,
 		prompt_text TEXT,
 		llm_id TEXT,
@@ -324,6 +326,8 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_prompts_enabled ON prompts(enabled)",
 
 		// Responses indexes
+		"CREATE INDEX IF NOT EXISTS idx_responses_brand_id ON responses(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_responses_org_id ON responses(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_responses_prompt_id_created_at ON responses(prompt_id, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_responses_created_at ON responses(created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_responses_brand ON responses(brand)",

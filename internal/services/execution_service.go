@@ -82,6 +82,8 @@ func (s *ExecutionService) ExecutePromptWithLLM(ctx context.Context, prompt *mod
 
 		responseModel := &models.Response{
 			ID:           uuid.New().String(),
+			BrandID:      prompt.BrandID,
+			OrgID:        prompt.OrgID,
 			PromptID:     prompt.ID,
 			LLMID:        llmConfig.ID,
 			PromptText:   prompt.Template,

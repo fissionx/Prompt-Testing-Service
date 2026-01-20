@@ -448,6 +448,8 @@ func (s *SchedulerService) executePromptWithLLM(ctx context.Context, scheduleID 
 		logger.Error("[%s] LLM call failed after %v: %v", llmConfig.Name, duration, err)
 		response := &models.Response{
 			ID:          uuid.New().String(),
+			BrandID:     prompt.BrandID,
+			OrgID:       prompt.OrgID,
 			PromptID:    prompt.ID,
 			PromptText:  prompt.Template,
 			LLMID:       llmConfig.ID,
@@ -467,6 +469,8 @@ func (s *SchedulerService) executePromptWithLLM(ctx context.Context, scheduleID 
 
 	response := &models.Response{
 		ID:           uuid.New().String(),
+		BrandID:      prompt.BrandID,
+		OrgID:        prompt.OrgID,
 		PromptID:     prompt.ID,
 		PromptText:   prompt.Template,
 		LLMID:        llmConfig.ID,

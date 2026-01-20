@@ -36,7 +36,7 @@ func (p *PostgreSQL) CreateResponse(ctx context.Context, response *models.Respon
 
 	query := `
 		INSERT INTO responses (
-			id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model,
+			id, brand_id, org_id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model,
 			response_text, brand, temperature, metadata, schedule_id, tokens_used,
 			latency_ms, error, visibility_score, brand_mentioned, in_grounding_sources,
 			grounding_sources, sentiment, competitors_mention, brand_position,
@@ -45,7 +45,7 @@ func (p *PostgreSQL) CreateResponse(ctx context.Context, response *models.Respon
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
 			$17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-			$31, $32, $33
+			$31, $32, $33, $34, $35
 		)
 	`
 
@@ -56,6 +56,8 @@ func (p *PostgreSQL) CreateResponse(ctx context.Context, response *models.Respon
 
 	_, err := p.db.ExecContext(ctx, query,
 		response.ID,
+		response.BrandID,
+		response.OrgID,
 		response.PromptID,
 		compressedPromptText,
 		response.LLMID,
@@ -122,7 +124,7 @@ func jsonToWebSearchCalls(jsonStr string) []models.WebSearchCallDetails {
 func (p *PostgreSQL) GetResponse(ctx context.Context, id string) (*models.Response, error) {
 	start := time.Now()
 	query := `
-		SELECT id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model,
+		SELECT id, brand_id, org_id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model,
 			response_text, brand, temperature, metadata, schedule_id, tokens_used,
 			latency_ms, error, visibility_score, brand_mentioned, in_grounding_sources,
 			grounding_sources, sentiment, competitors_mention, brand_position,
@@ -137,6 +139,8 @@ func (p *PostgreSQL) GetResponse(ctx context.Context, id string) (*models.Respon
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&response.ID,
+		&response.BrandID,
+		&response.OrgID,
 		&response.PromptID,
 		&response.PromptText,
 		&response.LLMID,
@@ -212,7 +216,7 @@ func (p *PostgreSQL) GetResponse(ctx context.Context, id string) (*models.Respon
 // ListResponses lists responses with filtering
 func (p *PostgreSQL) ListResponses(ctx context.Context, filter shared.ResponseFilter) ([]*models.Response, error) {
 	start := time.Now()
-	query := `SELECT id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model, 
+	query := `SELECT id, brand_id, org_id, prompt_id, prompt_text, llm_id, llm_name, llm_provider, llm_model, 
 		response_text, brand, temperature, metadata, schedule_id, tokens_used, latency_ms, error, 
 		visibility_score, brand_mentioned, in_grounding_sources, grounding_sources, sentiment, 
 		competitors_mention, brand_position, total_brands_listed, grounding_domains, web_search_queries, 
@@ -300,6 +304,8 @@ func (p *PostgreSQL) ListResponses(ctx context.Context, filter shared.ResponseFi
 
 		err := rows.Scan(
 			&response.ID,
+			&response.BrandID,
+			&response.OrgID,
 			&response.PromptID,
 			&response.PromptText,
 			&response.LLMID,
@@ -452,4 +458,3 @@ func (p *PostgreSQL) DeleteAllResponses(ctx context.Context) (int, error) {
 	trackLatency(ctx, "DeleteAllResponses", "responses", start, nil)
 	return int(rowsAffected), nil
 }
-

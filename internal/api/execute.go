@@ -194,9 +194,20 @@ func (s *Server) execute(c *gin.Context) {
 		}
 	}
 
+	// Get prompt to extract BrandID and OrgID if promptID is available
+	var brandID, orgID string
+	if promptID != "" {
+		if prompt, err := s.promptService.GetPrompt(c.Request.Context(), promptID); err == nil && prompt != nil {
+			brandID = prompt.BrandID
+			orgID = prompt.OrgID
+		}
+	}
+
 	// Save the response with GEO metrics
 	responseModel := &models.Response{
 		ID:           uuid.New().String(),
+		BrandID:      brandID,
+		OrgID:        orgID,
 		PromptID:     promptID,
 		LLMID:        llmConfig.ID,
 		PromptText:   req.Prompt,

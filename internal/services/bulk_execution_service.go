@@ -113,7 +113,7 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 					defer func() { <-semaphore }()
 
 					// Execute single prompt-LLM pair
-					err := s.executeSingle(ctx, p, llm, campaign.Brand, temperature)
+					err := s.executeSingle(ctx, p, llm, campaign.BrandID, campaign.OrgID, campaign.Brand, temperature)
 
 					mu.Lock()
 					completed++
@@ -147,7 +147,7 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 }
 
 // executeSingle executes a single prompt with a single LLM
-func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models.Prompt, llmConfig *models.LLMConfig, brand string, temperature float64) error {
+func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models.Prompt, llmConfig *models.LLMConfig, brandID string, orgID string, brand string, temperature float64) error {
 	// Create LLM provider
 	provider, ok := s.llmRegistry.Get(llmConfig.Provider)
 	if !ok || provider == nil {
@@ -165,6 +165,8 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 		// Save error response
 		errorResponse := &models.Response{
 			ID:          uuid.New().String(),
+			BrandID:     brandID,
+			OrgID:       orgID,
 			PromptID:    prompt.ID,
 			PromptText:  prompt.Template,
 			LLMID:       llmConfig.ID,
@@ -183,6 +185,8 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	// Parse GEO analysis from response (if brand was provided)
 	responseModel := &models.Response{
 		ID:           uuid.New().String(),
+		BrandID:      brandID,
+		OrgID:        orgID,
 		PromptID:     prompt.ID,
 		PromptText:   prompt.Template,
 		LLMID:        llmConfig.ID,

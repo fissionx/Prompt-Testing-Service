@@ -270,7 +270,7 @@ func (m *ScheduledCampaignManager) executePrompts(ctx context.Context, bulkServi
 				defer func() { <-semaphore }()
 
 				// Execute single prompt-LLM pair
-				err := bulkService.executeSingle(ctx, p, l, campaign.Brand, campaign.Temperature)
+				err := bulkService.executeSingle(ctx, p, l, campaign.BrandID, campaign.OrgID, campaign.Brand, campaign.Temperature)
 
 				mu.Lock()
 				completed++
