@@ -389,8 +389,8 @@ func (h *HybridDB) SaveBrandCompetitors(ctx context.Context, competitors *models
 	return h.nosqlDB.SaveBrandCompetitors(ctx, competitors)
 }
 
-func (h *HybridDB) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
-	return h.nosqlDB.GetBrandCompetitors(ctx, brand)
+func (h *HybridDB) GetBrandCompetitors(ctx context.Context, brandID string) (*models.BrandCompetitors, error) {
+	return h.nosqlDB.GetBrandCompetitors(ctx, brandID)
 }
 
 func (h *HybridDB) SaveBrandPrompts(ctx context.Context, prompts *models.BrandPrompts) error {

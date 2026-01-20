@@ -221,7 +221,7 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 	}
 
 	// Otherwise, move all competitors to suggestedList (preserves data)
-	err = s.competitorService.DeleteCompetitors(ctx, brandName)
+	err = s.competitorService.DeleteCompetitors(ctx, brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to clear competitors: "+err.Error())
 		return

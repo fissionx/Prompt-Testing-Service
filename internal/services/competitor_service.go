@@ -48,7 +48,7 @@ func (s *CompetitorService) SuggestCompetitors(
 	var err error
 
 	if !forceRefresh {
-		existing, err = s.db.GetBrandCompetitors(ctx, brand)
+		existing, err = s.db.GetBrandCompetitors(ctx, brandID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing competitors: %w", err)
 		}
@@ -67,7 +67,7 @@ func (s *CompetitorService) SuggestCompetitors(
 		}
 	} else {
 		// Even if force refresh, we need to get existing record to preserve saved competitors
-		existing, err = s.db.GetBrandCompetitors(ctx, brand)
+		existing, err = s.db.GetBrandCompetitors(ctx, brandID)
 		if err != nil {
 			// Log error but continue - we'll create a new record
 			fmt.Printf("Warning: failed to check existing competitors when caching: %v\n", err)
@@ -644,14 +644,14 @@ func (s *CompetitorService) GetCompetitors(
 // The existing suggestedList is preserved and competitors are added to it (no duplicates)
 func (s *CompetitorService) DeleteCompetitors(
 	ctx context.Context,
-	brand string,
+	brandID string,
 ) error {
-	if brand == "" {
-		return fmt.Errorf("brand is required")
+	if brandID == "" {
+		return fmt.Errorf("brandID is required")
 	}
 
 	// Get existing data
-	existing, err := s.db.GetBrandCompetitors(ctx, brand)
+	existing, err := s.db.GetBrandCompetitors(ctx, brandID)
 	if err != nil {
 		return fmt.Errorf("failed to get existing competitors: %w", err)
 	}
