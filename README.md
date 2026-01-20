@@ -11,7 +11,7 @@ Gego is an open-source GEO (Generative Engine Optimization) tracker that schedul
 - 📊 **Hybrid Database**: SQLite for configuration data (LLMs, Schedules) and MongoDB for analytics data (Prompts, Responses)
 - ⏰ **Flexible Scheduling**: Cron-based scheduler for automated prompt execution
 - 📈 **Comprehensive Analytics**: Track keyword mentions, compare prompts and LLMs, view trends
-- 💻 **User-Friendly CLI**: Interactive commands for all operations
+- 🌐 **REST API**: Full-featured REST API for all operations
 - 🔌 **Pluggable Architecture**: Easy to add new LLM providers and database backends
 - 🎯 **Automatic Keyword Extraction**: Intelligently extracts keywords from responses (no predefined list needed)
 - 📉 **Performance Metrics**: Monitor latency, token usage, and error rates
@@ -161,11 +161,11 @@ Gego supports both local MongoDB and cloud MongoDB Atlas. You can easily switch 
 
 **Using Environment Variables:**
 ```bash
-# Local MongoDB
-GEGO_ENV=local gego api start
+# Local development
+GEGO_ENV=local ./gego
 
-# MongoDB Atlas
-GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://user:pass@cluster.mongodb.net/" gego api start
+# Production with custom config
+GEGO_CONFIG_PATH=/path/to/config.yaml ./gego --port 8989
 ```
 
 ### MongoDB Atlas Setup
@@ -183,23 +183,52 @@ GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://user:pass@cluster.mongodb.net/" ge
 
 ## Quick Start
 
-### 1. Initialize Configuration
+### 1. Create Configuration File
 
-```bash
-gego init
+Create a configuration file at `~/.gego/config.yaml` or set `GEGO_CONFIG_PATH` environment variable:
+
+```yaml
+sqlDatabase:
+  provider: sqlite
+  uri: gego.db
+  database: gego
+
+nosqlDatabase:
+  provider: postgresql
+  uri: postgres://user:password@localhost:5432/gego?sslmode=disable
+  database: gego
+
+corsOrigin: "*"
 ```
 
-This interactive wizard will guide you through:
-- Database configuration
-- Connection testing
-
-Note: Gego automatically extracts keywords from responses - no predefined keyword list needed!
-
-### 2. Add LLM Providers
+### 2. Start API Server
 
 ```bash
-gego llm add
+# Start API server on default port 8989
+./gego
+
+# Start API server on custom port
+./gego --port 3000
+
+# Start API server on custom host and port
+./gego --host 127.0.0.1 --port 5000
+
+# Start API server with custom CORS origin
+./gego --cors-origin "https://myapp.com"
+
+# Use custom config file
+./gego --config /path/to/config.yaml
 ```
+
+### 3. Use the REST API
+
+The API provides endpoints for:
+- **LLMs**: Create, read, update, delete LLM providers
+- **Prompts**: Create, read, update, delete prompts
+- **Schedules**: Create, read, update, delete schedules
+- **Stats**: Get statistics and analytics
+- **Execute**: Execute prompts with LLMs
+- **Search**: Search keywords in responses
 
 Example providers:
 - OpenAI (GPT-4, GPT-3.5)
@@ -208,59 +237,12 @@ Example providers:
 - Google (Gemini)
 - Perplexity (Sonar)
 
-### 3. Create Prompts
-
-```bash
-gego prompt add
-```
-
 Example prompts:
 - "What are the best streaming services for movies?"
 - "Which cloud providers offer the best value?"
 - "What are popular social media platforms?"
 
-### 4. Set Up Schedules
-
-```bash
-gego schedule add
-```
-
-Create schedules to run prompts automatically using cron expressions.
-
-### 5. Run Prompts
-
-```bash
-# Run all prompts with all LLMs once
-gego run
-
-# Start scheduler for scheduled execution
-gego scheduler start
-```
-
-**Run Command**: Executes all enabled prompts with all enabled LLMs immediately.
-
-**Scheduler Commands**: Manage scheduled execution of prompts.
-
-### 6. Start API Server
-
-```bash
-# Start API server on default port 8989
-gego api
-
-# Start API server on custom port
-gego api --port 3000
-
-# Start API server on custom host and port
-gego api --host 127.0.0.1 --port 5000
-
-# Start API server with custom CORS origin
-gego api --cors-origin "https://myapp.com"
-
-# Start API server allowing all origins (default)
-gego api --cors-origin "*"
-```
-
-**API Server**: Provides REST API endpoints for managing LLMs, prompts, schedules, and retrieving statistics.
+Note: Gego automatically extracts keywords from responses - no predefined keyword list needed!
 
 **Default Configuration:**
 - **Host**: `0.0.0.0` (all interfaces)
@@ -503,35 +485,24 @@ gego run --log-level INFO
 gego run --log-level DEBUG
 ```
 
-#### `--log-file`
-Specify a file to write logs to instead of stdout:
-
-```bash
-# Log to a file
-gego run --log-file /var/log/gego.log
-
-# Log to file with debug level
-gego run --log-level DEBUG --log-file /var/log/gego-debug.log
-```
-
 ### Usage Examples
 
 #### Production Deployment
 ```bash
-# Log only errors to a file for production
-gego run --log-level ERROR --log-file /var/log/gego/error.log
+# Start API server in production
+./gego --port 8989
 ```
 
 #### Development/Debugging
 ```bash
-# Show all debug information on stdout
-gego run --log-level DEBUG
+# Start API server (logs to stdout by default)
+./gego
 ```
 
 #### Monitoring
 ```bash
-# Log info and above to a file for monitoring
-gego run --log-level INFO --log-file /var/log/gego/app.log
+# Redirect logs to a file for monitoring
+./gego > /var/log/gego/app.log 2>&1
 ```
 
 ### Log Format
@@ -611,7 +582,7 @@ Gego uses a hybrid database architecture optimized for different data types:
 
 ```
 ┌─────────────────┐
-│   CLI (Cobra)   │
+│   REST API      │
 └────────┬────────┘
          │
     ┌────┴────┐
@@ -697,7 +668,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-- Built with [Cobra](https://github.com/spf13/cobra) for CLI
+- Built with [Gin](https://github.com/gin-gonic/gin) for REST API
 - [MongoDB Go Driver](https://github.com/mongodb/mongo-go-driver) for analytics database
 - [SQLite3](https://github.com/mattn/go-sqlite3) for configuration database
 - [Cron](https://github.com/robfig/cron) for scheduling

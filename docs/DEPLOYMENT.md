@@ -199,7 +199,7 @@ After deployment, you need to initialize Gego:
 docker exec -it gego sh
 
 # Run init command (interactive)
-gego init
+# Create config file at ~/.gego/config.yaml
 
 # Or configure manually by editing the config file
 ```

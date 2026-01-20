@@ -55,7 +55,7 @@ MONGODB_DATABASE=gego
 
 ```bash
 export GEGO_ENV=local
-gego api start
+./gego
 ```
 
 #### Run with Cloud MongoDB (Dev)
@@ -63,26 +63,26 @@ gego api start
 ```bash
 export GEGO_ENV=dev
 export MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/"
-gego api start
+./gego
 ```
 
 #### Run with Direct URI Override
 
 ```bash
 export MONGODB_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/"
-gego api start
+./gego
 ```
 
 ### Option 3: One-Line Commands
 
 Run with local MongoDB:
 ```bash
-GEGO_ENV=local gego api start
+GEGO_ENV=local ./gego
 ```
 
 Run with cloud MongoDB:
 ```bash
-GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/" gego api start
+GEGO_ENV=dev MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/" ./gego
 ```
 
 ## MongoDB Atlas Setup
@@ -121,15 +121,14 @@ The system applies configuration in this order (highest priority first):
 ```bash
 # Start with local MongoDB for development
 export GEGO_ENV=local
-gego init
-gego llm add openai --api-key sk-xxx --model gpt-4
-gego prompt create --template "What are the best {category} brands?"
-gego api start
+# Create config file at ~/.gego/config.yaml
+# Use REST API to add LLMs and prompts
+./gego
 
 # Switch to cloud for testing
 export GEGO_ENV=dev
 export MONGODB_CLOUD_URI="mongodb+srv://user:pass@cluster.mongodb.net/"
-gego api start
+./gego
 ```
 
 ### Using Shell Scripts
@@ -138,7 +137,7 @@ Create a script `run-local.sh`:
 ```bash
 #!/bin/bash
 export GEGO_ENV=local
-gego api start
+./gego
 ```
 
 Create a script `run-dev.sh`:
@@ -146,7 +145,7 @@ Create a script `run-dev.sh`:
 #!/bin/bash
 export GEGO_ENV=dev
 export MONGODB_CLOUD_URI="mongodb+srv://fissionx_geo_db_use:ConsultNext12@fissionxgeo.mcwvkmk.mongodb.net/"
-gego api start
+./gego
 ```
 
 Make them executable:
@@ -179,7 +178,7 @@ echo $GEGO_ENV
 2. Test the connection:
 ```bash
 # Start API and check logs
-gego api start
+./gego
 
 # In another terminal, test the API
 curl http://localhost:8080/health
@@ -225,11 +224,9 @@ If you get "database not found":
 To migrate data from local to cloud:
 
 ```bash
-# Export from local
-GEGO_ENV=local gego prompt export > prompts.json
-
-# Import to cloud
-GEGO_ENV=dev gego prompt import < prompts.json
+# Export from local using REST API
+# GET /api/v1/prompts to export
+# POST /api/v1/prompts to import
 ```
 
 ## Additional Resources
