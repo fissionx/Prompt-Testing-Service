@@ -106,6 +106,7 @@ type NoSQLDatabase interface {
 	// GEO Campaign operations
 	SaveGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error
 	GetGEOCampaign(ctx context.Context, id string) (*models.GEOCampaign, error)
+	GetGEOCampaignsByBrandID(ctx context.Context, brandID string) ([]*models.GEOCampaign, error)
 	GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error)
 	UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error
 }

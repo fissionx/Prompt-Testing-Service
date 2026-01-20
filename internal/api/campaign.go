@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -189,7 +190,7 @@ type SaveAndExecutePromptsRequest struct {
 }
 
 // saveAndExecutePrompts handles POST /api/v1/geo/brand/:brandId/prompts/execute/bulk
-// Saves prompts for a brand (upsert - replaces existing) and executes them
+// Saves prompts for a brand and executes them on selected LLM configurations
 func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 	brandID := c.Param("brandId")
 	if brandID == "" {
@@ -204,39 +205,144 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		return
 	}
 
-	// Get brand info from external API
+	// Validate request
+	if err := s.validateSaveAndExecuteRequest(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Get brand information
 	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
 	}
 
-	brandName := brandInfo.Name
-
-	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "At least one prompt is required (promptIds or customPrompts)")
-		return
-	}
-
-	if len(req.LLMIDs) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "At least one LLM is required")
-		return
-	}
-
 	ctx := c.Request.Context()
 
-	type promptSeed struct {
-		Template       string
-		PromptType     models.PromptType
-		Category       string
-		Tags           []string
-		Generated      bool
-		SourcePromptID string
+	// Prepare and save prompts
+	promptIDs, err := s.prepareAndSavePrompts(ctx, &req, brandID, brandInfo)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, err.Error())
+		return
 	}
 
+	// Apply defaults
+	s.applySaveAndExecuteDefaults(&req, brandInfo.Name)
+
+	// Execute campaign
+	response, err := s.executeBulkCampaign(ctx, &models.BulkExecuteRequest{
+		CampaignName: req.CampaignName,
+		BrandID:      brandID,
+		PromptIDs:    promptIDs,
+		LLMIDs:       req.LLMIDs,
+		Temperature:  req.Temperature,
+		ScheduleCron: req.ScheduleCron,
+		TotalRuns:    req.TotalRuns,
+	}, brandInfo)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Update message for save-and-execute flow
+	if req.ScheduleCron != "" {
+		response.Message = "Prompts saved and scheduled campaign created. First execution started in background."
+		if response.NextRunAt != nil {
+			response.Message += " Next run at " + response.NextRunAt.Format("2006-01-02 15:04:05 UTC")
+		}
+	} else {
+		response.Message = "Prompts saved and execution started successfully. Running in background."
+	}
+
+	c.JSON(http.StatusAccepted, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: response.Message,
+	})
+}
+
+// validateSaveAndExecuteRequest validates the save and execute request
+func (s *Server) validateSaveAndExecuteRequest(req *SaveAndExecutePromptsRequest) error {
+	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
+		return fmt.Errorf("at least one prompt is required (promptIds or customPrompts)")
+	}
+	if len(req.LLMIDs) == 0 {
+		return fmt.Errorf("at least one LLM is required")
+	}
+	return nil
+}
+
+// applySaveAndExecuteDefaults applies default values to the request
+func (s *Server) applySaveAndExecuteDefaults(req *SaveAndExecutePromptsRequest, brandName string) {
+	if req.CampaignName == "" {
+		req.CampaignName = brandName + " Execution"
+	}
+	if req.Temperature == 0 {
+		req.Temperature = 0.7
+	}
+	if req.TotalRuns == 0 {
+		req.TotalRuns = 1
+	}
+}
+
+// promptSeed represents a prompt to be saved (from existing ID or custom)
+type promptSeed struct {
+	Template       string
+	PromptType     models.PromptType
+	Category       string
+	Tags           []string
+	Generated      bool
+	SourcePromptID string
+}
+
+// prepareAndSavePrompts prepares prompts from IDs and custom prompts, then saves them
+func (s *Server) prepareAndSavePrompts(ctx context.Context, req *SaveAndExecutePromptsRequest, brandID string, brandInfo *services.BrandInfo) ([]string, error) {
+	// Collect all prompt seeds (from IDs and custom prompts)
+	seeds, err := s.collectPromptSeeds(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect prompts: %w", err)
+	}
+
+	if len(seeds) == 0 {
+		return nil, fmt.Errorf("no valid prompts provided")
+	}
+
+	// Delete existing active prompts (preserves suggested prompts)
+	if err := s.brandPromptService.DeleteAllPrompts(ctx, brandID); err != nil {
+		// If no BrandPrompts record exists, that's okay - we'll create one
+		fmt.Printf("Warning: failed to delete existing prompts: %v\n", err)
+	}
+
+	// Separate existing prompts from new custom prompts
+	promptIDsFromSuggested, customPromptsToSave := s.separatePromptsForSaving(ctx, seeds)
+
+	// Determine source type
+	source := s.determinePromptSource(promptIDsFromSuggested, customPromptsToSave)
+
+	// Save prompts using BrandPromptService
+	saveResponse, err := s.brandPromptService.SavePrompts(
+		ctx,
+		brandInfo.Name,
+		brandID,
+		brandInfo.OrgID,
+		promptIDsFromSuggested,
+		customPromptsToSave,
+		source,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save prompts: %w", err)
+	}
+
+	return saveResponse.SavedPromptIDs, nil
+}
+
+// collectPromptSeeds collects prompt seeds from prompt IDs and custom prompts
+func (s *Server) collectPromptSeeds(ctx context.Context, req *SaveAndExecutePromptsRequest) ([]promptSeed, error) {
 	seeds := make([]promptSeed, 0, len(req.PromptIDs)+len(req.CustomPrompts))
 	seen := make(map[string]struct{})
 
+	// Helper to add a seed with deduplication
 	addSeed := func(seed promptSeed) {
 		template := strings.TrimSpace(seed.Template)
 		if template == "" {
@@ -257,6 +363,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		seeds = append(seeds, seed)
 	}
 
+	// Collect from existing prompt IDs
 	for _, promptID := range req.PromptIDs {
 		existingPrompt, err := s.db.GetPrompt(ctx, promptID)
 		if err != nil || existingPrompt == nil {
@@ -273,6 +380,7 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		})
 	}
 
+	// Collect from custom prompts
 	for _, customPrompt := range req.CustomPrompts {
 		promptType := models.PromptType(customPrompt.PromptType)
 		if promptType == "" {
@@ -289,26 +397,17 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		})
 	}
 
-	if len(seeds) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "No valid prompts provided")
-		return
-	}
+	return seeds, nil
+}
 
-	// Use BrandPromptService to properly manage prompts and preserve suggested prompts
-	// First, delete all active prompts (but preserve suggested prompts in BrandPrompts record)
-	if err := s.brandPromptService.DeleteAllPrompts(ctx, brandID); err != nil {
-		// If no BrandPrompts record exists, that's okay - we'll create one
-		fmt.Printf("Warning: failed to delete existing prompts: %v\n", err)
-	}
-
-	// Prepare prompt IDs and custom prompts for SavePrompts
+// separatePromptsForSaving separates existing prompts from new custom prompts
+func (s *Server) separatePromptsForSaving(ctx context.Context, seeds []promptSeed) ([]string, []models.CustomPrompt) {
 	var promptIDsFromSuggested []string
 	var customPromptsToSave []models.CustomPrompt
 
-	// Separate existing prompts (by ID) from new custom prompts
 	for _, seed := range seeds {
 		if seed.SourcePromptID != "" {
-			// This is an existing prompt ID - check if it exists
+			// Check if prompt still exists
 			prompt, err := s.db.GetPrompt(ctx, seed.SourcePromptID)
 			if err == nil && prompt != nil {
 				// Use existing prompt - will be moved to active by SavePrompts
@@ -333,111 +432,16 @@ func (s *Server) saveAndExecutePrompts(c *gin.Context) {
 		}
 	}
 
-	// Use BrandPromptService to save prompts properly (preserves suggested prompts)
-	// This ensures the BrandPrompts record is properly maintained
-	source := "custom"
-	if len(promptIDsFromSuggested) > 0 && len(customPromptsToSave) > 0 {
-		source = "mixed"
-	} else if len(promptIDsFromSuggested) > 0 {
-		source = "suggested"
+	return promptIDsFromSuggested, customPromptsToSave
+}
+
+// determinePromptSource determines the source type for saving prompts
+func (s *Server) determinePromptSource(promptIDs []string, customPrompts []models.CustomPrompt) string {
+	if len(promptIDs) > 0 && len(customPrompts) > 0 {
+		return "mixed"
 	}
-
-	saveResponse, err := s.brandPromptService.SavePrompts(
-		ctx,
-		brandName,
-		brandID,
-		brandInfo.OrgID,
-		promptIDsFromSuggested,
-		customPromptsToSave,
-		source,
-	)
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to save prompts: "+err.Error())
-		return
+	if len(promptIDs) > 0 {
+		return "suggested"
 	}
-
-	allPromptIDs := saveResponse.SavedPromptIDs
-
-	// Set defaults
-	if req.CampaignName == "" {
-		req.CampaignName = brandName + " Execution"
-	}
-	if req.Temperature == 0 {
-		req.Temperature = 0.7
-	}
-	totalRuns := req.TotalRuns
-	if totalRuns == 0 {
-		totalRuns = 1
-	}
-
-	// If scheduleCron is provided, create a scheduled campaign
-	if req.ScheduleCron != "" {
-		scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
-			ctx,
-			req.CampaignName,
-			brandName,
-			allPromptIDs,
-			req.LLMIDs,
-			req.Temperature,
-			req.ScheduleCron,
-			totalRuns,
-		)
-		if err != nil {
-			s.errorResponse(c, http.StatusInternalServerError, "Failed to create scheduled campaign: "+err.Error())
-			return
-		}
-
-		response := models.BulkExecuteResponse{
-			CampaignID:   scheduledCampaign.ID,
-			CampaignName: scheduledCampaign.CampaignName,
-			Brand:        scheduledCampaign.Brand,
-			TotalRuns:    scheduledCampaign.TotalRuns,
-			Status:       scheduledCampaign.Status,
-			StartedAt:    scheduledCampaign.CreatedAt,
-			NextRunAt:    scheduledCampaign.NextRunAt,
-			ScheduleCron: scheduledCampaign.ScheduleCron,
-			Message:      "Prompts saved and scheduled campaign created. First execution started in background. Next run at " + scheduledCampaign.NextRunAt.Format("2006-01-02 15:04:05 UTC"),
-		}
-
-		c.JSON(http.StatusAccepted, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: "Prompts saved and scheduled campaign created",
-		})
-		return
-	}
-
-	// Create bulk execution service for one-time execution
-	bulkService := services.NewBulkExecutionService(s.db, s.llmRegistry)
-
-	// Start campaign execution
-	campaign, err := bulkService.ExecuteCampaign(
-		ctx,
-		req.CampaignName,
-		brandName,
-		allPromptIDs,
-		req.LLMIDs,
-		req.Temperature,
-		totalRuns,
-	)
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to start execution: "+err.Error())
-		return
-	}
-
-	response := models.BulkExecuteResponse{
-		CampaignID:   campaign.ID,
-		CampaignName: campaign.Name,
-		Brand:        campaign.Brand,
-		TotalRuns:    campaign.TotalRuns,
-		Status:       campaign.Status,
-		StartedAt:    campaign.CreatedAt,
-		Message:      "Prompts saved and execution started successfully. Running in background.",
-	}
-
-	c.JSON(http.StatusAccepted, models.APIResponse{
-		Success: true,
-		Data:    response,
-		Message: "Prompts saved and execution started",
-	})
+	return "custom"
 }

@@ -418,6 +418,10 @@ func (h *HybridDB) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCa
 	return h.nosqlDB.GetGEOCampaign(ctx, id)
 }
 
+func (h *HybridDB) GetGEOCampaignsByBrandID(ctx context.Context, brandID string) ([]*models.GEOCampaign, error) {
+	return h.nosqlDB.GetGEOCampaignsByBrandID(ctx, brandID)
+}
+
 func (h *HybridDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error) {
 	return h.nosqlDB.GetRunningGEOCampaignByBrand(ctx, brand)
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -121,6 +122,7 @@ func (s *Server) generatePrompts(c *gin.Context) {
 }
 
 // bulkExecute handles POST /api/v1/geo/execute/bulk
+// Executes selected prompts on selected LLM configurations
 func (s *Server) bulkExecute(c *gin.Context) {
 	var req models.BulkExecuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -128,40 +130,70 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		return
 	}
 
-	// Validate that at least one prompt ID is provided
-	if len(req.PromptIDs) == 0 {
-		s.errorResponse(c, http.StatusBadRequest, "At least one prompt ID must be provided")
+	// Validate request
+	if err := s.validateBulkExecuteRequest(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if req.BrandID == "" {
-		s.errorResponse(c, http.StatusBadRequest, "BrandId is required")
-		return
-	}
-
-	// Get brand info from external API
+	// Get brand information
 	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), req.BrandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
 	}
 
-	brandName := brandInfo.Name
+	// Apply defaults
+	s.applyBulkExecuteDefaults(&req)
 
-	if req.Temperature == 0 {
-		req.Temperature = 0.7
-	}
-
-	// Validate temperature
-	if req.Temperature < 0 || req.Temperature > 2 {
-		s.errorResponse(c, http.StatusBadRequest, "Temperature must be between 0 and 2")
-		return
-	}
+	// Invalidate analytics cache for this brand (async)
+	s.invalidateBrandAnalyticsCache(brandInfo.Name)
 
 	ctx := c.Request.Context()
 
-	// Force refresh all analytics cache for this brand to ensure data consistency
-	// This ensures that after bulk execution, all analytics APIs will fetch fresh data
+	// Execute campaign (scheduled or one-time)
+	response, err := s.executeBulkCampaign(ctx, &req, brandInfo)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusAccepted, models.APIResponse{
+		Success: true,
+		Data:    response,
+		Message: response.Message,
+	})
+}
+
+// validateBulkExecuteRequest validates the bulk execute request
+func (s *Server) validateBulkExecuteRequest(req *models.BulkExecuteRequest) error {
+	if req.BrandID == "" {
+		return fmt.Errorf("brandId is required")
+	}
+	if len(req.PromptIDs) == 0 {
+		return fmt.Errorf("at least one prompt ID must be provided")
+	}
+	if len(req.LLMIDs) == 0 {
+		return fmt.Errorf("at least one LLM ID must be provided")
+	}
+	if req.Temperature < 0 || req.Temperature > 2 {
+		return fmt.Errorf("temperature must be between 0 and 2")
+	}
+	return nil
+}
+
+// applyBulkExecuteDefaults applies default values to the request
+func (s *Server) applyBulkExecuteDefaults(req *models.BulkExecuteRequest) {
+	if req.Temperature == 0 {
+		req.Temperature = 0.7
+	}
+	if req.TotalRuns == 0 {
+		req.TotalRuns = 1
+	}
+}
+
+// invalidateBrandAnalyticsCache invalidates all analytics cache for a brand
+func (s *Server) invalidateBrandAnalyticsCache(brandName string) {
 	go func() {
 		bgCtx := context.Background()
 		_ = s.db.DeleteCachedGEOInsightsByBrand(bgCtx, brandName)
@@ -170,69 +202,73 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		_ = s.db.DeleteCachedPromptPerformanceByBrand(bgCtx, brandName)
 		_ = s.db.DeleteCachedPromptTimeSeriesByBrand(bgCtx, brandName)
 	}()
+}
 
-	// Set default total runs if not specified
-	totalRuns := req.TotalRuns
-	if totalRuns == 0 {
-		totalRuns = 1
-	}
-
-	// If scheduleCron is provided, create a scheduled campaign
+// executeBulkCampaign executes a bulk campaign (scheduled or one-time)
+func (s *Server) executeBulkCampaign(ctx context.Context, req *models.BulkExecuteRequest, brandInfo *services.BrandInfo) (*models.BulkExecuteResponse, error) {
+	// Handle scheduled campaign
 	if req.ScheduleCron != "" {
-		scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
-			ctx,
-			req.CampaignName,
-			brandName,
-			req.PromptIDs,
-			req.LLMIDs,
-			req.Temperature,
-			req.ScheduleCron,
-			totalRuns,
-		)
-		if err != nil {
-			s.errorResponse(c, http.StatusInternalServerError, "Failed to create scheduled campaign: "+err.Error())
-			return
-		}
-
-		response := models.BulkExecuteResponse{
-			CampaignID:   scheduledCampaign.ID,
-			CampaignName: scheduledCampaign.CampaignName,
-			Brand:        scheduledCampaign.Brand,
-			TotalRuns:    scheduledCampaign.TotalRuns,
-			Status:       scheduledCampaign.Status,
-			StartedAt:    scheduledCampaign.CreatedAt,
-			NextRunAt:    scheduledCampaign.NextRunAt,
-			ScheduleCron: scheduledCampaign.ScheduleCron,
-			Message:      "Scheduled campaign created successfully. First execution started in background. Next run at " + scheduledCampaign.NextRunAt.Format("2006-01-02 15:04:05 UTC"),
-		}
-
-		c.JSON(http.StatusAccepted, models.APIResponse{
-			Success: true,
-			Data:    response,
-			Message: "Scheduled campaign created and first execution started",
-		})
-		return
+		return s.createScheduledCampaign(ctx, req, brandInfo)
 	}
 
-	// Create bulk execution service for one-time execution
-	bulkService := services.NewBulkExecutionService(s.db, s.llmRegistry)
+	// Handle one-time execution
+	return s.createOneTimeCampaign(ctx, req, brandInfo)
+}
 
-	// Start campaign execution
-	campaign, err := bulkService.ExecuteCampaign(
+// createScheduledCampaign creates and starts a scheduled campaign
+func (s *Server) createScheduledCampaign(ctx context.Context, req *models.BulkExecuteRequest, brandInfo *services.BrandInfo) (*models.BulkExecuteResponse, error) {
+	scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
 		ctx,
 		req.CampaignName,
-		brandName,
+		brandInfo.Name,
 		req.PromptIDs,
 		req.LLMIDs,
 		req.Temperature,
-		totalRuns,
+		req.ScheduleCron,
+		req.TotalRuns,
 	)
 	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to start campaign: "+err.Error())
-		return
+		return nil, fmt.Errorf("failed to create scheduled campaign: %w", err)
 	}
 
-	response := models.BulkExecuteResponse{
+	message := "Scheduled campaign created successfully. First execution started in background."
+	if scheduledCampaign.NextRunAt != nil {
+		message += " Next run at " + scheduledCampaign.NextRunAt.Format("2006-01-02 15:04:05 UTC")
+	}
+
+	return &models.BulkExecuteResponse{
+		CampaignID:   scheduledCampaign.ID,
+		CampaignName: scheduledCampaign.CampaignName,
+		Brand:        scheduledCampaign.Brand,
+		TotalRuns:    scheduledCampaign.TotalRuns,
+		Status:       scheduledCampaign.Status,
+		StartedAt:    scheduledCampaign.CreatedAt,
+		NextRunAt:    scheduledCampaign.NextRunAt,
+		ScheduleCron: scheduledCampaign.ScheduleCron,
+		Message:      message,
+	}, nil
+}
+
+// createOneTimeCampaign creates and starts a one-time campaign
+func (s *Server) createOneTimeCampaign(ctx context.Context, req *models.BulkExecuteRequest, brandInfo *services.BrandInfo) (*models.BulkExecuteResponse, error) {
+	bulkService := services.NewBulkExecutionService(s.db, s.llmRegistry)
+
+	campaign, err := bulkService.ExecuteCampaign(
+		ctx,
+		req.CampaignName,
+		req.BrandID,
+		brandInfo.OrgID,
+		brandInfo.Name,
+		req.PromptIDs,
+		req.LLMIDs,
+		req.Temperature,
+		req.TotalRuns,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start campaign: %w", err)
+	}
+
+	return &models.BulkExecuteResponse{
 		CampaignID:   campaign.ID,
 		CampaignName: campaign.Name,
 		Brand:        campaign.Brand,
@@ -240,13 +276,7 @@ func (s *Server) bulkExecute(c *gin.Context) {
 		Status:       campaign.Status,
 		StartedAt:    campaign.CreatedAt,
 		Message:      "Campaign started successfully. Execution running in background.",
-	}
-
-	c.JSON(http.StatusAccepted, models.APIResponse{
-		Success: true,
-		Data:    response,
-		Message: "Campaign execution started",
-	})
+	}, nil
 }
 
 // getGEOInsights handles POST /api/v1/geo/insights

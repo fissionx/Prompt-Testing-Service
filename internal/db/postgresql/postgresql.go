@@ -237,6 +237,7 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		brand_id TEXT,
+		org_id TEXT,
 		brand TEXT,
 		prompt_ids JSONB DEFAULT '[]'::jsonb,
 		llm_ids JSONB DEFAULT '[]'::jsonb,
@@ -366,6 +367,7 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 
 		// GEO Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand ON geo_campaigns(brand)",
+		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand_id ON geo_campaigns(brand_id)",
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_status ON geo_campaigns(status)",
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand_status_completed ON geo_campaigns(brand, status, completed_at) WHERE completed_at IS NULL",
 	}

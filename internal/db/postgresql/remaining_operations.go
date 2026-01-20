@@ -561,11 +561,12 @@ func (p *PostgreSQL) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCa
 	campaign.UpdatedAt = now
 
 	query := `
-		INSERT INTO geo_campaigns (id, name, brand_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO geo_campaigns (id, name, brand_id, org_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			brand = EXCLUDED.brand,
 			prompt_ids = EXCLUDED.prompt_ids,
 			llm_ids = EXCLUDED.llm_ids,
@@ -579,6 +580,7 @@ func (p *PostgreSQL) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCa
 		campaign.ID,
 		campaign.Name,
 		campaign.BrandID,
+		campaign.OrgID,
 		campaign.Brand,
 		sliceToJSON(campaign.PromptIDs),
 		sliceToJSON(campaign.LLMIDs),
@@ -594,7 +596,7 @@ func (p *PostgreSQL) SaveGEOCampaign(ctx context.Context, campaign *models.GEOCa
 
 func (p *PostgreSQL) GetGEOCampaign(ctx context.Context, id string) (*models.GEOCampaign, error) {
 	query := `
-		SELECT id, name, brand_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at
+		SELECT id, name, brand_id, org_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at
 		FROM geo_campaigns
 		WHERE id = $1
 	`
@@ -607,6 +609,7 @@ func (p *PostgreSQL) GetGEOCampaign(ctx context.Context, id string) (*models.GEO
 		&campaign.ID,
 		&campaign.Name,
 		&campaign.BrandID,
+		&campaign.OrgID,
 		&campaign.Brand,
 		&promptIDsJSON,
 		&llmIDsJSON,
@@ -633,9 +636,64 @@ func (p *PostgreSQL) GetGEOCampaign(ctx context.Context, id string) (*models.GEO
 	return &campaign, nil
 }
 
+// GetGEOCampaignsByBrandID fetches all GEO campaigns for a specific brand ID
+func (p *PostgreSQL) GetGEOCampaignsByBrandID(ctx context.Context, brandID string) ([]*models.GEOCampaign, error) {
+	query := `
+		SELECT id, name, brand_id, org_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at
+		FROM geo_campaigns
+		WHERE brand_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := p.db.QueryContext(ctx, query, brandID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var campaigns []*models.GEOCampaign
+	for rows.Next() {
+		var campaign models.GEOCampaign
+		var promptIDsJSON, llmIDsJSON string
+		var completedAt sql.NullTime
+
+		err := rows.Scan(
+			&campaign.ID,
+			&campaign.Name,
+			&campaign.BrandID,
+			&campaign.OrgID,
+			&campaign.Brand,
+			&promptIDsJSON,
+			&llmIDsJSON,
+			&campaign.Status,
+			&campaign.TotalRuns,
+			&completedAt,
+			&campaign.CreatedAt,
+			&campaign.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		campaign.PromptIDs = jsonToSlice(promptIDsJSON)
+		campaign.LLMIDs = jsonToSlice(llmIDsJSON)
+		if completedAt.Valid {
+			campaign.CompletedAt = &completedAt.Time
+		}
+
+		campaigns = append(campaigns, &campaign)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return campaigns, nil
+}
+
 func (p *PostgreSQL) GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error) {
 	query := `
-		SELECT id, name, brand_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at
+		SELECT id, name, brand_id, org_id, brand, prompt_ids, llm_ids, status, total_runs, completed_at, created_at, updated_at
 		FROM geo_campaigns
 		WHERE brand = $1 AND status = 'running' AND completed_at IS NULL
 		ORDER BY created_at DESC
@@ -650,6 +708,7 @@ func (p *PostgreSQL) GetRunningGEOCampaignByBrand(ctx context.Context, brand str
 		&campaign.ID,
 		&campaign.Name,
 		&campaign.BrandID,
+		&campaign.OrgID,
 		&campaign.Brand,
 		&promptIDsJSON,
 		&llmIDsJSON,

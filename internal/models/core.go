@@ -164,6 +164,7 @@ type GEOCampaign struct {
 	ID          string     `json:"id" bson:"_id"`
 	Name        string     `json:"name" bson:"name"`
 	BrandID     string     `json:"brandId" bson:"brand_id"`
+	OrgID       string     `json:"orgId" bson:"org_id"`
 	Brand       string     `json:"brand" bson:"brand"`
 	PromptIDs   []string   `json:"promptIds" bson:"prompt_ids"`
 	LLMIDs      []string   `json:"llmIds" bson:"llm_ids"`

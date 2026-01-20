@@ -32,7 +32,7 @@ func NewBulkExecutionService(database db.Database, registry *llm.Registry) *Bulk
 }
 
 // ExecuteCampaign executes all prompts across all LLMs for a GEO campaign
-func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brand string, promptIDs, llmIDs []string, temperature float64, totalRuns int) (*models.GEOCampaign, error) {
+func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brandID, orgID, brand string, promptIDs, llmIDs []string, temperature float64, totalRuns int) (*models.GEOCampaign, error) {
 	if temperature == 0 {
 		temperature = 0.7
 	}
@@ -45,6 +45,8 @@ func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName
 	campaign := &models.GEOCampaign{
 		ID:        uuid.New().String(),
 		Name:      campaignName,
+		BrandID:   brandID,
+		OrgID:     orgID,
 		Brand:     brand,
 		PromptIDs: promptIDs,
 		LLMIDs:    llmIDs,
