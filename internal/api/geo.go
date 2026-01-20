@@ -347,6 +347,8 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 	// Compute insights if not cached
 	insights, err := analyticsService.GetGEOInsights(
 		ctx,
+		req.BrandID,
+		brandInfo.OrgID,
 		brandName,
 		req.StartTime,
 		req.EndTime,

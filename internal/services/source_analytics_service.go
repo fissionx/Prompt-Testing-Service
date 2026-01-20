@@ -29,6 +29,8 @@ func NewSourceAnalyticsService(database db.Database) *SourceAnalyticsService {
 // GetSourceAnalytics analyzes citation sources for a brand
 func (s *SourceAnalyticsService) GetSourceAnalytics(
 	ctx context.Context,
+	brandID string,
+	orgID string,
 	brand string,
 	startTime, endTime *time.Time,
 	topN int,
@@ -171,7 +173,7 @@ func (s *SourceAnalyticsService) GetSourceAnalytics(
 	}
 	
 	// Get brand logo
-	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := s.logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 	
 	return &models.SourceAnalyticsResponse{
 		Brand:           brand,

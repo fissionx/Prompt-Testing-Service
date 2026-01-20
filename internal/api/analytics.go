@@ -118,6 +118,8 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	// Compute analytics if not cached
 	analytics, err := s.sourceAnalyticsService.GetSourceAnalytics(
 		ctx,
+		req.BrandID,
+		brandInfo.OrgID,
 		brandName,
 		req.StartTime,
 		req.EndTime,
@@ -377,6 +379,8 @@ func (s *Server) getPositionAnalytics(c *gin.Context) {
 	analytics, err := getPositionAnalyticsForBrand(
 		c.Request.Context(),
 		s.db,
+		brandID,
+		brandInfo.OrgID,
 		brandName,
 		startTime,
 		endTime,
@@ -397,6 +401,8 @@ func (s *Server) getPositionAnalytics(c *gin.Context) {
 func getPositionAnalyticsForBrand(
 	ctx context.Context,
 	database db.Database,
+	brandID string,
+	orgID string,
 	brand string,
 	startTime, endTime *time.Time,
 ) (*models.PositionAnalyticsResponse, error) {
@@ -466,7 +472,7 @@ func getPositionAnalyticsForBrand(
 	}
 
 	// Get brand logo
-	brandLogo := logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 
 	response := &models.PositionAnalyticsResponse{
 		Brand:             brand,
@@ -591,6 +597,8 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	// Compute prompt performance analytics if not cached
 	performance, err := s.promptPerformanceService.GetPromptPerformance(
 		ctx,
+		req.BrandID,
+		brandInfo.OrgID,
 		brandName,
 		req.StartTime,
 		req.EndTime,

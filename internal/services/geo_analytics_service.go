@@ -25,7 +25,7 @@ func NewGEOAnalyticsService(database db.Database) *GEOAnalyticsService {
 }
 
 // GetGEOInsights computes comprehensive GEO insights for a brand
-func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brand string, startTime, endTime *time.Time) (*models.GEOInsightsResponse, error) {
+func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brandID string, orgID string, brand string, startTime, endTime *time.Time) (*models.GEOInsightsResponse, error) {
 	if brand == "" {
 		return nil, fmt.Errorf("brand is required")
 	}
@@ -58,7 +58,7 @@ func (s *GEOAnalyticsService) GetGEOInsights(ctx context.Context, brand string, 
 	}
 
 	// Get brand logo
-	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := s.logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 	
 	// Calculate metrics
 	insights := &models.GEOInsightsResponse{

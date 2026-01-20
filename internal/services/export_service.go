@@ -61,7 +61,9 @@ func (s *ExportService) Export(
 }
 
 func (s *ExportService) exportInsights(ctx context.Context, req models.ExportRequest) (*models.ExportResponse, error) {
-	insights, err := s.geoAnalyticsService.GetGEOInsights(ctx, req.Brand, req.StartTime, req.EndTime)
+	// Note: orgID is not available in ExportRequest, passing empty string
+	// The logo service will still work but won't store orgID
+	insights, err := s.geoAnalyticsService.GetGEOInsights(ctx, req.BrandID, "", req.Brand, req.StartTime, req.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +243,8 @@ func (s *ExportService) exportResponses(ctx context.Context, req models.ExportRe
 }
 
 func (s *ExportService) exportSources(ctx context.Context, req models.ExportRequest) (*models.ExportResponse, error) {
-	analytics, err := s.sourceAnalyticsService.GetSourceAnalytics(ctx, req.Brand, req.StartTime, req.EndTime, 100)
+	// Note: orgID is not available in ExportRequest, passing empty string
+	analytics, err := s.sourceAnalyticsService.GetSourceAnalytics(ctx, req.BrandID, "", req.Brand, req.StartTime, req.EndTime, 100)
 	if err != nil {
 		return nil, err
 	}

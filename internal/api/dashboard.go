@@ -42,7 +42,7 @@ func (s *Server) getDashboardOverview(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	overview, err := s.dashboardService.GetDashboardOverview(ctx, brandName, startTime, endTime)
+	overview, err := s.dashboardService.GetDashboardOverview(ctx, brandID, brandInfo.OrgID, brandName, startTime, endTime)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get dashboard overview: "+err.Error())
 		return
@@ -120,7 +120,7 @@ func (s *Server) getModelAnalytics(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	analytics, err := s.dashboardService.GetModelAnalytics(ctx, brandName, req.StartTime, req.EndTime)
+	analytics, err := s.dashboardService.GetModelAnalytics(ctx, req.BrandID, brandInfo.OrgID, brandName, req.StartTime, req.EndTime)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get model analytics: "+err.Error())
 		return

@@ -55,7 +55,7 @@ type NoSQLDatabase interface {
 
 	// Brand Logo cache operations
 	SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error
-	GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error)
+	GetBrandLogo(ctx context.Context, brandID string) (*models.BrandLogoCache, error)
 
 	// Cached GEO Insights operations
 	SaveCachedGEOInsights(ctx context.Context, insights *models.CachedGEOInsights) error

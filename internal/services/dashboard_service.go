@@ -30,6 +30,8 @@ func NewDashboardService(database db.Database) *DashboardService {
 // GetDashboardOverview returns a comprehensive dashboard overview
 func (s *DashboardService) GetDashboardOverview(
 	ctx context.Context,
+	brandID string,
+	orgID string,
 	brand string,
 	startTime, endTime *time.Time,
 ) (*models.DashboardOverviewResponse, error) {
@@ -60,7 +62,7 @@ func (s *DashboardService) GetDashboardOverview(
 	}
 
 	// Get brand logo
-	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := s.logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 
 	response := &models.DashboardOverviewResponse{
 		Brand:           brand,
@@ -560,6 +562,8 @@ type dailyMetrics struct {
 // GetModelAnalytics returns analytics broken down by AI model
 func (s *DashboardService) GetModelAnalytics(
 	ctx context.Context,
+	brandID string,
+	orgID string,
 	brand string,
 	startTime, endTime *time.Time,
 ) (*models.ModelAnalyticsResponse, error) {
@@ -620,7 +624,7 @@ func (s *DashboardService) GetModelAnalytics(
 	}
 
 	// Get brand logo
-	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := s.logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 
 	response := &models.ModelAnalyticsResponse{
 		Brand:           brand,

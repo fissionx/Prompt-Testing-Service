@@ -310,9 +310,11 @@ func (p *PostgreSQL) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCa
 	}
 
 	query := `
-		INSERT INTO brand_logos (id, brand_name, domain, logo_url, fallback_logo_url, source, last_checked, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (brand_name) DO UPDATE SET
+		INSERT INTO brand_logos (id, brand_id, org_id, brand_name, domain, logo_url, fallback_logo_url, source, last_checked, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (brand_id) DO UPDATE SET
+			org_id = EXCLUDED.org_id,
+			brand_name = EXCLUDED.brand_name,
 			domain = EXCLUDED.domain,
 			logo_url = EXCLUDED.logo_url,
 			fallback_logo_url = EXCLUDED.fallback_logo_url,
@@ -323,6 +325,8 @@ func (p *PostgreSQL) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCa
 
 	_, err := p.db.ExecContext(ctx, query,
 		logo.ID,
+		logo.BrandID,
+		logo.OrgID,
 		logo.BrandName,
 		logo.Domain,
 		logo.LogoURL,
@@ -336,16 +340,18 @@ func (p *PostgreSQL) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCa
 	return err
 }
 
-func (p *PostgreSQL) GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error) {
+func (p *PostgreSQL) GetBrandLogo(ctx context.Context, brandID string) (*models.BrandLogoCache, error) {
 	query := `
-		SELECT id, brand_name, domain, logo_url, fallback_logo_url, source, last_checked, created_at, updated_at
+		SELECT id, brand_id, org_id, brand_name, domain, logo_url, fallback_logo_url, source, last_checked, created_at, updated_at
 		FROM brand_logos
-		WHERE brand_name = $1
+		WHERE brand_id = $1
 	`
 
 	var logo models.BrandLogoCache
-	err := p.db.QueryRowContext(ctx, query, brandName).Scan(
+	err := p.db.QueryRowContext(ctx, query, brandID).Scan(
 		&logo.ID,
+		&logo.BrandID,
+		&logo.OrgID,
 		&logo.BrandName,
 		&logo.Domain,
 		&logo.LogoURL,

@@ -332,7 +332,9 @@ func (m *ScheduledCampaignManager) cacheGEOInsights(
 	service *GEOAnalyticsService,
 	startTime, endTime *time.Time,
 ) error {
-	insights, err := service.GetGEOInsights(ctx, campaign.Brand, startTime, endTime)
+	// Note: ScheduledCampaign model doesn't have BrandID/OrgID, passing empty strings
+	// The logo service will still work but won't store orgID
+	insights, err := service.GetGEOInsights(ctx, "", "", campaign.Brand, startTime, endTime)
 	if err != nil {
 		return fmt.Errorf("failed to compute GEO insights: %w", err)
 	}
@@ -366,7 +368,8 @@ func (m *ScheduledCampaignManager) cacheSourceAnalytics(
 	service *SourceAnalyticsService,
 	startTime, endTime *time.Time,
 ) error {
-	analytics, err := service.GetSourceAnalytics(ctx, campaign.Brand, startTime, endTime, 50)
+	// Note: ScheduledCampaign model doesn't have BrandID/OrgID, passing empty strings
+	analytics, err := service.GetSourceAnalytics(ctx, "", "", campaign.Brand, startTime, endTime, 50)
 	if err != nil {
 		return fmt.Errorf("failed to compute source analytics: %w", err)
 	}
@@ -405,7 +408,7 @@ func (m *ScheduledCampaignManager) cacheCompetitiveBenchmark(
 		campaign.LLMIDs,
 		startTime,
 		endTime,
-		"", // No region filter
+		"",  // No region filter
 		nil, // No competitor map for auto-detected
 	)
 	if err != nil {
@@ -440,7 +443,8 @@ func (m *ScheduledCampaignManager) cachePromptPerformance(
 	service *PromptPerformanceService,
 	startTime, endTime *time.Time,
 ) error {
-	performance, err := service.GetPromptPerformance(ctx, campaign.Brand, startTime, endTime, 1)
+	// Note: ScheduledCampaign model doesn't have BrandID/OrgID, passing empty strings
+	performance, err := service.GetPromptPerformance(ctx, "", "", campaign.Brand, startTime, endTime, 1)
 	if err != nil {
 		return fmt.Errorf("failed to compute prompt performance: %w", err)
 	}

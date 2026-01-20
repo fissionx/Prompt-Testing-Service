@@ -28,6 +28,8 @@ func NewPromptPerformanceService(database db.Database) *PromptPerformanceService
 // GetPromptPerformance analyzes prompt performance for a brand
 func (s *PromptPerformanceService) GetPromptPerformance(
 	ctx context.Context,
+	brandID string,
+	orgID string,
 	brand string,
 	startTime, endTime *time.Time,
 	minResponses int,
@@ -157,7 +159,7 @@ func (s *PromptPerformanceService) GetPromptPerformance(
 	}
 
 	// Get brand logo
-	brandLogo := s.logoService.GetBrandLogo(ctx, brand, "")
+	brandLogo := s.logoService.GetBrandLogo(ctx, brandID, orgID, brand, "")
 
 	return &models.PromptPerformanceResponse{
 		Brand:                brand,

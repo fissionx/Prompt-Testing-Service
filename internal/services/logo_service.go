@@ -24,12 +24,12 @@ func NewLogoService(database db.Database) *LogoService {
 }
 
 // GetBrandLogo returns logo information for a brand (checks DB first, then fetches)
-func (s *LogoService) GetBrandLogo(ctx context.Context, brandName string, website string) models.BrandWithLogo {
-	// Normalize brand name for lookup
+func (s *LogoService) GetBrandLogo(ctx context.Context, brandID string, orgID string, brandName string, website string) models.BrandWithLogo {
+	// Normalize brand name for backward compatibility
 	normalized := strings.ToLower(strings.TrimSpace(brandName))
 	
-	// Try to get from database first
-	cached, err := s.db.GetBrandLogo(ctx, normalized)
+	// Try to get from database first using brand_id
+	cached, err := s.db.GetBrandLogo(ctx, brandID)
 	if err == nil && cached != nil {
 		// Check if cache is still fresh (refresh after 30 days)
 		if time.Since(cached.LastChecked) < 30*24*time.Hour {
@@ -57,26 +57,30 @@ func (s *LogoService) GetBrandLogo(ctx context.Context, brandName string, websit
 		source = "placeholder"
 	}
 	
-	// Save to database
-	logoCache := &models.BrandLogoCache{
-		ID:              uuid.New().String(),
-		BrandName:       normalized,
-		Domain:          domain,
-		LogoURL:         logoURL,
-		FallbackLogoURL: fallbackURL,
-		Source:          source,
-		LastChecked:     time.Now(),
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
-	}
-	
-	// Save asynchronously (don't block on save)
-	go func() {
-		if err := s.db.SaveBrandLogo(context.Background(), logoCache); err != nil {
-			// Log error but don't fail the request
-			fmt.Printf("Warning: failed to cache logo for %s: %v\n", brandName, err)
+	// Save to database only if brandID is provided (required for storage)
+	if brandID != "" {
+		logoCache := &models.BrandLogoCache{
+			ID:              uuid.New().String(),
+			BrandID:         brandID,
+			OrgID:           orgID,
+			BrandName:       normalized,
+			Domain:          domain,
+			LogoURL:         logoURL,
+			FallbackLogoURL: fallbackURL,
+			Source:          source,
+			LastChecked:     time.Now(),
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
 		}
-	}()
+		
+		// Save asynchronously (don't block on save)
+		go func() {
+			if err := s.db.SaveBrandLogo(context.Background(), logoCache); err != nil {
+				// Log error but don't fail the request
+				fmt.Printf("Warning: failed to cache logo for brand_id %s: %v\n", brandID, err)
+			}
+		}()
+	}
 	
 	return models.BrandWithLogo{
 		Brand:           brandName,
@@ -90,7 +94,7 @@ func (s *LogoService) GetMultipleLogos(ctx context.Context, brands []BrandLogoRe
 	logos := make([]models.BrandWithLogo, 0, len(brands))
 	
 	for _, brand := range brands {
-		logos = append(logos, s.GetBrandLogo(ctx, brand.Name, brand.Website))
+		logos = append(logos, s.GetBrandLogo(ctx, brand.BrandID, brand.OrgID, brand.Name, brand.Website))
 	}
 	
 	return logos
@@ -235,7 +239,9 @@ func (s *LogoService) getInitials(brandName string) string {
 
 // BrandLogoRequest represents a request for a brand logo
 type BrandLogoRequest struct {
-	Name    string
-	Website string
+	BrandID  string
+	OrgID    string
+	Name     string
+	Website  string
 }
 

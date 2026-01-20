@@ -270,8 +270,8 @@ func (h *HybridDB) SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCach
 	return h.nosqlDB.SaveBrandLogo(ctx, logo)
 }
 
-func (h *HybridDB) GetBrandLogo(ctx context.Context, brandName string) (*models.BrandLogoCache, error) {
-	return h.nosqlDB.GetBrandLogo(ctx, brandName)
+func (h *HybridDB) GetBrandLogo(ctx context.Context, brandID string) (*models.BrandLogoCache, error) {
+	return h.nosqlDB.GetBrandLogo(ctx, brandID)
 }
 
 // Cached GEO Insights operations - Use NoSQL

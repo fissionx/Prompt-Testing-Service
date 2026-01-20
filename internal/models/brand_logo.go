@@ -7,7 +7,9 @@ import (
 // BrandLogoCache represents a cached brand logo in the database
 type BrandLogoCache struct {
 	ID              string    `json:"id" bson:"_id"`
-	BrandName       string    `json:"brandName" bson:"brand_name"`        // Normalized brand name
+	BrandID         string    `json:"brandId" bson:"brand_id"`            // Brand ID (UUID)
+	OrgID           string    `json:"orgId" bson:"org_id"`                // Organization ID
+	BrandName       string    `json:"brandName" bson:"brand_name"`        // Normalized brand name (kept for backward compatibility)
 	Domain          string    `json:"domain" bson:"domain"`               // Associated domain
 	LogoURL         string    `json:"logoUrl" bson:"logo_url"`            // Primary logo URL
 	FallbackLogoURL string    `json:"fallbackLogoUrl" bson:"fallback_logo_url"` // Fallback logo URL

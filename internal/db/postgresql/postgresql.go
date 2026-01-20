@@ -197,7 +197,9 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	-- Brand Logos table
 	CREATE TABLE IF NOT EXISTS brand_logos (
 		id TEXT PRIMARY KEY,
-		brand_name TEXT NOT NULL UNIQUE,
+		brand_id TEXT NOT NULL UNIQUE,
+		org_id TEXT,
+		brand_name TEXT,
 		domain TEXT,
 		logo_url TEXT,
 		fallback_logo_url TEXT,
@@ -355,8 +357,9 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		// Brand Profiles indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_profiles_brand_name ON brand_profiles(brand_name)",
 
-		// Brand Logos indexes (unique constraint already exists)
-		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_name ON brand_logos(brand_name)",
+		// Brand Logos indexes (unique constraint on brand_id already exists)
+		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_id ON brand_logos(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_brand_logos_org_id ON brand_logos(org_id)",
 
 		// Brand Competitors indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_competitors_brand ON brand_competitors(brand_id)",
