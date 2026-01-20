@@ -8,7 +8,9 @@ import (
 type CachedGEOInsights struct {
 	ID         string    `json:"id" bson:"_id"`
 	CampaignID string    `json:"campaignId" bson:"campaign_id"`
-	Brand      string    `json:"brand" bson:"brand"`
+	BrandID    string    `json:"brandId" bson:"brand_id"`
+	OrgID      string    `json:"orgId" bson:"org_id"`
+	Brand      string    `json:"brand" bson:"brand"` // Brand name kept for backward compatibility
 	StartTime  time.Time `json:"startTime" bson:"start_time"`
 	EndTime    time.Time `json:"endTime" bson:"end_time"`
 
@@ -33,7 +35,9 @@ type CachedGEOInsights struct {
 type CachedSourceAnalytics struct {
 	ID         string    `json:"id" bson:"_id"`
 	CampaignID string    `json:"campaignId" bson:"campaign_id"`
-	Brand      string    `json:"brand" bson:"brand"`
+	BrandID    string    `json:"brandId" bson:"brand_id"`
+	OrgID      string    `json:"orgId" bson:"org_id"`
+	Brand      string    `json:"brand" bson:"brand"` // Brand name kept for backward compatibility
 	StartTime  time.Time `json:"startTime" bson:"start_time"`
 	EndTime    time.Time `json:"endTime" bson:"end_time"`
 
@@ -54,7 +58,9 @@ type CachedSourceAnalytics struct {
 type CachedCompetitiveBenchmark struct {
 	ID         string    `json:"id" bson:"_id"`
 	CampaignID string    `json:"campaignId" bson:"campaign_id"`
-	MainBrand  string    `json:"mainBrand" bson:"main_brand"`
+	BrandID    string    `json:"brandId" bson:"brand_id"`
+	OrgID      string    `json:"orgId" bson:"org_id"`
+	MainBrand  string    `json:"mainBrand" bson:"main_brand"` // Brand name kept for backward compatibility
 	StartTime  time.Time `json:"startTime" bson:"start_time"`
 	EndTime    time.Time `json:"endTime" bson:"end_time"`
 
@@ -76,7 +82,9 @@ type CachedCompetitiveBenchmark struct {
 type CachedPromptPerformance struct {
 	ID         string    `json:"id" bson:"_id"`
 	CampaignID string    `json:"campaignId" bson:"campaign_id"`
-	Brand      string    `json:"brand" bson:"brand"`
+	BrandID    string    `json:"brandId" bson:"brand_id"`
+	OrgID      string    `json:"orgId" bson:"org_id"`
+	Brand      string    `json:"brand" bson:"brand"` // Brand name kept for backward compatibility
 	StartTime  time.Time `json:"startTime" bson:"start_time"`
 	EndTime    time.Time `json:"endTime" bson:"end_time"`
 
@@ -170,7 +178,8 @@ type ListScheduledCampaignsResponse struct {
 // AnalyticsCacheQuery represents a query for retrieving cached analytics
 type AnalyticsCacheQuery struct {
 	CampaignID string     `json:"campaignId,omitempty"`
-	Brand      string     `json:"brand,omitempty"`
+	BrandID    string     `json:"brandId,omitempty"`
+	OrgID      string     `json:"orgId,omitempty"`
 	PromptID   string     `json:"promptId,omitempty"`
 	StartTime  *time.Time `json:"startTime,omitempty"`
 	EndTime    *time.Time `json:"endTime,omitempty"`
@@ -182,7 +191,9 @@ type CachedPromptTimeSeries struct {
 	ID         string    `json:"id" bson:"_id"`
 	CampaignID string    `json:"campaignId" bson:"campaign_id"`
 	PromptID   string    `json:"promptId" bson:"prompt_id"`
-	Brand      string    `json:"brand" bson:"brand"`
+	BrandID    string    `json:"brandId" bson:"brand_id"`
+	OrgID      string    `json:"orgId" bson:"org_id"`
+	Brand      string    `json:"brand" bson:"brand"` // Brand name kept for backward compatibility
 	StartTime  time.Time `json:"startTime" bson:"start_time"`
 	EndTime    time.Time `json:"endTime" bson:"end_time"`
 

@@ -233,6 +233,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS cached_geo_insights (
 		id TEXT PRIMARY KEY,
 		campaign_id TEXT,
+		brand_id TEXT,
+		org_id TEXT,
 		brand TEXT,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
@@ -245,6 +247,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS cached_source_analytics (
 		id TEXT PRIMARY KEY,
 		campaign_id TEXT,
+		brand_id TEXT,
+		org_id TEXT,
 		brand TEXT,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
@@ -257,6 +261,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS cached_competitive_benchmark (
 		id TEXT PRIMARY KEY,
 		campaign_id TEXT,
+		brand_id TEXT,
+		org_id TEXT,
 		main_brand TEXT,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
@@ -269,6 +275,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS cached_prompt_performance (
 		id TEXT PRIMARY KEY,
 		campaign_id TEXT,
+		brand_id TEXT,
+		org_id TEXT,
 		brand TEXT,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
@@ -302,6 +310,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		id TEXT PRIMARY KEY,
 		campaign_id TEXT,
 		prompt_id TEXT,
+		brand_id TEXT,
+		org_id TEXT,
 		brand TEXT,
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
@@ -367,20 +377,24 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 	indexes := []string{
 		// Cached GEO Insights indexes
-		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_campaign ON cached_geo_insights(brand, campaign_id)",
-		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_time ON cached_geo_insights(brand, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_id_campaign ON cached_geo_insights(brand_id, campaign_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_brand_id_time ON cached_geo_insights(brand_id, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_geo_insights_org_id ON cached_geo_insights(org_id) WHERE org_id IS NOT NULL",
 
 		// Cached Source Analytics indexes
-		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_campaign ON cached_source_analytics(brand, campaign_id)",
-		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_time ON cached_source_analytics(brand, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_id_campaign ON cached_source_analytics(brand_id, campaign_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_brand_id_time ON cached_source_analytics(brand_id, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_source_analytics_org_id ON cached_source_analytics(org_id) WHERE org_id IS NOT NULL",
 
 		// Cached Competitive Benchmark indexes
-		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_main_brand_campaign ON cached_competitive_benchmark(main_brand, campaign_id)",
-		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_main_brand_time ON cached_competitive_benchmark(main_brand, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_brand_id_campaign ON cached_competitive_benchmark(brand_id, campaign_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_brand_id_time ON cached_competitive_benchmark(brand_id, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_competitive_benchmark_org_id ON cached_competitive_benchmark(org_id) WHERE org_id IS NOT NULL",
 
 		// Cached Prompt Performance indexes
-		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_campaign ON cached_prompt_performance(brand, campaign_id)",
-		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_time ON cached_prompt_performance(brand, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_id_campaign ON cached_prompt_performance(brand_id, campaign_id)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_id_time ON cached_prompt_performance(brand_id, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_org_id ON cached_prompt_performance(org_id) WHERE org_id IS NOT NULL",
 
 		// Scheduled Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_brand_id ON scheduled_campaigns(brand_id)",
@@ -390,9 +404,10 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_next_run_at ON scheduled_campaigns(next_run_at) WHERE next_run_at IS NOT NULL",
 
 		// Cached Prompt Time Series indexes
-		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_brand ON cached_prompt_time_series(prompt_id, brand)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_brand_id ON cached_prompt_time_series(prompt_id, brand_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_campaign ON cached_prompt_time_series(prompt_id, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_time ON cached_prompt_time_series(prompt_id, start_time DESC, end_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_brand_id ON cached_prompt_time_series(brand_id) WHERE brand_id IS NOT NULL",
 	}
 
 	for _, indexSQL := range indexes {

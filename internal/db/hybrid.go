@@ -254,8 +254,8 @@ func (h *HybridDB) DeleteCachedGEOInsights(ctx context.Context, id string) error
 	return h.nosqlDB.DeleteCachedGEOInsights(ctx, id)
 }
 
-func (h *HybridDB) DeleteCachedGEOInsightsByBrand(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteCachedGEOInsightsByBrand(ctx, brand)
+func (h *HybridDB) DeleteCachedGEOInsightsByBrand(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteCachedGEOInsightsByBrand(ctx, brandID)
 }
 
 // Cached Source Analytics operations - Use NoSQL
@@ -271,8 +271,8 @@ func (h *HybridDB) DeleteCachedSourceAnalytics(ctx context.Context, id string) e
 	return h.nosqlDB.DeleteCachedSourceAnalytics(ctx, id)
 }
 
-func (h *HybridDB) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteCachedSourceAnalyticsByBrand(ctx, brand)
+func (h *HybridDB) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteCachedSourceAnalyticsByBrand(ctx, brandID)
 }
 
 // Cached Competitive Benchmark operations - Use NoSQL
@@ -288,8 +288,8 @@ func (h *HybridDB) DeleteCachedCompetitiveBenchmark(ctx context.Context, id stri
 	return h.nosqlDB.DeleteCachedCompetitiveBenchmark(ctx, id)
 }
 
-func (h *HybridDB) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteCachedCompetitiveBenchmarkByBrand(ctx, brand)
+func (h *HybridDB) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteCachedCompetitiveBenchmarkByBrand(ctx, brandID)
 }
 
 // Cached Prompt Performance operations - Use NoSQL
@@ -305,8 +305,8 @@ func (h *HybridDB) DeleteCachedPromptPerformance(ctx context.Context, id string)
 	return h.nosqlDB.DeleteCachedPromptPerformance(ctx, id)
 }
 
-func (h *HybridDB) DeleteCachedPromptPerformanceByBrand(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteCachedPromptPerformanceByBrand(ctx, brand)
+func (h *HybridDB) DeleteCachedPromptPerformanceByBrand(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteCachedPromptPerformanceByBrand(ctx, brandID)
 }
 
 // Scheduled Campaign operations - Use NoSQL
@@ -347,8 +347,8 @@ func (h *HybridDB) DeleteCachedPromptTimeSeries(ctx context.Context, id string) 
 	return h.nosqlDB.DeleteCachedPromptTimeSeries(ctx, id)
 }
 
-func (h *HybridDB) DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteCachedPromptTimeSeriesByBrand(ctx, brand)
+func (h *HybridDB) DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteCachedPromptTimeSeriesByBrand(ctx, brandID)
 }
 
 // Brand Competitors operations - Use NoSQL

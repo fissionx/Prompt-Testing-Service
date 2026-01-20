@@ -49,25 +49,25 @@ type NoSQLDatabase interface {
 	SaveCachedGEOInsights(ctx context.Context, insights *models.CachedGEOInsights) error
 	GetCachedGEOInsights(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedGEOInsights, error)
 	DeleteCachedGEOInsights(ctx context.Context, id string) error
-	DeleteCachedGEOInsightsByBrand(ctx context.Context, brand string) error
+	DeleteCachedGEOInsightsByBrand(ctx context.Context, brandID string) error
 
 	// Cached Source Analytics operations
 	SaveCachedSourceAnalytics(ctx context.Context, analytics *models.CachedSourceAnalytics) error
 	GetCachedSourceAnalytics(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedSourceAnalytics, error)
 	DeleteCachedSourceAnalytics(ctx context.Context, id string) error
-	DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brand string) error
+	DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brandID string) error
 
 	// Cached Competitive Benchmark operations
 	SaveCachedCompetitiveBenchmark(ctx context.Context, benchmark *models.CachedCompetitiveBenchmark) error
 	GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error)
 	DeleteCachedCompetitiveBenchmark(ctx context.Context, id string) error
-	DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brand string) error
+	DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brandID string) error
 
 	// Cached Prompt Performance operations
 	SaveCachedPromptPerformance(ctx context.Context, performance *models.CachedPromptPerformance) error
 	GetCachedPromptPerformance(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptPerformance, error)
 	DeleteCachedPromptPerformance(ctx context.Context, id string) error
-	DeleteCachedPromptPerformanceByBrand(ctx context.Context, brand string) error
+	DeleteCachedPromptPerformanceByBrand(ctx context.Context, brandID string) error
 
 	// Scheduled Campaign operations
 	SaveScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error
@@ -81,7 +81,7 @@ type NoSQLDatabase interface {
 	SaveCachedPromptTimeSeries(ctx context.Context, timeSeries *models.CachedPromptTimeSeries) error
 	GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error)
 	DeleteCachedPromptTimeSeries(ctx context.Context, id string) error
-	DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brand string) error
+	DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brandID string) error
 
 	// Brand Competitors operations
 	SaveBrandCompetitors(ctx context.Context, competitors *models.BrandCompetitors) error

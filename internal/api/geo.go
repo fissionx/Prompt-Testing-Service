@@ -149,7 +149,7 @@ func (s *Server) bulkExecute(c *gin.Context) {
 	s.applyBulkExecuteDefaults(&req)
 
 	// Invalidate analytics cache for this brand (async)
-	s.invalidateBrandAnalyticsCache(brandInfo.Name)
+	s.invalidateBrandAnalyticsCache(req.BrandID)
 
 	ctx := c.Request.Context()
 
@@ -195,14 +195,14 @@ func (s *Server) applyBulkExecuteDefaults(req *models.BulkExecuteRequest) {
 }
 
 // invalidateBrandAnalyticsCache invalidates all analytics cache for a brand
-func (s *Server) invalidateBrandAnalyticsCache(brandName string) {
+func (s *Server) invalidateBrandAnalyticsCache(brandID string) {
 	go func() {
 		bgCtx := context.Background()
-		_ = s.db.DeleteCachedGEOInsightsByBrand(bgCtx, brandName)
-		_ = s.db.DeleteCachedSourceAnalyticsByBrand(bgCtx, brandName)
-		_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(bgCtx, brandName)
-		_ = s.db.DeleteCachedPromptPerformanceByBrand(bgCtx, brandName)
-		_ = s.db.DeleteCachedPromptTimeSeriesByBrand(bgCtx, brandName)
+		_ = s.db.DeleteCachedGEOInsightsByBrand(bgCtx, brandID)
+		_ = s.db.DeleteCachedSourceAnalyticsByBrand(bgCtx, brandID)
+		_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(bgCtx, brandID)
+		_ = s.db.DeleteCachedPromptPerformanceByBrand(bgCtx, brandID)
+		_ = s.db.DeleteCachedPromptTimeSeriesByBrand(bgCtx, brandID)
 	}()
 }
 
@@ -312,7 +312,8 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 	if !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
 			CampaignID: req.CampaignID,
-			Brand:      brandName,
+			BrandID:    req.BrandID,
+			OrgID:      brandInfo.OrgID,
 			StartTime:  req.StartTime,
 			EndTime:    req.EndTime,
 		}
@@ -376,6 +377,8 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 		cachedInsights := &models.CachedGEOInsights{
 			ID:                    uuid.New().String(),
 			CampaignID:            req.CampaignID,
+			BrandID:               req.BrandID,
+			OrgID:                 brandInfo.OrgID,
 			Brand:                 brandName,
 			StartTime:             startTime,
 			EndTime:               endTime,

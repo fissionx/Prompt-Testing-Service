@@ -79,7 +79,8 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 	var cachedData *models.CachedSourceAnalytics
 	if !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     brandName,
+			BrandID:   req.BrandID,
+			OrgID:     brandInfo.OrgID,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -143,6 +144,8 @@ func (s *Server) getSourceAnalytics(c *gin.Context) {
 
 		cachedAnalytics := &models.CachedSourceAnalytics{
 			ID:              uuid.New().String(),
+			BrandID:         req.BrandID,
+			OrgID:           brandInfo.OrgID,
 			Brand:           brandName,
 			StartTime:       startTime,
 			EndTime:         endTime,
@@ -218,7 +221,8 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 	// Try to get cached data first (only if no specific competitors are requested and not forcing refresh)
 	if len(req.Competitors) == 0 && !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     mainBrandName,
+			BrandID:   req.BrandID,
+			OrgID:     brandInfo.OrgID,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -316,12 +320,14 @@ func (s *Server) getCompetitiveBenchmark(c *gin.Context) {
 
 			// If forceRefresh is true, delete old cache entries for this brand first
 			if req.ForceRefresh {
-				_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(context.Background(), mainBrandName)
+				_ = s.db.DeleteCachedCompetitiveBenchmarkByBrand(context.Background(), req.BrandID)
 			}
 
 			cachedBenchmark := &models.CachedCompetitiveBenchmark{
 				ID:              uuid.New().String(),
 				CampaignID:      "", // Empty for general cache (not campaign-specific)
+				BrandID:         req.BrandID,
+				OrgID:           brandInfo.OrgID,
 				MainBrand:       mainBrandName,
 				StartTime:       startTime,
 				EndTime:         endTime,
@@ -564,7 +570,8 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 	var cachedData *models.CachedPromptPerformance
 	if !req.ForceRefresh {
 		query := models.AnalyticsCacheQuery{
-			Brand:     brandName,
+			BrandID:   req.BrandID,
+			OrgID:     brandInfo.OrgID,
 			StartTime: req.StartTime,
 			EndTime:   req.EndTime,
 		}
@@ -622,6 +629,8 @@ func (s *Server) getPromptPerformance(c *gin.Context) {
 
 		cachedPerformance := &models.CachedPromptPerformance{
 			ID:                   uuid.New().String(),
+			BrandID:              req.BrandID,
+			OrgID:                brandInfo.OrgID,
 			Brand:                brandName,
 			StartTime:            startTime,
 			EndTime:              endTime,
@@ -687,7 +696,8 @@ func (s *Server) getPromptTimeSeries(c *gin.Context) {
 	// Try to get cached data first
 	query := models.AnalyticsCacheQuery{
 		PromptID:  promptID,
-		Brand:     brand,
+		BrandID:   brandID,
+		OrgID:     brandInfo.OrgID,
 		StartTime: startTime,
 		EndTime:   endTime,
 	}
@@ -736,6 +746,8 @@ func (s *Server) getPromptTimeSeries(c *gin.Context) {
 		cachedTimeSeries := &models.CachedPromptTimeSeries{
 			ID:         uuid.New().String(),
 			PromptID:   promptID,
+			BrandID:    brandID,
+			OrgID:      brandInfo.OrgID,
 			Brand:      brand,
 			StartTime:  cacheStartTime,
 			EndTime:    cacheEndTime,

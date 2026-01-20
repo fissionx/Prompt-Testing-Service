@@ -22,10 +22,12 @@ func (p *PostgreSQL) SaveCachedGEOInsights(ctx context.Context, insights *models
 	dataJSON := structToJSONB(insights)
 
 	query := `
-		INSERT INTO cached_geo_insights (id, campaign_id, brand, start_time, end_time, data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO cached_geo_insights (id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			campaign_id = EXCLUDED.campaign_id,
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			brand = EXCLUDED.brand,
 			start_time = EXCLUDED.start_time,
 			end_time = EXCLUDED.end_time,
@@ -36,6 +38,8 @@ func (p *PostgreSQL) SaveCachedGEOInsights(ctx context.Context, insights *models
 	_, err := p.db.ExecContext(ctx, query,
 		insights.ID,
 		insights.CampaignID,
+		insights.BrandID,
+		insights.OrgID,
 		insights.Brand,
 		insights.StartTime,
 		insights.EndTime,
@@ -49,7 +53,7 @@ func (p *PostgreSQL) SaveCachedGEOInsights(ctx context.Context, insights *models
 
 func (p *PostgreSQL) GetCachedGEOInsights(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedGEOInsights, error) {
 	sqlQuery := `
-		SELECT id, campaign_id, brand, start_time, end_time, data, created_at, updated_at
+		SELECT id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at
 		FROM cached_geo_insights
 		WHERE 1=1
 	`
@@ -61,9 +65,9 @@ func (p *PostgreSQL) GetCachedGEOInsights(ctx context.Context, query models.Anal
 		args = append(args, query.CampaignID)
 		argPos++
 	}
-	if query.Brand != "" {
-		sqlQuery += fmt.Sprintf(" AND brand = $%d", argPos)
-		args = append(args, query.Brand)
+	if query.BrandID != "" {
+		sqlQuery += fmt.Sprintf(" AND brand_id = $%d", argPos)
+		args = append(args, query.BrandID)
 		argPos++
 	}
 	if query.StartTime != nil {
@@ -85,6 +89,8 @@ func (p *PostgreSQL) GetCachedGEOInsights(ctx context.Context, query models.Anal
 	err := p.db.QueryRowContext(ctx, sqlQuery, args...).Scan(
 		&insights.ID,
 		&insights.CampaignID,
+		&insights.BrandID,
+		&insights.OrgID,
 		&insights.Brand,
 		&insights.StartTime,
 		&insights.EndTime,
@@ -114,9 +120,9 @@ func (p *PostgreSQL) DeleteCachedGEOInsights(ctx context.Context, id string) err
 	return err
 }
 
-func (p *PostgreSQL) DeleteCachedGEOInsightsByBrand(ctx context.Context, brand string) error {
-	query := "DELETE FROM cached_geo_insights WHERE brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteCachedGEOInsightsByBrand(ctx context.Context, brandID string) error {
+	query := "DELETE FROM cached_geo_insights WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 
@@ -132,10 +138,12 @@ func (p *PostgreSQL) SaveCachedSourceAnalytics(ctx context.Context, analytics *m
 	dataJSON := structToJSONB(analytics)
 
 	query := `
-		INSERT INTO cached_source_analytics (id, campaign_id, brand, start_time, end_time, data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO cached_source_analytics (id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			campaign_id = EXCLUDED.campaign_id,
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			brand = EXCLUDED.brand,
 			start_time = EXCLUDED.start_time,
 			end_time = EXCLUDED.end_time,
@@ -146,6 +154,8 @@ func (p *PostgreSQL) SaveCachedSourceAnalytics(ctx context.Context, analytics *m
 	_, err := p.db.ExecContext(ctx, query,
 		analytics.ID,
 		analytics.CampaignID,
+		analytics.BrandID,
+		analytics.OrgID,
 		analytics.Brand,
 		analytics.StartTime,
 		analytics.EndTime,
@@ -159,7 +169,7 @@ func (p *PostgreSQL) SaveCachedSourceAnalytics(ctx context.Context, analytics *m
 
 func (p *PostgreSQL) GetCachedSourceAnalytics(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedSourceAnalytics, error) {
 	sqlQuery := `
-		SELECT id, campaign_id, brand, start_time, end_time, data, created_at, updated_at
+		SELECT id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at
 		FROM cached_source_analytics
 		WHERE 1=1
 	`
@@ -171,9 +181,9 @@ func (p *PostgreSQL) GetCachedSourceAnalytics(ctx context.Context, query models.
 		args = append(args, query.CampaignID)
 		argPos++
 	}
-	if query.Brand != "" {
-		sqlQuery += fmt.Sprintf(" AND brand = $%d", argPos)
-		args = append(args, query.Brand)
+	if query.BrandID != "" {
+		sqlQuery += fmt.Sprintf(" AND brand_id = $%d", argPos)
+		args = append(args, query.BrandID)
 		argPos++
 	}
 	if query.StartTime != nil {
@@ -195,6 +205,8 @@ func (p *PostgreSQL) GetCachedSourceAnalytics(ctx context.Context, query models.
 	err := p.db.QueryRowContext(ctx, sqlQuery, args...).Scan(
 		&analytics.ID,
 		&analytics.CampaignID,
+		&analytics.BrandID,
+		&analytics.OrgID,
 		&analytics.Brand,
 		&analytics.StartTime,
 		&analytics.EndTime,
@@ -223,9 +235,9 @@ func (p *PostgreSQL) DeleteCachedSourceAnalytics(ctx context.Context, id string)
 	return err
 }
 
-func (p *PostgreSQL) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brand string) error {
-	query := "DELETE FROM cached_source_analytics WHERE brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteCachedSourceAnalyticsByBrand(ctx context.Context, brandID string) error {
+	query := "DELETE FROM cached_source_analytics WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 
@@ -241,10 +253,12 @@ func (p *PostgreSQL) SaveCachedCompetitiveBenchmark(ctx context.Context, benchma
 	dataJSON := structToJSONB(benchmark)
 
 	query := `
-		INSERT INTO cached_competitive_benchmark (id, campaign_id, main_brand, start_time, end_time, data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO cached_competitive_benchmark (id, campaign_id, brand_id, org_id, main_brand, start_time, end_time, data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			campaign_id = EXCLUDED.campaign_id,
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			main_brand = EXCLUDED.main_brand,
 			start_time = EXCLUDED.start_time,
 			end_time = EXCLUDED.end_time,
@@ -255,6 +269,8 @@ func (p *PostgreSQL) SaveCachedCompetitiveBenchmark(ctx context.Context, benchma
 	_, err := p.db.ExecContext(ctx, query,
 		benchmark.ID,
 		benchmark.CampaignID,
+		benchmark.BrandID,
+		benchmark.OrgID,
 		benchmark.MainBrand,
 		benchmark.StartTime,
 		benchmark.EndTime,
@@ -268,16 +284,16 @@ func (p *PostgreSQL) SaveCachedCompetitiveBenchmark(ctx context.Context, benchma
 
 func (p *PostgreSQL) GetCachedCompetitiveBenchmark(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedCompetitiveBenchmark, error) {
 	sqlQuery := `
-		SELECT id, campaign_id, main_brand, start_time, end_time, data, created_at, updated_at
+		SELECT id, campaign_id, brand_id, org_id, main_brand, start_time, end_time, data, created_at, updated_at
 		FROM cached_competitive_benchmark
 		WHERE 1=1
 	`
 	args := []interface{}{}
 	argPos := 1
 
-	if query.Brand != "" {
-		sqlQuery += fmt.Sprintf(" AND main_brand = $%d", argPos)
-		args = append(args, query.Brand)
+	if query.BrandID != "" {
+		sqlQuery += fmt.Sprintf(" AND brand_id = $%d", argPos)
+		args = append(args, query.BrandID)
 		argPos++
 	}
 
@@ -311,6 +327,8 @@ func (p *PostgreSQL) GetCachedCompetitiveBenchmark(ctx context.Context, query mo
 	err := p.db.QueryRowContext(ctx, sqlQuery, args...).Scan(
 		&benchmark.ID,
 		&benchmark.CampaignID,
+		&benchmark.BrandID,
+		&benchmark.OrgID,
 		&benchmark.MainBrand,
 		&benchmark.StartTime,
 		&benchmark.EndTime,
@@ -339,9 +357,9 @@ func (p *PostgreSQL) DeleteCachedCompetitiveBenchmark(ctx context.Context, id st
 	return err
 }
 
-func (p *PostgreSQL) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brand string) error {
-	query := "DELETE FROM cached_competitive_benchmark WHERE main_brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteCachedCompetitiveBenchmarkByBrand(ctx context.Context, brandID string) error {
+	query := "DELETE FROM cached_competitive_benchmark WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 
@@ -357,10 +375,12 @@ func (p *PostgreSQL) SaveCachedPromptPerformance(ctx context.Context, performanc
 	dataJSON := structToJSONB(performance)
 
 	query := `
-		INSERT INTO cached_prompt_performance (id, campaign_id, brand, start_time, end_time, data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO cached_prompt_performance (id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO UPDATE SET
 			campaign_id = EXCLUDED.campaign_id,
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			brand = EXCLUDED.brand,
 			start_time = EXCLUDED.start_time,
 			end_time = EXCLUDED.end_time,
@@ -371,6 +391,8 @@ func (p *PostgreSQL) SaveCachedPromptPerformance(ctx context.Context, performanc
 	_, err := p.db.ExecContext(ctx, query,
 		performance.ID,
 		performance.CampaignID,
+		performance.BrandID,
+		performance.OrgID,
 		performance.Brand,
 		performance.StartTime,
 		performance.EndTime,
@@ -384,7 +406,7 @@ func (p *PostgreSQL) SaveCachedPromptPerformance(ctx context.Context, performanc
 
 func (p *PostgreSQL) GetCachedPromptPerformance(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptPerformance, error) {
 	sqlQuery := `
-		SELECT id, campaign_id, brand, start_time, end_time, data, created_at, updated_at
+		SELECT id, campaign_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at
 		FROM cached_prompt_performance
 		WHERE 1=1
 	`
@@ -396,9 +418,9 @@ func (p *PostgreSQL) GetCachedPromptPerformance(ctx context.Context, query model
 		args = append(args, query.CampaignID)
 		argPos++
 	}
-	if query.Brand != "" {
-		sqlQuery += fmt.Sprintf(" AND brand = $%d", argPos)
-		args = append(args, query.Brand)
+	if query.BrandID != "" {
+		sqlQuery += fmt.Sprintf(" AND brand_id = $%d", argPos)
+		args = append(args, query.BrandID)
 		argPos++
 	}
 	if query.StartTime != nil {
@@ -420,6 +442,8 @@ func (p *PostgreSQL) GetCachedPromptPerformance(ctx context.Context, query model
 	err := p.db.QueryRowContext(ctx, sqlQuery, args...).Scan(
 		&performance.ID,
 		&performance.CampaignID,
+		&performance.BrandID,
+		&performance.OrgID,
 		&performance.Brand,
 		&performance.StartTime,
 		&performance.EndTime,
@@ -448,9 +472,9 @@ func (p *PostgreSQL) DeleteCachedPromptPerformance(ctx context.Context, id strin
 	return err
 }
 
-func (p *PostgreSQL) DeleteCachedPromptPerformanceByBrand(ctx context.Context, brand string) error {
-	query := "DELETE FROM cached_prompt_performance WHERE brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteCachedPromptPerformanceByBrand(ctx context.Context, brandID string) error {
+	query := "DELETE FROM cached_prompt_performance WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 
@@ -746,11 +770,13 @@ func (p *PostgreSQL) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries 
 	dataJSON := structToJSONB(timeSeries)
 
 	query := `
-		INSERT INTO cached_prompt_time_series (id, campaign_id, prompt_id, brand, start_time, end_time, data, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO cached_prompt_time_series (id, campaign_id, prompt_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (id) DO UPDATE SET
 			campaign_id = EXCLUDED.campaign_id,
 			prompt_id = EXCLUDED.prompt_id,
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			brand = EXCLUDED.brand,
 			start_time = EXCLUDED.start_time,
 			end_time = EXCLUDED.end_time,
@@ -762,6 +788,8 @@ func (p *PostgreSQL) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries 
 		timeSeries.ID,
 		timeSeries.CampaignID,
 		timeSeries.PromptID,
+		timeSeries.BrandID,
+		timeSeries.OrgID,
 		timeSeries.Brand,
 		timeSeries.StartTime,
 		timeSeries.EndTime,
@@ -775,7 +803,7 @@ func (p *PostgreSQL) SaveCachedPromptTimeSeries(ctx context.Context, timeSeries 
 
 func (p *PostgreSQL) GetCachedPromptTimeSeries(ctx context.Context, query models.AnalyticsCacheQuery) (*models.CachedPromptTimeSeries, error) {
 	sqlQuery := `
-		SELECT id, campaign_id, prompt_id, brand, start_time, end_time, data, created_at, updated_at
+		SELECT id, campaign_id, prompt_id, brand_id, org_id, brand, start_time, end_time, data, created_at, updated_at
 		FROM cached_prompt_time_series
 		WHERE 1=1
 	`
@@ -792,9 +820,9 @@ func (p *PostgreSQL) GetCachedPromptTimeSeries(ctx context.Context, query models
 		args = append(args, query.CampaignID)
 		argPos++
 	}
-	if query.Brand != "" {
-		sqlQuery += fmt.Sprintf(" AND brand = $%d", argPos)
-		args = append(args, query.Brand)
+	if query.BrandID != "" {
+		sqlQuery += fmt.Sprintf(" AND brand_id = $%d", argPos)
+		args = append(args, query.BrandID)
 		argPos++
 	}
 	if query.StartTime != nil {
@@ -817,6 +845,8 @@ func (p *PostgreSQL) GetCachedPromptTimeSeries(ctx context.Context, query models
 		&timeSeries.ID,
 		&timeSeries.CampaignID,
 		&timeSeries.PromptID,
+		&timeSeries.BrandID,
+		&timeSeries.OrgID,
 		&timeSeries.Brand,
 		&timeSeries.StartTime,
 		&timeSeries.EndTime,
@@ -845,9 +875,9 @@ func (p *PostgreSQL) DeleteCachedPromptTimeSeries(ctx context.Context, id string
 	return err
 }
 
-func (p *PostgreSQL) DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brand string) error {
-	query := "DELETE FROM cached_prompt_time_series WHERE brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteCachedPromptTimeSeriesByBrand(ctx context.Context, brandID string) error {
+	query := "DELETE FROM cached_prompt_time_series WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 

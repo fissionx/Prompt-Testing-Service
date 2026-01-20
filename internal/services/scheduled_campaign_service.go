@@ -344,6 +344,8 @@ func (m *ScheduledCampaignManager) cacheGEOInsights(
 	cachedInsights := &models.CachedGEOInsights{
 		ID:                    uuid.New().String(),
 		CampaignID:            campaign.ID,
+		BrandID:               campaign.BrandID,
+		OrgID:                 campaign.OrgID,
 		Brand:                 campaign.Brand,
 		StartTime:             *startTime,
 		EndTime:               *endTime,
@@ -378,6 +380,8 @@ func (m *ScheduledCampaignManager) cacheSourceAnalytics(
 	cachedAnalytics := &models.CachedSourceAnalytics{
 		ID:              uuid.New().String(),
 		CampaignID:      campaign.ID,
+		BrandID:         campaign.BrandID,
+		OrgID:           campaign.OrgID,
 		Brand:           campaign.Brand,
 		StartTime:       *startTime,
 		EndTime:         *endTime,
@@ -421,6 +425,8 @@ func (m *ScheduledCampaignManager) cacheCompetitiveBenchmark(
 	cachedBenchmark := &models.CachedCompetitiveBenchmark{
 		ID:              uuid.New().String(),
 		CampaignID:      campaign.ID,
+		BrandID:         campaign.BrandID,
+		OrgID:           campaign.OrgID,
 		MainBrand:       campaign.Brand,
 		StartTime:       *startTime,
 		EndTime:         *endTime,
@@ -452,6 +458,8 @@ func (m *ScheduledCampaignManager) cachePromptPerformance(
 	cachedPerformance := &models.CachedPromptPerformance{
 		ID:                   uuid.New().String(),
 		CampaignID:           campaign.ID,
+		BrandID:              campaign.BrandID,
+		OrgID:                campaign.OrgID,
 		Brand:                campaign.Brand,
 		StartTime:            *startTime,
 		EndTime:              *endTime,
@@ -487,6 +495,8 @@ func (m *ScheduledCampaignManager) cachePromptTimeSeries(
 			ID:         uuid.New().String(),
 			CampaignID: campaign.ID,
 			PromptID:   promptID,
+			BrandID:    campaign.BrandID,
+			OrgID:      campaign.OrgID,
 			Brand:      campaign.Brand,
 			StartTime:  *startTime,
 			EndTime:    *endTime,
