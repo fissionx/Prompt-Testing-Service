@@ -397,21 +397,6 @@ func (s *Server) getGEOInsights(c *gin.Context) {
 	})
 }
 
-// listPromptLibraries handles GET /api/v1/geo/libraries
-func (s *Server) listPromptLibraries(c *gin.Context) {
-	libraries, err := s.db.ListPromptLibraries(c.Request.Context())
-	if err != nil {
-		s.errorResponse(c, http.StatusInternalServerError, "Failed to list libraries: "+err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, models.APIResponse{
-		Success: true,
-		Data:    libraries,
-		Message: "Prompt libraries retrieved successfully",
-	})
-}
-
 // listScheduledCampaigns handles GET /api/v1/geo/campaigns
 // Returns all scheduled campaigns with full prompt and LLM details
 func (s *Server) listScheduledCampaigns(c *gin.Context) {

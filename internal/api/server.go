@@ -234,9 +234,8 @@ func (s *Server) setupRoutes() {
 	// GEO (Generative Engine Optimization) endpoints
 	geo := api.Group("/geo")
 	{
-		// Prompt Generation & Library
+		// Prompt Generation
 		geo.POST("/prompts/generate", s.generatePrompts)
-		geo.GET("/libraries", s.listPromptLibraries)
 
 		// Brand Profiles
 		// Bulk Execution

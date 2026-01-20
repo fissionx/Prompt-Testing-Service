@@ -169,18 +169,6 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		created_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
 
-	-- Prompt Library table
-	CREATE TABLE IF NOT EXISTS prompt_library (
-		id TEXT PRIMARY KEY,
-		brand TEXT,
-		domain TEXT NOT NULL,
-		category TEXT NOT NULL,
-		prompt_ids JSONB DEFAULT '[]'::jsonb,
-		usage_count INTEGER DEFAULT 0,
-		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);
-
 	-- Brand Logos table
 	CREATE TABLE IF NOT EXISTS brand_logos (
 		id TEXT PRIMARY KEY,
@@ -337,9 +325,6 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_responses_schedule_id ON responses(schedule_id) WHERE schedule_id IS NOT NULL",
 		"CREATE INDEX IF NOT EXISTS idx_responses_llm_id ON responses(llm_id) WHERE llm_id IS NOT NULL",
 		"CREATE INDEX IF NOT EXISTS idx_responses_response_text_gin ON responses USING gin(to_tsvector('english', response_text))",
-
-		// Prompt Library indexes
-		"CREATE INDEX IF NOT EXISTS idx_prompt_library_domain_category ON prompt_library(domain, category)",
 
 		// Brand Logos indexes (unique constraint on brand_id already exists)
 		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_id ON brand_logos(brand_id)",

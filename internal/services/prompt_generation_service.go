@@ -83,75 +83,9 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		}
 	}
 
-	fmt.Printf("🔍 Looking for prompts: brand=%s, domain=%s, category=%s\n", brand, domain, category)
+	fmt.Printf("🔍 Generating prompts: brand=%s, domain=%s, category=%s\n", brand, domain, category)
 
-	// Step 3: Check if prompt library exists for this domain/category (NOT brand-specific)
-	// This allows reuse across similar brands (e.g., all engineering colleges)
-	library, err := s.db.GetPromptLibrary(ctx, "", domain, category)
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("failed to check prompt library: %w", err)
-	}
-
-	// If library exists, return those prompts (after validation)
-	if library != nil && len(library.PromptIDs) > 0 {
-		fmt.Printf("♻️  Checking existing prompt library for domain=%s, category=%s (created for: %s)\n", domain, category, library.Brand)
-
-		existingPrompts, err := s.getPromptsFromLibrary(ctx, library, count, brand)
-		if err != nil {
-			return nil, 0, 0, fmt.Errorf("failed to get prompts from library: %w", err)
-		}
-
-		existingCount := len(existingPrompts)
-
-		// If we have enough prompts, just return them
-		if existingCount >= count {
-			fmt.Printf("✅ Reusing %d generic prompts from library\n", existingCount)
-
-			// Increment library usage count
-			library.UsageCount++
-			_ = s.db.UpdatePromptLibrary(ctx, library)
-
-			return existingPrompts[:count], existingCount, 0, nil
-		}
-
-		// If we have some prompts but not enough, generate the difference
-		if existingCount > 0 {
-			needToGenerate := count - existingCount
-			fmt.Printf("♻️  Found %d generic prompts, generating %d more to reach %d total\n", existingCount, needToGenerate, count)
-
-			// Generate additional prompts
-			newPromptTexts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, needToGenerate, existingPrompts, llmConfig)
-			if err != nil {
-				// If generation fails, return what we have
-				fmt.Printf("⚠️  Failed to generate additional prompts: %v. Returning %d existing prompts.\n", err, existingCount)
-				return existingPrompts, existingCount, 0, nil
-			}
-
-			// Save new prompts
-			savedNewPrompts, err := s.savePrompts(ctx, newPromptTexts, brand, category, domain)
-			if err != nil {
-				return existingPrompts, existingCount, 0, nil
-			}
-
-			// Add new prompt IDs to the library
-			for _, p := range savedNewPrompts {
-				library.PromptIDs = append(library.PromptIDs, p.ID)
-			}
-			library.UsageCount++
-			_ = s.db.UpdatePromptLibrary(ctx, library)
-
-			// Combine existing and new prompts
-			allPrompts := append(existingPrompts, savedNewPrompts...)
-			fmt.Printf("✅ Using %d existing + %d newly generated = %d total prompts\n", existingCount, len(savedNewPrompts), len(allPrompts))
-
-			return allPrompts, existingCount, len(savedNewPrompts), nil
-		}
-
-		// If no generic prompts found, fall through to generate all new
-		fmt.Printf("⚠️  No generic prompts found in library. Generating all new prompts.\n")
-	}
-
-	// Step 4: No library exists, generate new prompts with enriched context
+	// Step 3: Always generate new prompts using LLM for accuracy and freshness
 	newPrompts, err := s.generateNewPrompts(ctx, brand, category, domain, description, websiteContent, count, nil, llmConfig)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to generate prompts: %w", err)
@@ -163,29 +97,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 		return nil, 0, 0, fmt.Errorf("failed to save prompts: %w", err)
 	}
 
-	// Step 5: Create prompt library entry (brand is for reference only, library is shared by domain/category)
-	promptIDs := make([]string, len(savedPrompts))
-	for i, p := range savedPrompts {
-		promptIDs[i] = p.ID
-	}
-
-	newLibrary := &models.PromptLibrary{
-		ID:         uuid.New().String(),
-		Brand:      brand, // Track which brand first created this library
-		Domain:     domain,
-		Category:   category,
-		PromptIDs:  promptIDs,
-		UsageCount: 1,
-	}
-
-	fmt.Printf("📚 Creating new prompt library: domain=%s, category=%s, created_by=%s\n", domain, category, brand)
-
-	if err := s.db.CreatePromptLibrary(ctx, newLibrary); err != nil {
-		// Log but don't fail - prompts are already saved
-		fmt.Printf("❌ Warning: failed to create prompt library: %v\n", err)
-	} else {
-		fmt.Printf("✅ Prompt library created successfully! Future requests for domain=%s + category=%s will reuse these prompts.\n", domain, category)
-	}
+	fmt.Printf("✅ Generated and saved %d new prompts for brand=%s\n", len(savedPrompts), brand)
 
 	return savedPrompts, 0, len(savedPrompts), nil
 }
@@ -381,83 +293,6 @@ func normalizeCategory(cat string) string {
 	return cat
 }
 
-// getPromptsFromLibrary retrieves prompts from a library and validates they are generic
-func (s *PromptGenerationService) getPromptsFromLibrary(ctx context.Context, library *models.PromptLibrary, count int, currentBrand string) ([]models.Prompt, error) {
-	var prompts []models.Prompt
-
-	// Get all prompts from the library and filter out brand-specific ones
-	for _, promptID := range library.PromptIDs {
-		if len(prompts) >= count {
-			break // Got enough prompts
-		}
-
-		prompt, err := s.db.GetPrompt(ctx, promptID)
-		if err != nil {
-			continue // Skip if prompt not found
-		}
-
-		// Validate that prompt is generic (doesn't mention specific brands)
-		if isGenericPrompt(prompt.Template, library.Brand, currentBrand) {
-			prompts = append(prompts, *prompt)
-		} else {
-			fmt.Printf("⚠️  Skipping brand-specific prompt: %s\n", prompt.Template)
-		}
-	}
-
-	// If we don't have enough generic prompts, return what we have
-	if len(prompts) < count {
-		fmt.Printf("⚠️  Only found %d generic prompts out of %d requested. Library needs regeneration.\n", len(prompts), count)
-	}
-
-	return prompts, nil
-}
-
-// isGenericPrompt checks if a prompt is generic (doesn't mention specific brand names)
-func isGenericPrompt(promptText, originalBrand, currentBrand string) bool {
-	lowerPrompt := strings.ToLower(promptText)
-
-	// Check if prompt mentions the original brand that created it
-	if originalBrand != "" {
-		// Split brand name into words to check each part
-		brandWords := strings.Fields(strings.ToLower(originalBrand))
-		for _, word := range brandWords {
-			// Skip common words that might appear in generic questions
-			if len(word) <= 3 || isCommonWord(word) {
-				continue
-			}
-			if strings.Contains(lowerPrompt, word) {
-				return false // Found brand-specific mention
-			}
-		}
-	}
-
-	// Check if prompt mentions the current brand
-	if currentBrand != "" {
-		brandWords := strings.Fields(strings.ToLower(currentBrand))
-		for _, word := range brandWords {
-			if len(word) <= 3 || isCommonWord(word) {
-				continue
-			}
-			if strings.Contains(lowerPrompt, word) {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-// isCommonWord checks if a word is too common to be considered brand-specific
-func isCommonWord(word string) bool {
-	commonWords := map[string]bool{
-		"the": true, "and": true, "for": true, "are": true, "with": true,
-		"from": true, "that": true, "this": true, "what": true, "which": true,
-		"best": true, "good": true, "top": true, "how": true, "can": true,
-		"college": true, "university": true, "institute": true, "school": true,
-		"engineering": true, "technology": true, "software": true, "platform": true,
-	}
-	return commonWords[word]
-}
 
 // calculatePromptTypeDistribution calculates how many prompts of each type to generate
 func calculatePromptTypeDistribution(total int) map[string]int {

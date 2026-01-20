@@ -41,12 +41,6 @@ type NoSQLDatabase interface {
 	GetPromptStats(ctx context.Context, promptID string) (*models.PromptStats, error)
 	GetLLMStats(ctx context.Context, llmID string) (*models.LLMStats, error)
 
-	// Prompt Library operations (for organized prompt reuse)
-	CreatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error
-	GetPromptLibrary(ctx context.Context, brand, domain, category string) (*models.PromptLibrary, error)
-	UpdatePromptLibrary(ctx context.Context, library *models.PromptLibrary) error
-	ListPromptLibraries(ctx context.Context) ([]*models.PromptLibrary, error)
-
 	// Brand Logo cache operations
 	SaveBrandLogo(ctx context.Context, logo *models.BrandLogoCache) error
 	GetBrandLogo(ctx context.Context, brandID string) (*models.BrandLogoCache, error)
