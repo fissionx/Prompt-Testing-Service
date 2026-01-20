@@ -221,6 +221,8 @@ func (s *Server) executeBulkCampaign(ctx context.Context, req *models.BulkExecut
 func (s *Server) createScheduledCampaign(ctx context.Context, req *models.BulkExecuteRequest, brandInfo *services.BrandInfo) (*models.BulkExecuteResponse, error) {
 	scheduledCampaign, err := s.scheduledCampaignManager.CreateScheduledCampaign(
 		ctx,
+		req.BrandID,
+		brandInfo.OrgID,
 		req.CampaignName,
 		brandInfo.Name,
 		req.PromptIDs,

@@ -97,8 +97,10 @@ type CachedPromptPerformance struct {
 // ScheduledCampaign represents a campaign with scheduled periodic execution
 type ScheduledCampaign struct {
 	ID           string     `json:"id" bson:"_id"`
+	BrandID      string     `json:"brandId,omitempty" bson:"brand_id,omitempty"` // Brand ID (UUID)
+	OrgID        string     `json:"orgId,omitempty" bson:"org_id,omitempty"`     // Organization ID
 	CampaignName string     `json:"campaignName" bson:"campaign_name"`
-	Brand        string     `json:"brand" bson:"brand"`
+	Brand        string     `json:"brand" bson:"brand"` // Brand name (kept for backward compatibility)
 	PromptIDs    []string   `json:"promptIds" bson:"prompt_ids"`
 	LLMIDs       []string   `json:"llmIds" bson:"llm_ids"`
 	Temperature  float64    `json:"temperature" bson:"temperature"`

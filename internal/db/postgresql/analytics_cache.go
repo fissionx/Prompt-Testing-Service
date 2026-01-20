@@ -464,9 +464,11 @@ func (p *PostgreSQL) SaveScheduledCampaign(ctx context.Context, campaign *models
 	campaign.UpdatedAt = now
 
 	query := `
-		INSERT INTO scheduled_campaigns (id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO scheduled_campaigns (id, brand_id, org_id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (id) DO UPDATE SET
+			brand_id = EXCLUDED.brand_id,
+			org_id = EXCLUDED.org_id,
 			campaign_name = EXCLUDED.campaign_name,
 			brand = EXCLUDED.brand,
 			prompt_ids = EXCLUDED.prompt_ids,
@@ -483,6 +485,8 @@ func (p *PostgreSQL) SaveScheduledCampaign(ctx context.Context, campaign *models
 
 	_, err := p.db.ExecContext(ctx, query,
 		campaign.ID,
+		campaign.BrandID,
+		campaign.OrgID,
 		campaign.CampaignName,
 		campaign.Brand,
 		sliceToJSON(campaign.PromptIDs),
@@ -503,7 +507,7 @@ func (p *PostgreSQL) SaveScheduledCampaign(ctx context.Context, campaign *models
 
 func (p *PostgreSQL) GetScheduledCampaign(ctx context.Context, id string) (*models.ScheduledCampaign, error) {
 	query := `
-		SELECT id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, brand_id, org_id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_campaigns
 		WHERE id = $1
 	`
@@ -514,6 +518,8 @@ func (p *PostgreSQL) GetScheduledCampaign(ctx context.Context, id string) (*mode
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&campaign.ID,
+		&campaign.BrandID,
+		&campaign.OrgID,
 		&campaign.CampaignName,
 		&campaign.Brand,
 		&promptIDsJSON,
@@ -550,7 +556,7 @@ func (p *PostgreSQL) GetScheduledCampaign(ctx context.Context, id string) (*mode
 
 func (p *PostgreSQL) GetScheduledCampaignByBrand(ctx context.Context, brand string) (*models.ScheduledCampaign, error) {
 	query := `
-		SELECT id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, brand_id, org_id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_campaigns
 		WHERE brand = $1 AND status IN ('active', 'running')
 		ORDER BY created_at DESC
@@ -563,6 +569,8 @@ func (p *PostgreSQL) GetScheduledCampaignByBrand(ctx context.Context, brand stri
 
 	err := p.db.QueryRowContext(ctx, query, brand).Scan(
 		&campaign.ID,
+		&campaign.BrandID,
+		&campaign.OrgID,
 		&campaign.CampaignName,
 		&campaign.Brand,
 		&promptIDsJSON,
@@ -599,7 +607,7 @@ func (p *PostgreSQL) GetScheduledCampaignByBrand(ctx context.Context, brand stri
 
 func (p *PostgreSQL) ListScheduledCampaigns(ctx context.Context, status string) ([]*models.ScheduledCampaign, error) {
 	query := `
-		SELECT id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
+		SELECT id, brand_id, org_id, campaign_name, brand, prompt_ids, llm_ids, temperature, schedule_cron, status, total_runs, run_count, last_run_at, next_run_at, created_at, updated_at
 		FROM scheduled_campaigns
 		WHERE 1=1
 	`
@@ -628,6 +636,8 @@ func (p *PostgreSQL) ListScheduledCampaigns(ctx context.Context, status string) 
 
 		if err := rows.Scan(
 			&campaign.ID,
+			&campaign.BrandID,
+			&campaign.OrgID,
 			&campaign.CampaignName,
 			&campaign.Brand,
 			&promptIDsJSON,
@@ -665,13 +675,15 @@ func (p *PostgreSQL) UpdateScheduledCampaign(ctx context.Context, campaign *mode
 
 	query := `
 		UPDATE scheduled_campaigns
-		SET campaign_name = $1, brand = $2, prompt_ids = $3, llm_ids = $4, temperature = $5,
-			schedule_cron = $6, status = $7, total_runs = $8, run_count = $9,
-			last_run_at = $10, next_run_at = $11, updated_at = $12
-		WHERE id = $13
+		SET brand_id = $1, org_id = $2, campaign_name = $3, brand = $4, prompt_ids = $5, llm_ids = $6, temperature = $7,
+			schedule_cron = $8, status = $9, total_runs = $10, run_count = $11,
+			last_run_at = $12, next_run_at = $13, updated_at = $14
+		WHERE id = $15
 	`
 
 	result, err := p.db.ExecContext(ctx, query,
+		campaign.BrandID,
+		campaign.OrgID,
 		campaign.CampaignName,
 		campaign.Brand,
 		sliceToJSON(campaign.PromptIDs),

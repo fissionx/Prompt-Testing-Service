@@ -278,6 +278,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	-- Scheduled Campaigns table
 	CREATE TABLE IF NOT EXISTS scheduled_campaigns (
 		id TEXT PRIMARY KEY,
+		brand_id TEXT,
+		org_id TEXT,
 		campaign_name TEXT NOT NULL,
 		brand TEXT,
 		prompt_ids JSONB DEFAULT '[]'::jsonb,
@@ -377,6 +379,8 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_time ON cached_prompt_performance(brand, start_time DESC, end_time DESC)",
 
 		// Scheduled Campaigns indexes
+		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_brand_id ON scheduled_campaigns(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_org_id ON scheduled_campaigns(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_brand ON scheduled_campaigns(brand)",
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_status ON scheduled_campaigns(status)",
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_next_run_at ON scheduled_campaigns(next_run_at) WHERE next_run_at IS NOT NULL",
