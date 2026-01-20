@@ -221,6 +221,8 @@ func (s *BrandPromptService) SuggestPrompts(
 	for _, template := range promptTemplates {
 		prompt := &models.Prompt{
 			ID:         uuid.New().String(),
+			BrandID:    brandID,
+			OrgID:      orgID,
 			Template:   template,
 			PromptType: models.PromptTypeCustom, // Default type
 			Category:   category,
@@ -674,6 +676,8 @@ func (s *BrandPromptService) SavePrompts(
 
 		prompt := &models.Prompt{
 			ID:         uuid.New().String(),
+			BrandID:    brandID,
+			OrgID:      orgID,
 			Template:   customPrompt.Template,
 			PromptType: promptType,
 			Category:   customPrompt.Category,

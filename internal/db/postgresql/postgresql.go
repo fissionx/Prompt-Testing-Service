@@ -119,6 +119,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	-- Prompts table
 	CREATE TABLE IF NOT EXISTS prompts (
 		id TEXT PRIMARY KEY,
+		brand_id TEXT,
+		org_id TEXT,
 		template TEXT NOT NULL,
 		prompt_type TEXT,
 		tags JSONB DEFAULT '[]'::jsonb,
@@ -313,6 +315,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 	indexes := []string{
 		// Prompts indexes
+		"CREATE INDEX IF NOT EXISTS idx_prompts_brand_id ON prompts(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_prompts_org_id ON prompts(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_prompts_brand ON prompts(brand)",
 		"CREATE INDEX IF NOT EXISTS idx_prompts_brand_created_at ON prompts(brand, created_at DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_prompts_enabled ON prompts(enabled)",
@@ -452,12 +456,14 @@ func (p *PostgreSQL) CreatePrompt(ctx context.Context, prompt *models.Prompt) er
 	}
 
 	query := `
-		INSERT INTO prompts (id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO prompts (id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 	`
 
 	_, err := p.db.ExecContext(ctx, query,
 		prompt.ID,
+		prompt.BrandID,
+		prompt.OrgID,
 		template,
 		string(prompt.PromptType),
 		sliceToJSON(prompt.Tags),
@@ -479,7 +485,7 @@ func (p *PostgreSQL) CreatePrompt(ctx context.Context, prompt *models.Prompt) er
 func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, error) {
 	start := time.Now()
 	query := `
-		SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at
+		SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at
 		FROM prompts WHERE id = $1
 	`
 
@@ -488,6 +494,8 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&prompt.ID,
+		&prompt.BrandID,
+		&prompt.OrgID,
 		&prompt.Template,
 		&promptTypeStr,
 		&tagsJSON,
@@ -525,7 +533,7 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 // ListPrompts lists all prompts, optionally filtered by enabled status
 func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
-	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
 		FROM prompts WHERE 1=1`
 	args := []interface{}{}
 	argPos := 1
@@ -553,6 +561,8 @@ func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.
 
 		err := rows.Scan(
 			&prompt.ID,
+			&prompt.BrandID,
+			&prompt.OrgID,
 			&prompt.Template,
 			&promptTypeStr,
 			&tagsJSON,
@@ -593,7 +603,7 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 	}
 
 	// Build query with IN clause
-	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
 		FROM prompts WHERE id = ANY($1)`
 
 	rows, err := p.db.QueryContext(ctx, query, pq.Array(ids))
@@ -610,6 +620,8 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 
 		err := rows.Scan(
 			&prompt.ID,
+			&prompt.BrandID,
+			&prompt.OrgID,
 			&prompt.Template,
 			&promptTypeStr,
 			&tagsJSON,
@@ -645,7 +657,7 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 // ListPromptsByBrand lists prompts filtered by brand and optionally by enabled status
 func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
-	query := `SELECT id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
 		FROM prompts WHERE brand = $1`
 	args := []interface{}{brand}
 	argPos := 2
@@ -672,6 +684,8 @@ func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabl
 
 		err := rows.Scan(
 			&prompt.ID,
+			&prompt.BrandID,
+			&prompt.OrgID,
 			&prompt.Template,
 			&promptTypeStr,
 			&tagsJSON,
@@ -719,11 +733,13 @@ func (p *PostgreSQL) UpdatePrompt(ctx context.Context, prompt *models.Prompt) er
 
 	query := `
 		UPDATE prompts 
-		SET template = $1, prompt_type = $2, tags = $3, category = $4, domain = $5, brand = $6, source_id = $7, generated = $8, enabled = $9, updated_at = $10
-		WHERE id = $11
+		SET brand_id = $1, org_id = $2, template = $3, prompt_type = $4, tags = $5, category = $6, domain = $7, brand = $8, source_id = $9, generated = $10, enabled = $11, updated_at = $12
+		WHERE id = $13
 	`
 
 	result, err := p.db.ExecContext(ctx, query,
+		prompt.BrandID,
+		prompt.OrgID,
 		template,
 		string(prompt.PromptType),
 		sliceToJSON(prompt.Tags),

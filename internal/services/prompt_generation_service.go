@@ -37,7 +37,7 @@ func NewPromptGenerationService(database db.Database, registry *llm.Registry) *P
 
 // GeneratePromptsForBrand generates prompts for a brand, reusing existing ones where possible
 // llmConfig is optional - if not provided, defaults to Google/Gemini
-func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brand, website, category, domain, description string, count int, llmConfig *models.LLMConfig) ([]models.Prompt, int, int, error) {
+func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, brandID string, orgID string, brand, website, category, domain, description string, count int, llmConfig *models.LLMConfig) ([]models.Prompt, int, int, error) {
 	if count <= 0 {
 		count = 20
 	}
@@ -92,7 +92,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	}
 
 	// Step 4: Save prompts to database
-	savedPrompts, err := s.savePrompts(ctx, newPrompts, brand, category, domain)
+	savedPrompts, err := s.savePrompts(ctx, newPrompts, brandID, orgID, brand, category, domain)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to save prompts: %w", err)
 	}
@@ -495,7 +495,7 @@ func parsePromptType(text string) (models.PromptType, string) {
 }
 
 // savePrompts saves generated prompts to the database
-func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts []string, brand, category, domain string) ([]models.Prompt, error) {
+func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts []string, brandID string, orgID string, brand, category, domain string) ([]models.Prompt, error) {
 	var savedPrompts []models.Prompt
 
 	for _, text := range promptTexts {
@@ -504,6 +504,8 @@ func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts [
 
 		prompt := &models.Prompt{
 			ID:         uuid.New().String(),
+			BrandID:    brandID,
+			OrgID:      orgID,
 			Template:   cleanText,
 			PromptType: promptType,
 			Category:   category,

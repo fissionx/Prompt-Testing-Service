@@ -69,6 +69,8 @@ func (s *Server) generatePrompts(c *gin.Context) {
 	// Generate prompts with optional website scraping
 	prompts, existingCount, generatedCount, err := promptGenService.GeneratePromptsForBrand(
 		c.Request.Context(),
+		req.BrandID,
+		brandInfo.OrgID,
 		brandName,
 		req.Website,
 		req.Category,
