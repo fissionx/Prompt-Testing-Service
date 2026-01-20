@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/llm/anthropic"
-	"github.com/fissionx/gego/internal/llm/google"
-	"github.com/fissionx/gego/internal/llm/ollama"
+	// "github.com/fissionx/gego/internal/llm/anthropic"
+	// "github.com/fissionx/gego/internal/llm/google"
+	// "github.com/fissionx/gego/internal/llm/ollama"
 	"github.com/fissionx/gego/internal/llm/openai"
 	"github.com/fissionx/gego/internal/models"
 )
@@ -430,12 +430,12 @@ func runPromptGenerate(reader *bufio.Reader, ctx context.Context) error {
 	switch selectedLLM.Provider {
 	case "openai":
 		provider = openai.New(selectedLLM.APIKey, selectedLLM.BaseURL)
-	case "anthropic":
-		provider = anthropic.New(selectedLLM.APIKey, selectedLLM.BaseURL)
-	case "ollama":
-		provider = ollama.New(selectedLLM.BaseURL)
-	case "google":
-		provider = google.New(selectedLLM.APIKey, selectedLLM.BaseURL)
+	// case "anthropic":
+	// 	provider = anthropic.New(selectedLLM.APIKey, selectedLLM.BaseURL)
+	// case "ollama":
+	// 	provider = ollama.New(selectedLLM.BaseURL)
+	// case "google":
+	// 	provider = google.New(selectedLLM.APIKey, selectedLLM.BaseURL)
 	default:
 		return fmt.Errorf("unsupported LLM provider: %s", selectedLLM.Provider)
 	}

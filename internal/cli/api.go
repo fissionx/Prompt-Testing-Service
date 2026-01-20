@@ -16,11 +16,12 @@ import (
 	"github.com/fissionx/gego/internal/config"
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/llm/anthropic"
-	"github.com/fissionx/gego/internal/llm/google"
-	"github.com/fissionx/gego/internal/llm/ollama"
+
+	// "github.com/fissionx/gego/internal/llm/anthropic"
+	// "github.com/fissionx/gego/internal/llm/google"
+	// "github.com/fissionx/gego/internal/llm/ollama"
 	"github.com/fissionx/gego/internal/llm/openai"
-	"github.com/fissionx/gego/internal/llm/perplexity"
+	// "github.com/fissionx/gego/internal/llm/perplexity"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
@@ -151,10 +152,10 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	// Initialize LLM registry with all providers
 	apiLLMRegistry := llm.NewRegistry()
 	apiLLMRegistry.Register(openai.New("", ""))
-	apiLLMRegistry.Register(anthropic.New("", ""))
-	apiLLMRegistry.Register(ollama.New(""))
-	apiLLMRegistry.Register(google.New("", ""))
-	apiLLMRegistry.Register(perplexity.New("", ""))
+	// apiLLMRegistry.Register(anthropic.New("", ""))
+	// apiLLMRegistry.Register(ollama.New(""))
+	// apiLLMRegistry.Register(google.New("", ""))
+	// apiLLMRegistry.Register(perplexity.New("", ""))
 
 	// Initialize providers with API keys from database
 	llms, err := database.ListLLMs(ctx, nil)
@@ -164,14 +165,14 @@ func runAPI(cmd *cobra.Command, args []string) error {
 				switch llmConfig.Provider {
 				case "openai":
 					apiLLMRegistry.Register(openai.New(llmConfig.APIKey, llmConfig.BaseURL))
-				case "anthropic":
-					apiLLMRegistry.Register(anthropic.New(llmConfig.APIKey, llmConfig.BaseURL))
-				case "ollama":
-					apiLLMRegistry.Register(ollama.New(llmConfig.BaseURL))
-				case "google":
-					apiLLMRegistry.Register(google.New(llmConfig.APIKey, llmConfig.BaseURL))
-				case "perplexity":
-					apiLLMRegistry.Register(perplexity.New(llmConfig.APIKey, llmConfig.BaseURL))
+					// case "anthropic":
+					// 	apiLLMRegistry.Register(anthropic.New(llmConfig.APIKey, llmConfig.BaseURL))
+					// case "ollama":
+					// 	apiLLMRegistry.Register(ollama.New(llmConfig.BaseURL))
+					// case "google":
+					// 	apiLLMRegistry.Register(google.New(llmConfig.APIKey, llmConfig.BaseURL))
+					// case "perplexity":
+					// 	apiLLMRegistry.Register(perplexity.New(llmConfig.APIKey, llmConfig.BaseURL))
 				}
 			}
 		}
@@ -196,7 +197,7 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	// Display auth configuration
 	env := strings.ToLower(os.Getenv("GEGO_ENV"))
 	isLocalEnv := env == "local"
-	
+
 	if isLocalEnv {
 		fmt.Printf("🔓 Authentication: Disabled (GEGO_ENV=local - local development mode)\n")
 	} else if clerkConfig.SecretKey != "" {

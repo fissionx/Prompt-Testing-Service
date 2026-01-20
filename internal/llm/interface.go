@@ -46,6 +46,8 @@ type Provider interface {
 	// ListModels lists available text-to-text models from this provider
 	// Returns models that can be used for text generation
 	ListModels(ctx context.Context, apiKey, baseURL string) ([]models.ModelInfo, error)
+
+	GenerateWithWebSearch(ctx context.Context, prompt string, config Config) (*Response, error)
 }
 
 // Response represents an LLM response

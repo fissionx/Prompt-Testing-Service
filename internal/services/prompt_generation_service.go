@@ -10,11 +10,12 @@ import (
 
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/llm/anthropic"
-	"github.com/fissionx/gego/internal/llm/google"
-	"github.com/fissionx/gego/internal/llm/ollama"
+
+	// "github.com/fissionx/gego/internal/llm/anthropic"
+	// "github.com/fissionx/gego/internal/llm/google"
+	// "github.com/fissionx/gego/internal/llm/ollama"
 	"github.com/fissionx/gego/internal/llm/openai"
-	"github.com/fissionx/gego/internal/llm/perplexity"
+	// "github.com/fissionx/gego/internal/llm/perplexity"
 	"github.com/fissionx/gego/internal/models"
 )
 
@@ -262,14 +263,14 @@ func (s *PromptGenerationService) createProviderFromConfig(llmConfig *models.LLM
 	switch llmConfig.Provider {
 	case "openai":
 		provider = openai.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "anthropic":
-		provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "ollama":
-		provider = ollama.New(llmConfig.BaseURL)
-	case "google":
-		provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "perplexity":
-		provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "anthropic":
+	// 	provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "ollama":
+	// 	provider = ollama.New(llmConfig.BaseURL)
+	// case "google":
+	// 	provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "perplexity":
+	// 	provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %s", llmConfig.Provider)
 	}

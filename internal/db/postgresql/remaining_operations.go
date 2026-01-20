@@ -376,9 +376,9 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 	competitors.UpdatedAt = now
 
 	query := `
-		INSERT INTO brand_competitors (id, brand, competitors, suggested_list, source, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (brand) DO UPDATE SET
+		INSERT INTO brand_competitors (id, brand, brand_id, competitors, suggested_list, source, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (brand_id) DO UPDATE SET
 			competitors = EXCLUDED.competitors,
 			suggested_list = EXCLUDED.suggested_list,
 			source = EXCLUDED.source,
@@ -388,6 +388,7 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 	_, err := p.db.ExecContext(ctx, query,
 		competitors.ID,
 		competitors.Brand,
+		competitors.BrandID,
 		sliceToJSON(competitors.Competitors),
 		sliceToJSON(competitors.SuggestedList),
 		competitors.Source,
@@ -398,19 +399,20 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 	return err
 }
 
-func (p *PostgreSQL) GetBrandCompetitors(ctx context.Context, brand string) (*models.BrandCompetitors, error) {
+func (p *PostgreSQL) GetBrandCompetitors(ctx context.Context, brandID string) (*models.BrandCompetitors, error) {
 	query := `
-		SELECT id, brand, competitors, suggested_list, source, created_at, updated_at
+		SELECT id, brand, brand_id, competitors, suggested_list, source, created_at, updated_at
 		FROM brand_competitors
-		WHERE brand = $1
+		WHERE brand_id = $1
 	`
 
 	var competitors models.BrandCompetitors
 	var competitorsJSON, suggestedListJSON string
 
-	err := p.db.QueryRowContext(ctx, query, brand).Scan(
+	err := p.db.QueryRowContext(ctx, query, brandID).Scan(
 		&competitors.ID,
 		&competitors.Brand,
+		&competitors.BrandID,
 		&competitorsJSON,
 		&suggestedListJSON,
 		&competitors.Source,
@@ -430,9 +432,9 @@ func (p *PostgreSQL) GetBrandCompetitors(ctx context.Context, brand string) (*mo
 	return &competitors, nil
 }
 
-func (p *PostgreSQL) DeleteBrandCompetitors(ctx context.Context, brand string) error {
-	query := "DELETE FROM brand_competitors WHERE brand = $1"
-	_, err := p.db.ExecContext(ctx, query, brand)
+func (p *PostgreSQL) DeleteBrandCompetitors(ctx context.Context, brandID string) error {
+	query := "DELETE FROM brand_competitors WHERE brand_id = $1"
+	_, err := p.db.ExecContext(ctx, query, brandID)
 	return err
 }
 

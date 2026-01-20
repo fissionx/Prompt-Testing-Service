@@ -372,7 +372,7 @@ type UserLocation struct {
 
 // GenerateWithWebSearch performs a web search using OpenAI's Responses API with web_search tool
 // This method uses the Responses API which properly supports web search functionality
-func (p *Provider) GenerateWithWebSearch(ctx context.Context, prompt string, config llm.Config, webSearchConfig *WebSearchConfig) (*llm.Response, error) {
+func (p *Provider) GenerateWithWebSearch(ctx context.Context, prompt string, config llm.Config) (*llm.Response, error) {
 	startTime := time.Now()
 
 	// Use a model that supports web search (gpt-4.1, gpt-5, o1, etc.)
@@ -664,5 +664,5 @@ func (p *Provider) supportsWebSearch(model string) bool {
 
 // GenerateWithWebSearchSimple is a convenience method that performs web search with default settings
 func (p *Provider) GenerateWithWebSearchSimple(ctx context.Context, prompt string, config llm.Config) (*llm.Response, error) {
-	return p.GenerateWithWebSearch(ctx, prompt, config, nil)
+	return p.GenerateWithWebSearch(ctx, prompt, config)
 }

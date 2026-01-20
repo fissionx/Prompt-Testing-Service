@@ -37,6 +37,7 @@ func NewCompetitorService(database db.Database, llmRegistry *llm.Registry) *Comp
 func (s *CompetitorService) SuggestCompetitors(
 	ctx context.Context,
 	brand string,
+	brandID string,
 	website string,
 	description string,
 	category string,
@@ -45,7 +46,7 @@ func (s *CompetitorService) SuggestCompetitors(
 	// Check if we already have cached suggestions (unless force refresh)
 	var existing *models.BrandCompetitors
 	var err error
-	
+
 	if !forceRefresh {
 		existing, err = s.db.GetBrandCompetitors(ctx, brand)
 		if err != nil {
@@ -120,6 +121,7 @@ func (s *CompetitorService) SuggestCompetitors(
 
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            id,
+		BrandID:       brandID,
 		Brand:         brand,
 		Competitors:   savedCompetitors, // Preserve existing saved competitors
 		SuggestedList: competitorNames,  // LLM-suggested list (as strings) - cache for deterministic behavior
@@ -168,13 +170,13 @@ func (s *CompetitorService) suggestCompetitorsWithLLM(
 	for _, llmConfig := range llms {
 		// Get the provider from registry using the provider name
 		provider, ok := s.llmRegistry.Get(llmConfig.Provider)
-	if !ok {
+		if !ok {
 			fmt.Printf("Warning: LLM provider '%s' not found in registry for LLM %s, trying next...\n", llmConfig.Provider, llmConfig.Name)
 			continue
 		}
 
 		// Try to get suggestions with this LLM
-		competitorNames, err := s.tryLLMForSuggestions(ctx, provider, llmConfig, brand, website, description, category)
+		competitorNames, err := s.tryLLMForSuggestions(ctx, provider, llmConfig, brand, website)
 		if err == nil && len(competitorNames) > 0 {
 			// Success! Return the results with LLM details
 			llmDetails := &models.LLMDetails{
@@ -206,8 +208,6 @@ func (s *CompetitorService) tryLLMForSuggestions(
 	llmConfig *models.LLMConfig,
 	brand string,
 	website string,
-	description string,
-	category string,
 ) ([]string, error) {
 
 	// Scrape website if provided to enrich context
@@ -219,10 +219,6 @@ func (s *CompetitorService) tryLLMForSuggestions(
 			fmt.Printf("Warning: failed to scrape website %s: %v\n", website, err)
 		} else {
 			websiteContent = content
-			// If description not provided, use scraped description
-			if description == "" && content.Description != "" {
-				description = content.Description
-			}
 		}
 	}
 
@@ -234,22 +230,12 @@ func (s *CompetitorService) tryLLMForSuggestions(
 		contextParts = append(contextParts, fmt.Sprintf("Website: %s", website))
 	}
 
-	if description != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Description: %s", description))
-	}
-
-	if category != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Category/Industry: %s", category))
-	}
-
 	// Add scraped website content for richer context
 	if websiteContent != nil {
 		if websiteContent.Title != "" {
 			contextParts = append(contextParts, fmt.Sprintf("Website Title: %s", websiteContent.Title))
 		}
-		if websiteContent.Description != "" && description == "" {
-			contextParts = append(contextParts, fmt.Sprintf("Website Meta: %s", websiteContent.Description))
-		}
+
 		if len(websiteContent.Keywords) > 0 {
 			contextParts = append(contextParts, fmt.Sprintf("Keywords: %s", strings.Join(websiteContent.Keywords, ", ")))
 		}
@@ -280,11 +266,19 @@ RULES:
 3. Consider companies that target the same customer base
 4. Include companies that appear in the same "best of" lists or comparison articles
 5. Be specific with company/product names (not generic terms)
+6. Incase any competitors or comparision is mentioned in the website content, use that for competitors list
 
-RESPOND WITH ONLY A JSON ARRAY of competitor names. No explanations, no markdown, just the JSON array.
+RESPOND WITH ONLY A JSON ARRAY of competitor names and their domains. No explanations, no markdown, just the JSON array. The domain should be the domain of the competitor website.
+
+Few sample examples of competitor names:
+  1. brand name is walmart, then competitors are amazon, target, costco, etc.
+  2. brand name is apple, then competitors are samsung, google, microsoft, etc.
+  3. brand name is IIT then competitors are IIT Madras, IIT Bombay, IIT Kanpur, etc.
+  4. brand name is Zoho then competitors are Salesforce, SAP, Oracle, Freshworks, etc.
+  5. brand name is instagram then competitors are facebook, twitter, tiktok, etc.
 
 Example response format:
-["Competitor 1", "Competitor 2", "Competitor 3", "Competitor 4", "Competitor 5"]
+[{"name": "Competitor 1", "domain": "www.competitor1.com"}, {"name": "Competitor 2", "domain": "www.competitor2.com"}, {"name": "Competitor 3", "domain": "www.competitor3.com"}]
 
 RESPOND NOW:`, brandContext)
 
@@ -323,22 +317,73 @@ RESPOND NOW:`, brandContext)
 }
 
 // parseCompetitorResponse parses the LLM response into a list of competitors
+// Supports both new format (JSON array of objects with name/domain) and old format (JSON array of strings)
 func parseCompetitorResponse(response string) ([]string, error) {
 	// Clean up the response
 	response = strings.TrimSpace(response)
-	
+
 	// Remove markdown code blocks if present
 	response = strings.TrimPrefix(response, "```json")
 	response = strings.TrimPrefix(response, "```")
 	response = strings.TrimSuffix(response, "```")
 	response = strings.TrimSpace(response)
 
-	// Try to parse as JSON array
-	var competitors []string
-	if err := json.Unmarshal([]byte(response), &competitors); err != nil {
-		// If JSON parsing fails, try to extract competitors from text
-		competitors = extractCompetitorsFromText(response)
+	// First, try to parse as JSON array of objects (new format: [{"name": "...", "domain": "..."}])
+	var competitorObjects []struct {
+		Name   string `json:"name"`
+		Domain string `json:"domain"`
 	}
+	if err := json.Unmarshal([]byte(response), &competitorObjects); err == nil && len(competitorObjects) > 0 {
+		// Successfully parsed as array of objects - convert to "name|domain" format
+		var result []string
+		seen := make(map[string]bool)
+		for _, comp := range competitorObjects {
+			name := strings.TrimSpace(comp.Name)
+			domain := strings.TrimSpace(comp.Domain)
+
+			if name == "" {
+				continue // Skip entries without a name
+			}
+
+			// Create storage format: "name|domain" or just "name" if domain is empty
+			storageStr := name
+			if domain != "" {
+				storageStr = name + "|" + domain
+			}
+
+			// Deduplicate by name (case-insensitive)
+			nameLower := strings.ToLower(name)
+			if !seen[nameLower] {
+				seen[nameLower] = true
+				result = append(result, storageStr)
+			}
+		}
+
+		if len(result) > 0 {
+			return result, nil
+		}
+	}
+
+	// Fall back to old format: try to parse as JSON array of strings
+	var competitors []string
+	if err := json.Unmarshal([]byte(response), &competitors); err == nil && len(competitors) > 0 {
+		// Successfully parsed as array of strings - clean and deduplicate
+		seen := make(map[string]bool)
+		var result []string
+		for _, comp := range competitors {
+			comp = strings.TrimSpace(comp)
+			if comp != "" && !seen[strings.ToLower(comp)] {
+				seen[strings.ToLower(comp)] = true
+				result = append(result, comp)
+			}
+		}
+		if len(result) > 0 {
+			return result, nil
+		}
+	}
+
+	// If JSON parsing fails, try to extract competitors from text
+	competitors = extractCompetitorsFromText(response)
 
 	// Clean and deduplicate
 	seen := make(map[string]bool)
@@ -355,9 +400,87 @@ func parseCompetitorResponse(response string) ([]string, error) {
 }
 
 // extractCompetitorsFromText extracts competitors from plain text response
+// Tries to extract JSON objects first, then falls back to text parsing
 func extractCompetitorsFromText(text string) []string {
 	var competitors []string
-	
+
+	// First, try to find and extract JSON array of objects in the text
+	// Look for patterns like [{"name": "...", "domain": "..."}]
+	// Try to find the start and end of a JSON array
+	startIdx := strings.Index(text, "[{")
+	if startIdx == -1 {
+		startIdx = strings.Index(text, "[\n{")
+	}
+	if startIdx == -1 {
+		startIdx = strings.Index(text, "[\r\n{")
+	}
+
+	if startIdx != -1 {
+		// Find the matching closing bracket
+		// Count brackets to find the proper end
+		bracketCount := 0
+		inString := false
+		escapeNext := false
+		endIdx := -1
+
+		for i := startIdx; i < len(text); i++ {
+			char := text[i]
+
+			if escapeNext {
+				escapeNext = false
+				continue
+			}
+
+			if char == '\\' {
+				escapeNext = true
+				continue
+			}
+
+			if char == '"' {
+				inString = !inString
+				continue
+			}
+
+			if !inString {
+				if char == '[' {
+					bracketCount++
+				} else if char == ']' {
+					bracketCount--
+					if bracketCount == 0 {
+						endIdx = i
+						break
+					}
+				}
+			}
+		}
+
+		if endIdx != -1 && endIdx > startIdx {
+			jsonStr := text[startIdx : endIdx+1]
+			var competitorObjects []struct {
+				Name   string `json:"name"`
+				Domain string `json:"domain"`
+			}
+			if err := json.Unmarshal([]byte(jsonStr), &competitorObjects); err == nil && len(competitorObjects) > 0 {
+				// Successfully extracted JSON objects
+				for _, comp := range competitorObjects {
+					name := strings.TrimSpace(comp.Name)
+					domain := strings.TrimSpace(comp.Domain)
+					if name != "" {
+						if domain != "" {
+							competitors = append(competitors, name+"|"+domain)
+						} else {
+							competitors = append(competitors, name)
+						}
+					}
+				}
+				if len(competitors) > 0 {
+					return competitors
+				}
+			}
+		}
+	}
+
+	// Fall back to text-based extraction
 	// Split by common delimiters
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
@@ -378,6 +501,7 @@ func extractCompetitorsFromText(text string) []string {
 func (s *CompetitorService) SaveCompetitors(
 	ctx context.Context,
 	brand string,
+	brandID string,
 	newCompetitors []models.Competitor,
 	source string,
 ) (*models.SaveCompetitorsResponse, error) {
@@ -395,7 +519,7 @@ func (s *CompetitorService) SaveCompetitors(
 	}
 
 	// Get existing data
-	existing, err := s.db.GetBrandCompetitors(ctx, brand)
+	existing, err := s.db.GetBrandCompetitors(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing competitors: %w", err)
 	}
@@ -447,6 +571,7 @@ func (s *CompetitorService) SaveCompetitors(
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            id,
 		Brand:         brand,
+		BrandID:       brandID,
 		Competitors:   allCompetitorStrings,
 		SuggestedList: suggestedList,
 		Source:        source,
@@ -481,20 +606,20 @@ func (s *CompetitorService) SaveCompetitors(
 // GetCompetitors retrieves saved competitors for a brand
 func (s *CompetitorService) GetCompetitors(
 	ctx context.Context,
-	brand string,
+	brandID string,
 ) (*models.GetCompetitorsResponse, error) {
-	if brand == "" {
+	if brandID == "" {
 		return nil, fmt.Errorf("brand is required")
 	}
 
-	competitors, err := s.db.GetBrandCompetitors(ctx, brand)
+	competitors, err := s.db.GetBrandCompetitors(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get competitors: %w", err)
 	}
 
 	if competitors == nil {
 		return &models.GetCompetitorsResponse{
-			Brand:       brand,
+			BrandID:     brandID,
 			Competitors: []models.Competitor{},
 			Source:      "none",
 			UpdatedAt:   time.Now(),
@@ -506,7 +631,7 @@ func (s *CompetitorService) GetCompetitors(
 	suggestedList := convertStringListToCompetitors(competitors.SuggestedList)
 
 	return &models.GetCompetitorsResponse{
-		Brand:         brand,
+		BrandID:       brandID,
 		Competitors:   competitorList,
 		SuggestedList: suggestedList,
 		Source:        competitors.Source,
@@ -569,7 +694,7 @@ func (s *CompetitorService) DeleteCompetitors(
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            existing.ID,
 		Brand:         existing.Brand,
-		Competitors:   []string{}, // Clear competitors list
+		Competitors:   []string{},              // Clear competitors list
 		SuggestedList: updatedSuggestedStrings, // Add all competitors to suggestedList
 		Source:        existing.Source,
 		CreatedAt:     existing.CreatedAt,
@@ -587,11 +712,11 @@ func (s *CompetitorService) DeleteCompetitors(
 // Returns the updated competitor list and a message indicating success
 func (s *CompetitorService) DeleteCompetitorByName(
 	ctx context.Context,
-	brand string,
+	brandID string,
 	competitorName string,
 ) (*models.DeleteCompetitorResponse, error) {
-	if brand == "" {
-		return nil, fmt.Errorf("brand is required")
+	if brandID == "" {
+		return nil, fmt.Errorf("brandID is required")
 	}
 
 	if competitorName == "" {
@@ -599,13 +724,13 @@ func (s *CompetitorService) DeleteCompetitorByName(
 	}
 
 	// Get existing competitors
-	existing, err := s.db.GetBrandCompetitors(ctx, brand)
+	existing, err := s.db.GetBrandCompetitors(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing competitors: %w", err)
 	}
 
 	if existing == nil {
-		return nil, fmt.Errorf("no competitors found for brand: %s", brand)
+		return nil, fmt.Errorf("no competitors found for brand: %s", brandID)
 	}
 
 	// Convert existing competitors to Competitor objects
@@ -632,7 +757,7 @@ func (s *CompetitorService) DeleteCompetitorByName(
 	}
 
 	if !found {
-		return nil, fmt.Errorf("competitor '%s' not found in the list for brand: %s", competitorName, brand)
+		return nil, fmt.Errorf("competitor '%s' not found in the list for brand: %s", competitorName, brandID)
 	}
 
 	// Add deleted competitor back to suggestedList (if not already present)
@@ -663,6 +788,7 @@ func (s *CompetitorService) DeleteCompetitorByName(
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            existing.ID,
 		Brand:         existing.Brand,
+		BrandID:       brandID,
 		Competitors:   updatedCompetitorStrings,
 		SuggestedList: updatedSuggestedStrings, // Add deleted competitor back to suggestedList
 		Source:        existing.Source,
@@ -675,10 +801,10 @@ func (s *CompetitorService) DeleteCompetitorByName(
 	}
 
 	return &models.DeleteCompetitorResponse{
-		Brand:       brand,
+		Brand:       brandID,
 		DeletedName: competitorName,
 		Competitors: updatedCompetitors,
-		Message:     fmt.Sprintf("Successfully deleted competitor '%s' from %s", competitorName, brand),
+		Message:     fmt.Sprintf("Successfully deleted competitor '%s' from %s", competitorName, brandID),
 	}, nil
 }
 
@@ -686,7 +812,7 @@ func (s *CompetitorService) DeleteCompetitorByName(
 // Returns user-defined competitors if available, otherwise returns empty (falls back to auto-detect in analytics)
 func (s *CompetitorService) GetCompetitorsForAnalytics(
 	ctx context.Context,
-	brand string,
+	brandID string,
 	requestedCompetitors []string,
 ) ([]string, error) {
 	// If specific competitors requested, use those
@@ -695,7 +821,7 @@ func (s *CompetitorService) GetCompetitorsForAnalytics(
 	}
 
 	// Check for saved competitors
-	saved, err := s.db.GetBrandCompetitors(ctx, brand)
+	saved, err := s.db.GetBrandCompetitors(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get saved competitors: %w", err)
 	}
@@ -715,7 +841,7 @@ func convertStringListToCompetitors(competitorStrings []string) []models.Competi
 	competitors := make([]models.Competitor, 0, len(competitorStrings))
 	for _, str := range competitorStrings {
 		var name, domain string
-		
+
 		// Check if it's in "name|domain" format
 		if idx := strings.Index(str, "|"); idx != -1 {
 			name = strings.TrimSpace(str[:idx])
@@ -725,12 +851,12 @@ func convertStringListToCompetitors(competitorStrings []string) []models.Competi
 			name = str
 			domain = deriveCompetitorDomainFromName(name)
 		}
-		
+
 		// If domain is empty, derive it
 		if domain == "" {
 			domain = deriveCompetitorDomainFromName(name)
 		}
-		
+
 		competitors = append(competitors, models.Competitor{
 			Name:   name,
 			Domain: domain,

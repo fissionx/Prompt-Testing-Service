@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,45 +50,6 @@ func NewBrandService(baseURL string) *BrandService {
 
 // GetBrandInfo retrieves brand information by ID (UUID string) with caching
 func (s *BrandService) GetBrandInfo(ctx context.Context, brandID string) (*BrandInfo, error) {
-	// Special fallback for Zoho brand ID
-	const zohoBrandID = "8ea22500-53ff-42fb-81eb-f7cd512463ac"
-	if brandID == zohoBrandID {
-		// Check cache first
-		s.cacheMutex.RLock()
-		if cached, exists := s.cache[brandID]; exists {
-			s.cacheMutex.RUnlock()
-			return cached, nil
-		}
-		s.cacheMutex.RUnlock()
-
-		// Try to fetch from API
-		brandInfo, err := s.fetchBrandInfo(ctx, brandID)
-		if err != nil {
-			// Return fallback data for Zoho if API fails
-			fallbackInfo := &BrandInfo{
-				ID:        zohoBrandID,
-				Name:      "zoho",
-				Domain:    "zoho.com",
-				Language:  "",
-				Category:  "",
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			}
-			// Cache the fallback
-			s.cacheMutex.Lock()
-			s.cache[brandID] = fallbackInfo
-			s.cacheMutex.Unlock()
-			return fallbackInfo, nil
-		}
-
-		// Store successful API response in cache
-		s.cacheMutex.Lock()
-		s.cache[brandID] = brandInfo
-		s.cacheMutex.Unlock()
-
-		return brandInfo, nil
-	}
-
 	// Check cache first
 	s.cacheMutex.RLock()
 	if cached, exists := s.cache[brandID]; exists {
@@ -100,6 +62,11 @@ func (s *BrandService) GetBrandInfo(ctx context.Context, brandID string) (*Brand
 	brandInfo, err := s.fetchBrandInfo(ctx, brandID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch brand info: %w", err)
+	}
+
+	// Append https:// only if domain doesn't start with https:// or www.
+	if brandInfo.Domain != "" && !strings.HasPrefix(brandInfo.Domain, "https://") && !strings.HasPrefix(brandInfo.Domain, "www.") {
+		brandInfo.Domain = "https://" + brandInfo.Domain
 	}
 
 	// Store in cache

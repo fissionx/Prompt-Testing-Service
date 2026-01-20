@@ -401,8 +401,8 @@ func (h *HybridDB) GetBrandPrompts(ctx context.Context, brand string) (*models.B
 	return h.nosqlDB.GetBrandPrompts(ctx, brand)
 }
 
-func (h *HybridDB) DeleteBrandCompetitors(ctx context.Context, brand string) error {
-	return h.nosqlDB.DeleteBrandCompetitors(ctx, brand)
+func (h *HybridDB) DeleteBrandCompetitors(ctx context.Context, brandID string) error {
+	return h.nosqlDB.DeleteBrandCompetitors(ctx, brandID)
 }
 
 func (h *HybridDB) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {

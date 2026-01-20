@@ -211,6 +211,7 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 	CREATE TABLE IF NOT EXISTS brand_competitors (
 		id TEXT PRIMARY KEY,
 		brand TEXT NOT NULL UNIQUE,
+		brand_id TEXT NOT NULL UNIQUE,
 		competitors JSONB DEFAULT '[]'::jsonb,
 		suggested_list JSONB DEFAULT '[]'::jsonb,
 		source TEXT,
@@ -355,7 +356,7 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_brand_logos_brand_name ON brand_logos(brand_name)",
 
 		// Brand Competitors indexes
-		"CREATE INDEX IF NOT EXISTS idx_brand_competitors_brand ON brand_competitors(brand)",
+		"CREATE INDEX IF NOT EXISTS idx_brand_competitors_brand ON brand_competitors(brand_id)",
 
 		// Brand Prompts indexes
 		"CREATE INDEX IF NOT EXISTS idx_brand_prompts_brand ON brand_prompts(brand)",

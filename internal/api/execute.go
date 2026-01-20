@@ -13,11 +13,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/llm/anthropic"
-	"github.com/fissionx/gego/internal/llm/google"
-	"github.com/fissionx/gego/internal/llm/ollama"
+	// "github.com/fissionx/gego/internal/llm/anthropic"
+	// "github.com/fissionx/gego/internal/llm/google"
+	// "github.com/fissionx/gego/internal/llm/ollama"
 	"github.com/fissionx/gego/internal/llm/openai"
-	"github.com/fissionx/gego/internal/llm/perplexity"
+	// "github.com/fissionx/gego/internal/llm/perplexity"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
 )
@@ -74,14 +74,14 @@ func (s *Server) execute(c *gin.Context) {
 	switch llmConfig.Provider {
 	case "openai":
 		provider = openai.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "anthropic":
-		provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "ollama":
-		provider = ollama.New(llmConfig.BaseURL)
-	case "google":
-		provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
-	case "perplexity":
-		provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "anthropic":
+	// 	provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "ollama":
+	// 	provider = ollama.New(llmConfig.BaseURL)
+	// case "google":
+	// 	provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
+	// case "perplexity":
+	// 	provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
 	default:
 		s.errorResponse(c, http.StatusInternalServerError, "Unknown LLM provider: "+llmConfig.Provider)
 		return
@@ -141,10 +141,10 @@ func (s *Server) execute(c *gin.Context) {
 	if req.Brand != "" {
 		// Try to parse the JSON response
 		var geoResponse geoJSONResponse
-		
+
 		// Clean up the response - remove markdown code blocks if present
 		cleanedText := strings.TrimSpace(llmResponse.Text)
-		
+
 		// Remove markdown code block wrappers (```json ... ``` or ``` ... ```)
 		jsonBlockRegex := regexp.MustCompile("(?s)```(?:json)?\\s*(.+?)\\s*```")
 		if matches := jsonBlockRegex.FindStringSubmatch(cleanedText); len(matches) > 1 {
@@ -185,8 +185,8 @@ func (s *Server) execute(c *gin.Context) {
 				Competitors:        geoResponse.GEOAnalysis.Competitors,
 				Sentiment:          geoResponse.GEOAnalysis.Sentiment,
 			}
-			log.Printf("GEO Analysis: Score=%d, Mentioned=%v, Grounded=%v, Sentiment=%s", 
-				geoAnalysis.VisibilityScore, geoAnalysis.BrandMentioned, 
+			log.Printf("GEO Analysis: Score=%d, Mentioned=%v, Grounded=%v, Sentiment=%s",
+				geoAnalysis.VisibilityScore, geoAnalysis.BrandMentioned,
 				geoAnalysis.InGroundingSources, geoAnalysis.Sentiment)
 		} else {
 			log.Printf("❌ Failed to parse GEO JSON: %v", err)
@@ -224,7 +224,7 @@ func (s *Server) execute(c *gin.Context) {
 	// Always extract domains from grounding sources (even if JSON parsing fails)
 	if len(llmResponse.GroundingSources) > 0 {
 		responseModel.GroundingDomains = services.ExtractDomainsFromSources(llmResponse.GroundingSources)
-		
+
 		// Check if brand appears in grounding sources (even if JSON parsing fails)
 		if req.Brand != "" {
 			brandLower := strings.ToLower(req.Brand)
@@ -248,7 +248,7 @@ func (s *Server) execute(c *gin.Context) {
 		responseModel.InGroundingSources = geoAnalysis.InGroundingSources
 		responseModel.Sentiment = geoAnalysis.Sentiment
 		responseModel.CompetitorsMention = geoAnalysis.Competitors
-		
+
 		// NEW: Extract position/ranking from response
 		if req.Brand != "" && geoAnalysis.BrandMentioned {
 			position, totalBrands := services.ExtractBrandPosition(responseText, req.Brand)
@@ -263,14 +263,14 @@ func (s *Server) execute(c *gin.Context) {
 			responseModel.BrandMentioned = true
 		}
 	}
-	
+
 	// NEW: Add time-series fields
 	now := time.Now()
 	responseModel.Week = now.Format("2006-W02")
 	responseModel.Month = now.Format("2006-01")
-	quarter := (int(now.Month()) - 1) / 3 + 1
+	quarter := (int(now.Month())-1)/3 + 1
 	responseModel.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
-	
+
 	// NEW: Add region/language if provided
 	responseModel.Region = req.Region
 	responseModel.Language = req.Language
@@ -310,4 +310,3 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen] + "..."
 }
-

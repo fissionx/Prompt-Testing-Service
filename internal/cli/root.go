@@ -12,11 +12,12 @@ import (
 	"github.com/fissionx/gego/internal/config"
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
-	"github.com/fissionx/gego/internal/llm/anthropic"
-	"github.com/fissionx/gego/internal/llm/google"
-	"github.com/fissionx/gego/internal/llm/ollama"
+
+	// "github.com/fissionx/gego/internal/llm/anthropic"
+	// "github.com/fissionx/gego/internal/llm/google"
+	// "github.com/fissionx/gego/internal/llm/ollama"
 	"github.com/fissionx/gego/internal/llm/openai"
-	"github.com/fissionx/gego/internal/llm/perplexity"
+	// "github.com/fissionx/gego/internal/llm/perplexity"
 	"github.com/fissionx/gego/internal/logger"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
@@ -102,10 +103,10 @@ and compare performance across different LLM providers.`,
 
 		llmRegistry = llm.NewRegistry()
 		llmRegistry.Register(openai.New("", ""))
-		llmRegistry.Register(anthropic.New("", ""))
-		llmRegistry.Register(ollama.New(""))
-		llmRegistry.Register(google.New("", ""))
-		llmRegistry.Register(perplexity.New("", ""))
+		// llmRegistry.Register(anthropic.New("", ""))
+		// llmRegistry.Register(ollama.New(""))
+		// llmRegistry.Register(google.New("", ""))
+		// llmRegistry.Register(perplexity.New("", ""))
 
 		sched = services.NewSchedulerService(database, llmRegistry)
 
@@ -155,14 +156,14 @@ func initializeLLMProviders(ctx context.Context) error {
 		switch llmConfig.Provider {
 		case "openai":
 			provider = openai.New(llmConfig.APIKey, llmConfig.BaseURL)
-		case "anthropic":
-			provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
-		case "ollama":
-			provider = ollama.New(llmConfig.BaseURL)
-		case "google":
-			provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
-		case "perplexity":
-			provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
+		// case "anthropic":
+		// 	provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
+		// case "ollama":
+		// 	provider = ollama.New(llmConfig.BaseURL)
+		// case "google":
+		// 	provider = google.New(llmConfig.APIKey, llmConfig.BaseURL)
+		// case "perplexity":
+		// 	provider = perplexity.New(llmConfig.APIKey, llmConfig.BaseURL)
 		default:
 			continue
 		}

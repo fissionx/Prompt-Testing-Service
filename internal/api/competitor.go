@@ -56,6 +56,7 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 	_, err = s.competitorService.SaveCompetitors(
 		ctx,
 		brandName,
+		brandID,
 		normalizedCompetitors,
 		req.Source,
 	)
@@ -65,7 +66,7 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 	}
 
 	// Return the updated competitors list in the same format as GET endpoint
-	s.getCompetitorsResponse(c, brandName, "", "", "", false)
+	s.getCompetitorsResponse(c, brandName, brandID, brandInfo.Domain, brandInfo.Description, brandInfo.Category, false)
 }
 
 // getCompetitors handles GET /api/v1/geo/brand/:brandId/competitors
@@ -77,31 +78,25 @@ func (s *Server) getCompetitors(c *gin.Context) {
 		s.errorResponse(c, http.StatusBadRequest, "BrandId parameter is required")
 		return
 	}
-
 	// Get brand info from external API
 	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
 	}
-
-	brandName := brandInfo.Name
-
-	website := shared.NormalizeDomainToURL(brandInfo.Domain)
-	description := ""
-	category := brandInfo.Category
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getCompetitorsResponse(c, brandName, website, description, category, forceRefresh)
+	s.getCompetitorsResponse(c, brandInfo.Name, brandInfo.ID, brandInfo.Domain, brandInfo.Description, brandInfo.Category, forceRefresh)
 }
 
 // getCompetitorsResponse is a helper function that builds and returns the competitors response
 // This is used by both GET and POST/DELETE endpoints to ensure consistent response format
-func (s *Server) getCompetitorsResponse(c *gin.Context, brand, website, description, category string, forceRefresh bool) {
+func (s *Server) getCompetitorsResponse(c *gin.Context, brand, brandID, website, description, category string, forceRefresh bool) {
 	ctx := c.Request.Context()
 
 	// Get saved competitors
-	response, err := s.competitorService.GetCompetitors(ctx, brand)
+	response, err := s.competitorService.GetCompetitors(ctx, brandID)
+	response.Brand = brand
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitors: "+err.Error())
 		return
@@ -134,6 +129,7 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, website, descript
 		suggestResponse, err := s.competitorService.SuggestCompetitors(
 			ctx,
 			brand,
+			brandID,
 			website,
 			description,
 			category,
@@ -208,7 +204,7 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 
 	// If name is provided, delete individual competitor
 	if competitorName != "" {
-		_, err := s.competitorService.DeleteCompetitorByName(ctx, brandName, competitorName)
+		_, err := s.competitorService.DeleteCompetitorByName(ctx, brandID, competitorName)
 		if err != nil {
 			// Check if it's a "not found" error
 			if strings.Contains(err.Error(), "not found") {
@@ -220,7 +216,7 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 		}
 
 		// Return the updated competitors list in the same format as GET endpoint
-		s.getCompetitorsResponse(c, brandName, "", "", "", false)
+		s.getCompetitorsResponse(c, brandName, brandID, brandInfo.Domain, brandInfo.Description, brandInfo.Category, false)
 		return
 	}
 
@@ -232,5 +228,5 @@ func (s *Server) deleteCompetitors(c *gin.Context) {
 	}
 
 	// Return the updated competitors list in the same format as GET endpoint
-	s.getCompetitorsResponse(c, brandName, "", "", "", false)
+	s.getCompetitorsResponse(c, brandName, brandID, brandInfo.Domain, brandInfo.Description, brandInfo.Category, false)
 }

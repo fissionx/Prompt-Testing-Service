@@ -16,7 +16,7 @@ func (s *Server) getBrand(c *gin.Context) {
 		return
 	}
 
-	// Get brand info from brand service (which includes fallback for Zoho)
+	// Get brand info from brand service
 	brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID)
 	if err != nil {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())

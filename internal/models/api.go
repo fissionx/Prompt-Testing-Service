@@ -896,6 +896,7 @@ type DeleteCompetitorResponse struct {
 
 // GetCompetitorsResponse represents the response with brand's saved competitors
 type GetCompetitorsResponse struct {
+	BrandID       string       `json:"brandId"`
 	Brand         string       `json:"brand"`
 	Competitors   []Competitor `json:"competitors"`
 	SuggestedList []Competitor `json:"suggestedList,omitempty"` // Original suggestions for reference
