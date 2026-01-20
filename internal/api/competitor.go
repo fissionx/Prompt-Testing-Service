@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fissionx/gego/internal/middleware"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
@@ -53,12 +54,21 @@ func (s *Server) saveCompetitors(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
+	// Get orgId from context (set by auth middleware)
+	orgID, err := middleware.GetOrgID(c)
+	if err != nil {
+		// If orgId is not available, use empty string (for backward compatibility)
+		// In production, you might want to return an error instead
+		orgID = ""
+	}
+
 	_, err = s.competitorService.SaveCompetitors(
 		ctx,
 		brandName,
 		brandID,
 		normalizedCompetitors,
 		req.Source,
+		orgID,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to save competitors: "+err.Error())
@@ -126,6 +136,13 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, brandID, website,
 		// When competitors list is empty and no cached suggestions, we MUST get fresh suggestions from LLM
 		needsFreshSuggestions := len(response.Competitors) == 0 && len(response.SuggestedList) == 0
 
+		// Get orgId from context (set by auth middleware)
+		orgID, err := middleware.GetOrgID(c)
+		if err != nil {
+			// If orgId is not available, use empty string (for backward compatibility)
+			orgID = ""
+		}
+
 		suggestResponse, err := s.competitorService.SuggestCompetitors(
 			ctx,
 			brand,
@@ -134,6 +151,7 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, brandID, website,
 			description,
 			category,
 			forceRefresh || needsFreshSuggestions, // Force refresh if we need fresh suggestions
+			orgID,
 		)
 		if err != nil {
 			// If suggestion fails and we have no suggestions, return error

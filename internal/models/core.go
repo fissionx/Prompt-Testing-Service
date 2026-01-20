@@ -179,6 +179,7 @@ type BrandCompetitors struct {
 	ID            string    `json:"id" bson:"_id"`
 	Brand         string    `json:"brand" bson:"brand"`
 	BrandID       string    `json:"brandId" bson:"brand_id"`
+	OrgID         string    `json:"orgId" bson:"org_id"`                 // Organization ID
 	Competitors   []string  `json:"competitors" bson:"competitors"`      // User-defined competitor list
 	SuggestedList []string  `json:"suggestedList" bson:"suggested_list"` // Original AI-suggested competitors (cached)
 	Source        string    `json:"source" bson:"source"`                // "suggested", "custom", or "mixed"

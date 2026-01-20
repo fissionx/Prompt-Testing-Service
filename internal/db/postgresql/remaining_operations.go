@@ -376,9 +376,10 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 	competitors.UpdatedAt = now
 
 	query := `
-		INSERT INTO brand_competitors (id, brand, brand_id, competitors, suggested_list, source, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO brand_competitors (id, brand, brand_id, org_id, competitors, suggested_list, source, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (brand_id) DO UPDATE SET
+			org_id = EXCLUDED.org_id,
 			competitors = EXCLUDED.competitors,
 			suggested_list = EXCLUDED.suggested_list,
 			source = EXCLUDED.source,
@@ -389,6 +390,7 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 		competitors.ID,
 		competitors.Brand,
 		competitors.BrandID,
+		competitors.OrgID,
 		sliceToJSON(competitors.Competitors),
 		sliceToJSON(competitors.SuggestedList),
 		competitors.Source,
@@ -401,7 +403,7 @@ func (p *PostgreSQL) SaveBrandCompetitors(ctx context.Context, competitors *mode
 
 func (p *PostgreSQL) GetBrandCompetitors(ctx context.Context, brandID string) (*models.BrandCompetitors, error) {
 	query := `
-		SELECT id, brand, brand_id, competitors, suggested_list, source, created_at, updated_at
+		SELECT id, brand, brand_id, org_id, competitors, suggested_list, source, created_at, updated_at
 		FROM brand_competitors
 		WHERE brand_id = $1
 	`
@@ -413,6 +415,7 @@ func (p *PostgreSQL) GetBrandCompetitors(ctx context.Context, brandID string) (*
 		&competitors.ID,
 		&competitors.Brand,
 		&competitors.BrandID,
+		&competitors.OrgID,
 		&competitorsJSON,
 		&suggestedListJSON,
 		&competitors.Source,
@@ -440,7 +443,7 @@ func (p *PostgreSQL) DeleteBrandCompetitors(ctx context.Context, brandID string)
 
 func (p *PostgreSQL) ListBrandCompetitors(ctx context.Context) ([]*models.BrandCompetitors, error) {
 	query := `
-		SELECT id, brand, competitors, suggested_list, source, created_at, updated_at
+		SELECT id, brand, brand_id, org_id, competitors, suggested_list, source, created_at, updated_at
 		FROM brand_competitors
 		ORDER BY created_at DESC
 	`
@@ -459,6 +462,8 @@ func (p *PostgreSQL) ListBrandCompetitors(ctx context.Context) ([]*models.BrandC
 		if err := rows.Scan(
 			&competitors.ID,
 			&competitors.Brand,
+			&competitors.BrandID,
+			&competitors.OrgID,
 			&competitorsJSON,
 			&suggestedListJSON,
 			&competitors.Source,

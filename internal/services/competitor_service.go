@@ -42,6 +42,7 @@ func (s *CompetitorService) SuggestCompetitors(
 	description string,
 	category string,
 	forceRefresh bool,
+	orgID string,
 ) (*models.SuggestCompetitorsResponse, error) {
 	// Check if we already have cached suggestions (unless force refresh)
 	var existing *models.BrandCompetitors
@@ -123,6 +124,7 @@ func (s *CompetitorService) SuggestCompetitors(
 		ID:            id,
 		BrandID:       brandID,
 		Brand:         brand,
+		OrgID:         orgID,
 		Competitors:   savedCompetitors, // Preserve existing saved competitors
 		SuggestedList: competitorNames,  // LLM-suggested list (as strings) - cache for deterministic behavior
 		Source:        source,
@@ -504,6 +506,7 @@ func (s *CompetitorService) SaveCompetitors(
 	brandID string,
 	newCompetitors []models.Competitor,
 	source string,
+	orgID string,
 ) (*models.SaveCompetitorsResponse, error) {
 	if brand == "" {
 		return nil, fmt.Errorf("brand is required")
@@ -572,6 +575,7 @@ func (s *CompetitorService) SaveCompetitors(
 		ID:            id,
 		Brand:         brand,
 		BrandID:       brandID,
+		OrgID:         orgID,
 		Competitors:   allCompetitorStrings,
 		SuggestedList: suggestedList,
 		Source:        source,
@@ -694,6 +698,8 @@ func (s *CompetitorService) DeleteCompetitors(
 	brandCompetitors := &models.BrandCompetitors{
 		ID:            existing.ID,
 		Brand:         existing.Brand,
+		BrandID:       existing.BrandID,
+		OrgID:         existing.OrgID,
 		Competitors:   []string{},              // Clear competitors list
 		SuggestedList: updatedSuggestedStrings, // Add all competitors to suggestedList
 		Source:        existing.Source,
@@ -789,6 +795,7 @@ func (s *CompetitorService) DeleteCompetitorByName(
 		ID:            existing.ID,
 		Brand:         existing.Brand,
 		BrandID:       brandID,
+		OrgID:         existing.OrgID,
 		Competitors:   updatedCompetitorStrings,
 		SuggestedList: updatedSuggestedStrings, // Add deleted competitor back to suggestedList
 		Source:        existing.Source,
