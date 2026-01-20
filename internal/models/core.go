@@ -54,6 +54,7 @@ type Prompt struct {
 type Schedule struct {
 	ID          string     `json:"id"`
 	BrandID     string     `json:"brandId"`
+	OrgID       string     `json:"orgId,omitempty"`
 	Name        string     `json:"name"`
 	PromptIDs   []string   `json:"promptIds"`
 	LLMIDs      []string   `json:"llmIds"`

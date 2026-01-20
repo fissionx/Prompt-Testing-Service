@@ -106,11 +106,11 @@ func (s *Server) getCompetitorsResponse(c *gin.Context, brand, brandID, website,
 
 	// Get saved competitors
 	response, err := s.competitorService.GetCompetitors(ctx, brandID)
-	response.Brand = brand
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to get competitors: "+err.Error())
 		return
 	}
+	response.Brand = brand
 
 	// Build a map of saved competitor names for filtering (case-insensitive)
 	savedCompetitorNames := make(map[string]bool)

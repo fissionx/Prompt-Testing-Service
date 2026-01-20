@@ -141,9 +141,12 @@ func (m *ScheduledCampaignManager) CreateScheduledCampaign(
 	}
 
 	// Save to database
+	logger.Info("Saving scheduled campaign to database: ID=%s, BrandID=%s, CampaignName=%s", campaign.ID, campaign.BrandID, campaign.CampaignName)
 	if err := m.db.SaveScheduledCampaign(ctx, campaign); err != nil {
+		logger.Error("Failed to save scheduled campaign: %v", err)
 		return nil, fmt.Errorf("failed to save scheduled campaign: %w", err)
 	}
+	logger.Info("Successfully saved scheduled campaign: ID=%s", campaign.ID)
 
 	// Register with cron if manager is running
 	m.mu.RLock()

@@ -122,27 +122,33 @@ func (h *HybridDB) DeleteAllLLMs(ctx context.Context) (int, error) {
 }
 
 func (h *HybridDB) CreateSchedule(ctx context.Context, schedule *models.Schedule) error {
-	return h.sqlDB.CreateSchedule(ctx, schedule)
+	// Store in PostgreSQL (primary storage)
+	return h.nosqlDB.CreateSchedule(ctx, schedule)
 }
 
 func (h *HybridDB) GetSchedule(ctx context.Context, id string) (*models.Schedule, error) {
-	return h.sqlDB.GetSchedule(ctx, id)
+	// Get from PostgreSQL (primary storage)
+	return h.nosqlDB.GetSchedule(ctx, id)
 }
 
 func (h *HybridDB) ListSchedules(ctx context.Context, brandId string, enabled *bool) ([]*models.Schedule, error) {
-	return h.sqlDB.ListSchedules(ctx, brandId, enabled)
+	// List from PostgreSQL (primary storage)
+	return h.nosqlDB.ListSchedules(ctx, brandId, enabled)
 }
 
 func (h *HybridDB) UpdateSchedule(ctx context.Context, schedule *models.Schedule) error {
-	return h.sqlDB.UpdateSchedule(ctx, schedule)
+	// Update in PostgreSQL (primary storage)
+	return h.nosqlDB.UpdateSchedule(ctx, schedule)
 }
 
 func (h *HybridDB) DeleteSchedule(ctx context.Context, id string) error {
-	return h.sqlDB.DeleteSchedule(ctx, id)
+	// Delete from PostgreSQL (primary storage)
+	return h.nosqlDB.DeleteSchedule(ctx, id)
 }
 
 func (h *HybridDB) DeleteAllSchedules(ctx context.Context) (int, error) {
-	return h.sqlDB.DeleteAllSchedules(ctx)
+	// Delete all from PostgreSQL (primary storage)
+	return h.nosqlDB.DeleteAllSchedules(ctx)
 }
 
 // Prompt operations - Use NoSQL
@@ -309,7 +315,7 @@ func (h *HybridDB) DeleteCachedPromptPerformanceByBrand(ctx context.Context, bra
 	return h.nosqlDB.DeleteCachedPromptPerformanceByBrand(ctx, brandID)
 }
 
-// Scheduled Campaign operations - Use NoSQL
+// Scheduled Campaign operations - Use PostgreSQL (via nosqlDB which is PostgreSQL)
 func (h *HybridDB) SaveScheduledCampaign(ctx context.Context, campaign *models.ScheduledCampaign) error {
 	return h.nosqlDB.SaveScheduledCampaign(ctx, campaign)
 }

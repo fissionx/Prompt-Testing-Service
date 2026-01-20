@@ -1508,12 +1508,17 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 	}
 	allResponses, err := s.db.ListResponses(ctx, allFilter)
 	var lastRunDate *time.Time
+	var brandID string // Extract brandID from responses
 	if err == nil {
-		// Find the most recent response for this brand
+		// Find the most recent response for this brand and extract brandID
 		for _, resp := range allResponses {
 			if resp.Brand == brand {
 				if lastRunDate == nil || resp.CreatedAt.After(*lastRunDate) {
 					lastRunDate = &resp.CreatedAt
+				}
+				// Extract brandID from the first matching response
+				if brandID == "" && resp.BrandID != "" {
+					brandID = resp.BrandID
 				}
 			}
 		}
@@ -1589,6 +1594,48 @@ func (s *DashboardService) setLastRunInfo(ctx context.Context, brand string, res
 		}
 	}
 
+	// Check if there are enabled schedules for this brand
+	// Query schedules by brandID if we have it, otherwise check all enabled schedules
+	if brandID != "" {
+		enabled := true
+		brandSchedules, err := s.db.ListSchedules(ctx, brandID, &enabled)
+		if err == nil && len(brandSchedules) > 0 {
+			// Find the most recent last_run from enabled schedules for this brand
+			var mostRecentSchedule *models.Schedule
+			for _, schedule := range brandSchedules {
+				if schedule.Enabled && schedule.LastRun != nil {
+					if mostRecentSchedule == nil || schedule.LastRun.After(*mostRecentSchedule.LastRun) {
+						mostRecentSchedule = schedule
+					}
+				}
+			}
+
+			// If we found a schedule with last_run, use it to update the status
+			if mostRecentSchedule != nil && mostRecentSchedule.LastRun != nil {
+				// Update last run date if schedule's last_run is more recent
+				if response.LastRunDate == nil || mostRecentSchedule.LastRun.After(*response.LastRunDate) {
+					response.LastRunDate = mostRecentSchedule.LastRun
+				}
+
+				// Check if schedule is currently executing (next_run is in the past and last_run is recent)
+				// This indicates the schedule might be running
+				if mostRecentSchedule.NextRun != nil {
+					now := time.Now()
+					// If next_run is in the past, the schedule should have run
+					// If last_run is very recent (within last 5 minutes), it might still be running
+					if mostRecentSchedule.NextRun.Before(now) {
+						timeSinceLastRun := time.Since(*mostRecentSchedule.LastRun)
+						if timeSinceLastRun < 5*time.Minute {
+							// Schedule execution might still be in progress
+							response.LastRunStatus = "running"
+							return
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Default to completed if no running campaign found
 	// This means either:
 	// 1. No campaigns exist
@@ -1615,6 +1662,46 @@ func (s *DashboardService) GetPromptExecutionStatus(
 		Brand: brand,
 	}
 	s.setLastRunInfo(ctx, brand, tempResponse)
+
+	// Also check schedules directly using brandID for more accurate results
+	if brandID != "" {
+		enabled := true
+		brandSchedules, err := s.db.ListSchedules(ctx, brandID, &enabled)
+		if err == nil && len(brandSchedules) > 0 {
+			// Find the most recent last_run from enabled schedules for this brand
+			var mostRecentSchedule *models.Schedule
+			for _, schedule := range brandSchedules {
+				if schedule.Enabled && schedule.LastRun != nil {
+					if mostRecentSchedule == nil || schedule.LastRun.After(*mostRecentSchedule.LastRun) {
+						mostRecentSchedule = schedule
+					}
+				}
+			}
+
+			// If we found a schedule with last_run, use it to update the status
+			if mostRecentSchedule != nil && mostRecentSchedule.LastRun != nil {
+				// Update last run date if schedule's last_run is more recent
+				if response.LastRunDate == nil || mostRecentSchedule.LastRun.After(*response.LastRunDate) {
+					response.LastRunDate = mostRecentSchedule.LastRun
+				}
+
+				// Check if schedule is currently executing (next_run is in the past and last_run is recent)
+				if mostRecentSchedule.NextRun != nil {
+					now := time.Now()
+					// If next_run is in the past, the schedule should have run
+					// If last_run is very recent (within last 5 minutes), it might still be running
+					if mostRecentSchedule.NextRun.Before(now) {
+						timeSinceLastRun := time.Since(*mostRecentSchedule.LastRun)
+						if timeSinceLastRun < 5*time.Minute {
+							// Schedule execution might still be in progress
+							response.LastRunStatus = "running"
+							return response, nil
+						}
+					}
+				}
+			}
+		}
+	}
 
 	response.LastRunDate = tempResponse.LastRunDate
 	response.LastRunStatus = tempResponse.LastRunStatus

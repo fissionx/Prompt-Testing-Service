@@ -97,4 +97,12 @@ type NoSQLDatabase interface {
 	GetGEOCampaignsByBrandID(ctx context.Context, brandID string) ([]*models.GEOCampaign, error)
 	GetRunningGEOCampaignByBrand(ctx context.Context, brand string) (*models.GEOCampaign, error)
 	UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error
+
+	// Schedule operations (PostgreSQL also supports schedules)
+	CreateSchedule(ctx context.Context, schedule *models.Schedule) error
+	GetSchedule(ctx context.Context, id string) (*models.Schedule, error)
+	ListSchedules(ctx context.Context, brandID string, enabled *bool) ([]*models.Schedule, error)
+	UpdateSchedule(ctx context.Context, schedule *models.Schedule) error
+	DeleteSchedule(ctx context.Context, id string) error
+	DeleteAllSchedules(ctx context.Context) (int, error)
 }

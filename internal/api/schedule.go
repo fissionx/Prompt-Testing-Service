@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/fissionx/gego/internal/logger"
+	"github.com/fissionx/gego/internal/middleware"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/shared"
 )
@@ -151,9 +152,17 @@ func (s *Server) createSchedule(c *gin.Context) {
 		return
 	}
 
+	// Get orgId from context (set by auth middleware)
+	orgID, err := middleware.GetOrgID(c)
+	if err != nil {
+		// If orgId is not available, use empty string (for backward compatibility)
+		orgID = ""
+	}
+
 	schedule := &models.Schedule{
 		ID:          uuid.New().String(),
 		BrandID:     brandId,
+		OrgID:       orgID,
 		Name:        req.Name,
 		PromptIDs:   req.PromptIDs,
 		LLMIDs:      req.LLMIDs,

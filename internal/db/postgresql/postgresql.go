@@ -193,6 +193,7 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		id TEXT PRIMARY KEY,
 		brand TEXT NOT NULL UNIQUE,
 		brand_id TEXT NOT NULL UNIQUE,
+		org_id TEXT,
 		competitors JSONB DEFAULT '[]'::jsonb,
 		suggested_list JSONB DEFAULT '[]'::jsonb,
 		source TEXT,
@@ -281,6 +282,23 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		start_time TIMESTAMP NOT NULL,
 		end_time TIMESTAMP NOT NULL,
 		data JSONB NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
+
+	-- Schedules table
+	CREATE TABLE IF NOT EXISTS schedules (
+		id TEXT PRIMARY KEY,
+		brand_id TEXT NOT NULL,
+		org_id TEXT,
+		name TEXT NOT NULL,
+		prompt_ids JSONB DEFAULT '[]'::jsonb,
+		llm_ids JSONB DEFAULT '[]'::jsonb,
+		cron_expr TEXT NOT NULL,
+		temperature DOUBLE PRECISION,
+		enabled BOOLEAN NOT NULL DEFAULT true,
+		last_run TIMESTAMP,
+		next_run TIMESTAMP,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
@@ -395,6 +413,13 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_id_campaign ON cached_prompt_performance(brand_id, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_brand_id_time ON cached_prompt_performance(brand_id, start_time DESC, end_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_performance_org_id ON cached_prompt_performance(org_id) WHERE org_id IS NOT NULL",
+
+		// Schedules indexes
+		"CREATE INDEX IF NOT EXISTS idx_schedules_brand_id ON schedules(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_schedules_org_id ON schedules(org_id) WHERE org_id IS NOT NULL",
+		"CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled)",
+		"CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run) WHERE next_run IS NOT NULL",
+		"CREATE INDEX IF NOT EXISTS idx_schedules_brand_enabled ON schedules(brand_id, enabled)",
 
 		// Scheduled Campaigns indexes
 		"CREATE INDEX IF NOT EXISTS idx_scheduled_campaigns_brand_id ON scheduled_campaigns(brand_id)",

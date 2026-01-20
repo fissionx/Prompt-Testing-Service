@@ -507,7 +507,7 @@ func (p *PostgreSQL) SaveScheduledCampaign(ctx context.Context, campaign *models
 			updated_at = EXCLUDED.updated_at
 	`
 
-	_, err := p.db.ExecContext(ctx, query,
+	result, err := p.db.ExecContext(ctx, query,
 		campaign.ID,
 		campaign.BrandID,
 		campaign.OrgID,
@@ -525,8 +525,19 @@ func (p *PostgreSQL) SaveScheduledCampaign(ctx context.Context, campaign *models
 		campaign.CreatedAt,
 		campaign.UpdatedAt,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to save scheduled campaign to database: %w", err)
+	}
 
-	return err
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows affected when saving scheduled campaign")
+	}
+
+	return nil
 }
 
 func (p *PostgreSQL) GetScheduledCampaign(ctx context.Context, id string) (*models.ScheduledCampaign, error) {
