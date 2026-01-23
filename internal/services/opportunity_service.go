@@ -87,6 +87,7 @@ type OpportunityGEOAnalysis struct {
 }
 
 // AnalyzeAndGenerateOpportunities performs GEO analysis and generates opportunities in a single LLM call
+// Uses the same LLM provider that was used for executing the prompt
 func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	ctx context.Context,
 	orgID string,
@@ -98,37 +99,48 @@ func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	searchAnswer string,
 	sourcesInfo string,
 	competitors []string,
+	llmProvider llm.Provider,
+	llmModel string,
 ) (*GEOAnalysisWithOpportunitiesResult, []*models.Opportunity, error) {
-	// Get the best available LLM for analysis
-	provider, model, err := s.getBestLLM(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("no LLM available for analysis: %w", err)
-	}
+	fmt.Printf("🎯 AnalyzeAndGenerateOpportunities called for brand: %s, prompt: %s\n", brandName, promptID)
+	fmt.Printf("✅ Using same LLM model: %s for opportunity analysis\n", llmModel)
+
+	// Use the provided LLM provider (same one that executed the prompt)
+	provider := llmProvider
+	model := llmModel
 
 	// Generate the combined prompt
 	prompt := utils.GEOAnalysisWithOpportunitiesPrompt(brandName, searchQuery, searchAnswer, sourcesInfo, competitors)
 
 	// Call LLM
+	fmt.Printf("📤 Calling LLM for opportunity analysis (prompt length: %d chars)\n", len(prompt))
 	response, err := provider.Generate(ctx, prompt, llm.Config{
 		Model:       model,
 		Temperature: 0.3, // Lower temperature for more consistent analysis
 		MaxTokens:   4096,
 	})
 	if err != nil {
+		fmt.Printf("❌ LLM call failed: %v\n", err)
 		return nil, nil, fmt.Errorf("LLM analysis failed: %w", err)
 	}
+	fmt.Printf("📥 LLM response received (length: %d chars)\n", len(response.Text))
 
 	// Parse the response
 	result, err := s.parseGEOAnalysisWithOpportunities(response.Text)
 	if err != nil {
+		fmt.Printf("❌ Failed to parse LLM response: %v\n", err)
+		fmt.Printf("📋 Raw response (first 500 chars): %s\n", truncateString(response.Text, 500))
 		return nil, nil, fmt.Errorf("failed to parse LLM response: %w", err)
 	}
+	fmt.Printf("✅ Parsed response - found %d opportunities\n", len(result.Opportunities))
 
 	// Convert LLM opportunities to database models with deduplication
 	opportunities, err := s.processOpportunities(ctx, orgID, brandID, promptID, responseID, result.Opportunities)
 	if err != nil {
+		fmt.Printf("❌ Failed to process opportunities: %v\n", err)
 		return nil, nil, fmt.Errorf("failed to process opportunities: %w", err)
 	}
+	fmt.Printf("✅ Saved %d opportunities to database\n", len(opportunities))
 
 	return result, opportunities, nil
 }
@@ -246,7 +258,7 @@ func (s *OpportunityService) processOpportunities(
 			continue
 		}
 
-		// Create new opportunity with all detailed fields
+		// Create new opportunity
 		opportunity := &models.Opportunity{
 			ID:         uuid.New().String(),
 			OrgID:      orgID,
@@ -260,27 +272,14 @@ func (s *OpportunityService) processOpportunities(
 			Title:       llmOpp.Title,
 			Description: llmOpp.Description,
 
-			// WHY - Evidence and reasoning
-			GapAnalysis:       llmOpp.GapAnalysis,
-			CurrentState:      llmOpp.CurrentState,
-			CompetitorContext: llmOpp.CompetitorContext,
-			SourceEvidence:    llmOpp.SourceEvidence,
-
-			// WHAT - Specific recommendation
-			RecommendedAction: llmOpp.RecommendedAction,
-			ExpectedOutcome:   llmOpp.ExpectedOutcome,
-
-			// WHERE - Target and context
-			TargetPlatform: llmOpp.TargetPlatform,
-			TargetAudience: llmOpp.TargetAudience,
-			Keywords:       llmOpp.Keywords,
-			RelatedURLs:    llmOpp.RelatedURLs,
+			// Context and evidence
+			CurrentState:   llmOpp.CurrentState,
+			SourceEvidence: llmOpp.SourceEvidence,
 
 			// Priority and scoring
-			ImpactScore:     llmOpp.ImpactScore,
-			ImpactReasoning: llmOpp.ImpactReasoning,
-			Urgency:         llmOpp.Urgency,
-			EffortEstimate:  llmOpp.EffortEstimate,
+			ImpactScore:    llmOpp.ImpactScore,
+			Urgency:        llmOpp.Urgency,
+			EffortEstimate: llmOpp.EffortEstimate,
 
 			// Internal fields
 			ContentHash: contentHash,

@@ -106,24 +106,11 @@ func (p *PostgreSQL) migrateOpportunitiesTable(ctx context.Context) error {
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS org_id TEXT",
 		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS org_id TEXT",
 
-		// WHY - Evidence and reasoning
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS gap_analysis TEXT",
+		// Context and evidence
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS current_state TEXT",
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS competitor_context TEXT",
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS source_evidence TEXT",
 
-		// WHAT - Specific recommendation
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS recommended_action TEXT",
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS expected_outcome TEXT",
-
-		// WHERE - Target and context
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS target_platform TEXT",
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS target_audience TEXT",
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS keywords JSONB DEFAULT '[]'::jsonb",
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS related_urls JSONB DEFAULT '[]'::jsonb",
-
 		// Priority and scoring
-		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS impact_reasoning TEXT",
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS urgency TEXT",
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS effort_estimate TEXT",
 
@@ -409,25 +396,12 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		title TEXT NOT NULL,
 		description TEXT NOT NULL,
 		
-		-- WHY - Evidence and reasoning for this opportunity
-		gap_analysis TEXT,
+		-- Context and evidence
 		current_state TEXT,
-		competitor_context TEXT,
 		source_evidence TEXT,
-		
-		-- WHAT - Specific recommendation
-		recommended_action TEXT,
-		expected_outcome TEXT,
-		
-		-- WHERE - Target and context
-		target_platform TEXT,
-		target_audience TEXT,
-		keywords JSONB DEFAULT '[]'::jsonb,
-		related_urls JSONB DEFAULT '[]'::jsonb,
 		
 		-- Priority and scoring
 		impact_score INTEGER NOT NULL,
-		impact_reasoning TEXT,
 		urgency TEXT,
 		effort_estimate TEXT,
 		

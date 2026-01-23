@@ -45,30 +45,17 @@ type Opportunity struct {
 	Status      OpportunityStatus `json:"status" bson:"status"`
 
 	// Core opportunity details
-	Title       string `json:"title" bson:"title"`             // Short, actionable title (e.g., "Create comparison page: Brand vs CompetitorX")
+	Title       string `json:"title" bson:"title"`             // Short, actionable title
 	Description string `json:"description" bson:"description"` // Detailed description of what to do
 
-	// WHY - Evidence and reasoning for this opportunity
-	GapAnalysis      string   `json:"gapAnalysis" bson:"gap_analysis"`           // Why this gap exists (evidence from AI response)
-	CurrentState     string   `json:"currentState" bson:"current_state"`         // What the brand currently has/lacks
-	CompetitorContext string  `json:"competitorContext" bson:"competitor_context"` // What competitors are doing better
-	SourceEvidence   string   `json:"sourceEvidence" bson:"source_evidence"`     // Specific sources/citations that show the gap
-
-	// WHAT - Specific recommendation
-	RecommendedAction string `json:"recommendedAction" bson:"recommended_action"` // Clear action statement (e.g., "Write a 2000-word blog post about...")
-	ExpectedOutcome   string `json:"expectedOutcome" bson:"expected_outcome"`     // What success looks like
-
-	// WHERE - Target and context
-	TargetPlatform string   `json:"targetPlatform" bson:"target_platform"` // Where to take action (website, reddit, linkedin, g2, etc.)
-	TargetAudience string   `json:"targetAudience" bson:"target_audience"` // Who this content/action is for
-	Keywords       []string `json:"keywords" bson:"keywords"`              // Relevant keywords to include
-	RelatedURLs    []string `json:"relatedUrls" bson:"related_urls"`       // URLs of competitor content, sources, etc.
+	// Context and evidence
+	CurrentState   string `json:"currentState" bson:"current_state"`     // What the brand currently has/lacks
+	SourceEvidence string `json:"sourceEvidence" bson:"source_evidence"` // Specific sources/citations that show the gap
 
 	// Priority and scoring
-	ImpactScore     int    `json:"impactScore" bson:"impact_score"`         // 1-100, LLM assigned
-	ImpactReasoning string `json:"impactReasoning" bson:"impact_reasoning"` // Why this score was assigned
-	Urgency         string `json:"urgency" bson:"urgency"`                  // "high", "medium", "low" - time sensitivity
-	EffortEstimate  string `json:"effortEstimate" bson:"effort_estimate"`   // "low", "medium", "high" - rough effort
+	ImpactScore    int    `json:"impactScore" bson:"impact_score"`       // 1-100, LLM assigned
+	Urgency        string `json:"urgency" bson:"urgency"`                // "high", "medium", "low" - time sensitivity
+	EffortEstimate string `json:"effortEstimate" bson:"effort_estimate"` // "low", "medium", "high" - rough effort
 
 	// Internal fields
 	ContentHash string                 `json:"contentHash" bson:"content_hash"` // For deduplication
@@ -117,27 +104,14 @@ type LLMOpportunity struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 
-	// WHY - Evidence and reasoning
-	GapAnalysis       string `json:"gap_analysis"`       // Why this gap exists
-	CurrentState      string `json:"current_state"`      // What brand currently has/lacks
-	CompetitorContext string `json:"competitor_context"` // What competitors do better
-	SourceEvidence    string `json:"source_evidence"`    // Specific evidence from sources
-
-	// WHAT - Specific recommendation
-	RecommendedAction string `json:"recommended_action"` // Clear action statement
-	ExpectedOutcome   string `json:"expected_outcome"`   // What success looks like
-
-	// WHERE - Target and context
-	TargetPlatform string   `json:"target_platform"` // website, reddit, linkedin, g2, etc.
-	TargetAudience string   `json:"target_audience"` // Who this is for
-	Keywords       []string `json:"keywords"`        // Keywords to include
-	RelatedURLs    []string `json:"related_urls"`    // Competitor/source URLs
+	// Context and evidence
+	CurrentState   string `json:"current_state"`   // What brand currently has/lacks
+	SourceEvidence string `json:"source_evidence"` // Specific evidence from sources
 
 	// Priority
-	ImpactScore     int    `json:"impact_score"`     // 1-100
-	ImpactReasoning string `json:"impact_reasoning"` // Why this score
-	Urgency         string `json:"urgency"`          // high, medium, low
-	EffortEstimate  string `json:"effort_estimate"`  // low, medium, high
+	ImpactScore    int    `json:"impact_score"`    // 1-100
+	Urgency        string `json:"urgency"`         // high, medium, low
+	EffortEstimate string `json:"effort_estimate"` // low, medium, high
 
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }

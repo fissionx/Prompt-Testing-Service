@@ -16,25 +16,12 @@ CREATE TABLE IF NOT EXISTS opportunities (
     title TEXT NOT NULL,
     description TEXT NOT NULL,
     
-    -- WHY - Evidence and reasoning for this opportunity
-    gap_analysis TEXT,           -- Why this gap exists (evidence from AI response)
+    -- Context and evidence
     current_state TEXT,          -- What the brand currently has/lacks
-    competitor_context TEXT,     -- What competitors are doing better
     source_evidence TEXT,        -- Specific sources/citations that show the gap
-    
-    -- WHAT - Specific recommendation
-    recommended_action TEXT,     -- Clear action statement
-    expected_outcome TEXT,       -- What success looks like
-    
-    -- WHERE - Target and context
-    target_platform TEXT,        -- Where to take action (website, reddit, linkedin, g2, etc.)
-    target_audience TEXT,        -- Who this content/action is for
-    keywords TEXT DEFAULT '[]',  -- JSON array of relevant keywords
-    related_urls TEXT DEFAULT '[]', -- JSON array of competitor/source URLs
     
     -- Priority and scoring
     impact_score INTEGER NOT NULL CHECK (impact_score >= 1 AND impact_score <= 100),
-    impact_reasoning TEXT,       -- Why this score was assigned
     urgency TEXT CHECK (urgency IN ('high', 'medium', 'low')),
     effort_estimate TEXT CHECK (effort_estimate IN ('low', 'medium', 'high')),
     

@@ -96,33 +96,15 @@ SCORING GUIDE:
 
 You MUST respond with ONLY a valid JSON object (no markdown, no code blocks):
 
-{"search_answer":"%s","geo_analysis":{"visibility_score":0,"brand_mentioned":false,"in_grounding_sources":false,"mention_status":"Where/how brand appeared or why absent","reason":"Why brand is/isn't cited, considering text and sources","sentiment":"positive|neutral|negative","competitors":["Competitor1","Competitor2"],"insights":["Insight 1","Insight 2","Insight 3"],"actions":["Action 1","Action 2","Action 3"],"competitor_info":"What competitors are doing to get cited"},"opportunities":[{"type":"content_gap","title":"Create comparison page: Brand vs CompetitorX","description":"Detailed description of what to create and how","gap_analysis":"WHY this gap exists - evidence from the AI response showing brand is missing","current_state":"What the brand currently has or lacks in this area","competitor_context":"CompetitorX is mentioned because they have detailed comparison pages and documentation","source_evidence":"The response cites competitorx.com/comparisons which directly addresses this query","recommended_action":"Create a detailed comparison page at brand.com/vs/competitorx covering features, pricing, and use cases","expected_outcome":"Brand will be cited in future responses when users ask about comparisons","target_platform":"website","target_audience":"Technical decision makers evaluating solutions","keywords":["brand vs competitor","comparison","alternatives"],"related_urls":["https://competitorx.com/comparisons"],"impact_score":85,"impact_reasoning":"High impact because competitors are directly cited for comparisons while brand is absent","urgency":"high","effort_estimate":"medium"}]}
+{"search_answer":"%s","geo_analysis":{"visibility_score":0,"brand_mentioned":false,"in_grounding_sources":false,"mention_status":"Where/how brand appeared or why absent","reason":"Why brand is/isn't cited, considering text and sources","sentiment":"positive|neutral|negative","competitors":["Competitor1","Competitor2"],"insights":["Insight 1","Insight 2","Insight 3"],"actions":["Action 1","Action 2","Action 3"],"competitor_info":"What competitors are doing to get cited"},"opportunities":[{"type":"content_gap","title":"Create comparison page: Brand vs CompetitorX","description":"Detailed description of what to create, why it matters, and specific steps to implement","current_state":"Brand has no comparison content while competitors have dedicated comparison pages","source_evidence":"Response cites competitorx.com/comparisons as authoritative source","impact_score":85,"urgency":"high","effort_estimate":"medium"}]}
 
-OPPORTUNITY FIELD REQUIREMENTS:
-
-Each opportunity MUST include these fields to give users clear understanding:
-
-WHY (Evidence & Reasoning):
-- gap_analysis: Explain WHY this gap exists based on the AI response. What's missing? (required)
-- current_state: What does the brand currently have or lack in this area? (required)
-- competitor_context: What are competitors doing better that gets them cited? (if applicable)
-- source_evidence: Specific sources/URLs from the response that show the gap (if available)
-
-WHAT (Specific Recommendation):
-- title: Short, actionable title (max 100 chars, e.g., "Create comparison page: Brand vs CompetitorX")
-- description: Detailed description of the opportunity (max 300 chars)
-- recommended_action: SPECIFIC action statement - what exactly to do (required, max 500 chars)
-- expected_outcome: What success looks like after implementing this (required)
-
-WHERE (Target & Context):
-- target_platform: Where to take action (website, reddit, linkedin, g2, capterra, medium, youtube, etc.)
-- target_audience: Who is this content/action for?
-- keywords: Array of relevant keywords to include in the content
-- related_urls: Array of competitor URLs or source URLs that demonstrate the gap
-
-PRIORITY:
-- impact_score: 1-100 score
-- impact_reasoning: WHY this score - explain the reasoning (required)
+OPPORTUNITY FIELDS (all required):
+- type: one of the opportunity types listed above
+- title: Short, actionable title (max 100 chars)
+- description: Detailed description including what to do, why it matters, and how to implement (max 500 chars)
+- current_state: What the brand currently has or lacks in this area
+- source_evidence: Specific sources/URLs from the response that show the gap or competitor advantage
+- impact_score: 1-100 score based on potential improvement value
 - urgency: "high" (competitors gaining ground), "medium" (important but not urgent), "low" (nice to have)
 - effort_estimate: "low" (<2 hours), "medium" (2-8 hours), "high" (>8 hours)
 
@@ -134,7 +116,7 @@ Rules:
 - competitors: array of competitor names mentioned
 - insights: 3-5 insights about visibility
 - actions: 3-5 specific actionable recommendations (brief)
-- opportunities: array of 1-5 specific improvement opportunities with ALL fields above
+- opportunities: array of 1-5 specific improvement opportunities
 
 RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, brand, escapedSearchAnswer)
 }

@@ -279,25 +279,31 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	}
 
 	// Generate opportunities from the response (async, don't block execution)
+	// Pass the same LLM provider that was used for executing the prompt
 	if brand != "" && s.opportunityService != nil {
-		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources)
+		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources, provider, llmConfig.Model)
 	}
 
 	return nil
 }
 
-// generateOpportunitiesAsync generates opportunities in the background
-func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string) {
+// generateOpportunitiesAsync generates opportunities in the background using the same LLM that executed the prompt
+func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string, llmProvider llm.Provider, llmModel string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovered from panic in generateOpportunitiesAsync: %v", r)
 		}
 	}()
 
+	log.Printf("🔍 Starting opportunity generation for prompt %s (brand: %s) using LLM: %s", promptID, brandName, llmModel)
+
 	// Skip if no search answer
 	if searchAnswer == "" {
+		log.Printf("⚠️ Skipping opportunity generation - no search answer for prompt %s", promptID)
 		return
 	}
+
+	log.Printf("📝 Search answer length: %d chars for prompt %s", len(searchAnswer), promptID)
 
 	// Get competitors for the brand (if available)
 	var competitors []string
@@ -312,7 +318,7 @@ func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, o
 		sourcesInfo = fmt.Sprintf("\n\nGROUNDING SOURCES (URLs cited by the AI):\n%s", strings.Join(groundingSources, "\n"))
 	}
 
-	// Generate opportunities using the service
+	// Generate opportunities using the service with the same LLM that executed the prompt
 	_, opportunities, err := s.opportunityService.AnalyzeAndGenerateOpportunities(
 		ctx,
 		orgID,
@@ -324,6 +330,8 @@ func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, o
 		searchAnswer,
 		sourcesInfo,
 		competitors,
+		llmProvider,
+		llmModel,
 	)
 	if err != nil {
 		log.Printf("Failed to generate opportunities for prompt %s: %v", promptID, err)

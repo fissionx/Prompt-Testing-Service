@@ -19,13 +19,18 @@ func (p *PostgreSQL) CreateOpportunity(ctx context.Context, opportunity *models.
 
 	query := `
 		INSERT INTO opportunities (
-			id, brand_id, prompt_id, response_id, type, title, description,
-			impact_score, status, content_hash, action_id, metadata, created_at, updated_at
+			id, org_id, brand_id, prompt_id, response_id, type, title, description,
+			current_state, source_evidence, impact_score, urgency, effort_estimate,
+			status, content_hash, action_id, metadata, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		ON CONFLICT (prompt_id, content_hash) DO UPDATE SET
 			response_id = EXCLUDED.response_id,
 			impact_score = EXCLUDED.impact_score,
+			current_state = EXCLUDED.current_state,
+			source_evidence = EXCLUDED.source_evidence,
+			urgency = EXCLUDED.urgency,
+			effort_estimate = EXCLUDED.effort_estimate,
 			updated_at = EXCLUDED.updated_at
 		WHERE opportunities.status = 'new'
 	`
@@ -34,13 +39,18 @@ func (p *PostgreSQL) CreateOpportunity(ctx context.Context, opportunity *models.
 
 	_, err := p.db.ExecContext(ctx, query,
 		opportunity.ID,
+		nullString(opportunity.OrgID),
 		opportunity.BrandID,
 		opportunity.PromptID,
 		nullString(opportunity.ResponseID),
 		string(opportunity.Type),
 		opportunity.Title,
 		opportunity.Description,
+		nullString(opportunity.CurrentState),
+		nullString(opportunity.SourceEvidence),
 		opportunity.ImpactScore,
+		nullString(opportunity.Urgency),
+		nullString(opportunity.EffortEstimate),
 		string(opportunity.Status),
 		opportunity.ContentHash,
 		nullString(opportunity.ActionID),
@@ -57,25 +67,32 @@ func (p *PostgreSQL) CreateOpportunity(ctx context.Context, opportunity *models.
 func (p *PostgreSQL) GetOpportunity(ctx context.Context, id string) (*models.Opportunity, error) {
 	start := time.Now()
 	query := `
-		SELECT id, brand_id, prompt_id, response_id, type, title, description,
-		       impact_score, status, content_hash, action_id, metadata, created_at, updated_at
+		SELECT id, org_id, brand_id, prompt_id, response_id, type, title, description,
+		       current_state, source_evidence, impact_score, urgency, effort_estimate,
+		       status, content_hash, action_id, metadata, created_at, updated_at
 		FROM opportunities WHERE id = $1
 	`
 
 	var opportunity models.Opportunity
-	var responseID, actionID sql.NullString
+	var orgID, responseID, actionID sql.NullString
+	var currentState, sourceEvidence, urgency, effortEstimate sql.NullString
 	var metadataJSON string
 	var typeStr, statusStr string
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&opportunity.ID,
+		&orgID,
 		&opportunity.BrandID,
 		&opportunity.PromptID,
 		&responseID,
 		&typeStr,
 		&opportunity.Title,
 		&opportunity.Description,
+		&currentState,
+		&sourceEvidence,
 		&opportunity.ImpactScore,
+		&urgency,
+		&effortEstimate,
 		&statusStr,
 		&opportunity.ContentHash,
 		&actionID,
@@ -93,8 +110,13 @@ func (p *PostgreSQL) GetOpportunity(ctx context.Context, id string) (*models.Opp
 		return nil, err
 	}
 
+	opportunity.OrgID = orgID.String
 	opportunity.ResponseID = responseID.String
 	opportunity.ActionID = actionID.String
+	opportunity.CurrentState = currentState.String
+	opportunity.SourceEvidence = sourceEvidence.String
+	opportunity.Urgency = urgency.String
+	opportunity.EffortEstimate = effortEstimate.String
 	opportunity.Type = models.OpportunityType(typeStr)
 	opportunity.Status = models.OpportunityStatus(statusStr)
 	opportunity.Metadata = jsonToMap(metadataJSON)
@@ -108,8 +130,9 @@ func (p *PostgreSQL) ListOpportunities(ctx context.Context, filter models.Opport
 	start := time.Now()
 
 	query := `
-		SELECT id, brand_id, prompt_id, response_id, type, title, description,
-		       impact_score, status, content_hash, action_id, metadata, created_at, updated_at
+		SELECT id, org_id, brand_id, prompt_id, response_id, type, title, description,
+		       current_state, source_evidence, impact_score, urgency, effort_estimate,
+		       status, content_hash, action_id, metadata, created_at, updated_at
 		FROM opportunities WHERE 1=1
 	`
 	args := []interface{}{}
@@ -169,19 +192,25 @@ func (p *PostgreSQL) ListOpportunities(ctx context.Context, filter models.Opport
 	var opportunities []*models.Opportunity
 	for rows.Next() {
 		var opportunity models.Opportunity
-		var responseID, actionID sql.NullString
+		var orgID, responseID, actionID sql.NullString
+		var currentState, sourceEvidence, urgency, effortEstimate sql.NullString
 		var metadataJSON string
 		var typeStr, statusStr string
 
 		err := rows.Scan(
 			&opportunity.ID,
+			&orgID,
 			&opportunity.BrandID,
 			&opportunity.PromptID,
 			&responseID,
 			&typeStr,
 			&opportunity.Title,
 			&opportunity.Description,
+			&currentState,
+			&sourceEvidence,
 			&opportunity.ImpactScore,
+			&urgency,
+			&effortEstimate,
 			&statusStr,
 			&opportunity.ContentHash,
 			&actionID,
@@ -194,8 +223,13 @@ func (p *PostgreSQL) ListOpportunities(ctx context.Context, filter models.Opport
 			return nil, err
 		}
 
+		opportunity.OrgID = orgID.String
 		opportunity.ResponseID = responseID.String
 		opportunity.ActionID = actionID.String
+		opportunity.CurrentState = currentState.String
+		opportunity.SourceEvidence = sourceEvidence.String
+		opportunity.Urgency = urgency.String
+		opportunity.EffortEstimate = effortEstimate.String
 		opportunity.Type = models.OpportunityType(typeStr)
 		opportunity.Status = models.OpportunityStatus(statusStr)
 		opportunity.Metadata = jsonToMap(metadataJSON)
@@ -263,22 +297,28 @@ func (p *PostgreSQL) UpdateOpportunity(ctx context.Context, opportunity *models.
 
 	query := `
 		UPDATE opportunities 
-		SET brand_id = $1, prompt_id = $2, response_id = $3, type = $4, title = $5,
-		    description = $6, impact_score = $7, status = $8, content_hash = $9,
-		    action_id = $10, metadata = $11, updated_at = $12
-		WHERE id = $13
+		SET org_id = $1, brand_id = $2, prompt_id = $3, response_id = $4, type = $5, title = $6,
+		    description = $7, current_state = $8, source_evidence = $9, impact_score = $10,
+		    urgency = $11, effort_estimate = $12, status = $13, content_hash = $14,
+		    action_id = $15, metadata = $16, updated_at = $17
+		WHERE id = $18
 	`
 
 	metadataJSON := mapToJSON(opportunity.Metadata)
 
 	result, err := p.db.ExecContext(ctx, query,
+		nullString(opportunity.OrgID),
 		opportunity.BrandID,
 		opportunity.PromptID,
 		nullString(opportunity.ResponseID),
 		string(opportunity.Type),
 		opportunity.Title,
 		opportunity.Description,
+		nullString(opportunity.CurrentState),
+		nullString(opportunity.SourceEvidence),
 		opportunity.ImpactScore,
+		nullString(opportunity.Urgency),
+		nullString(opportunity.EffortEstimate),
 		string(opportunity.Status),
 		opportunity.ContentHash,
 		nullString(opportunity.ActionID),
@@ -338,25 +378,32 @@ func (p *PostgreSQL) DeleteOpportunity(ctx context.Context, id string) error {
 func (p *PostgreSQL) GetOpportunityByContentHash(ctx context.Context, promptID, contentHash string) (*models.Opportunity, error) {
 	start := time.Now()
 	query := `
-		SELECT id, brand_id, prompt_id, response_id, type, title, description,
-		       impact_score, status, content_hash, action_id, metadata, created_at, updated_at
+		SELECT id, org_id, brand_id, prompt_id, response_id, type, title, description,
+		       current_state, source_evidence, impact_score, urgency, effort_estimate,
+		       status, content_hash, action_id, metadata, created_at, updated_at
 		FROM opportunities WHERE prompt_id = $1 AND content_hash = $2
 	`
 
 	var opportunity models.Opportunity
-	var responseID, actionID sql.NullString
+	var orgID, responseID, actionID sql.NullString
+	var currentState, sourceEvidence, urgency, effortEstimate sql.NullString
 	var metadataJSON string
 	var typeStr, statusStr string
 
 	err := p.db.QueryRowContext(ctx, query, promptID, contentHash).Scan(
 		&opportunity.ID,
+		&orgID,
 		&opportunity.BrandID,
 		&opportunity.PromptID,
 		&responseID,
 		&typeStr,
 		&opportunity.Title,
 		&opportunity.Description,
+		&currentState,
+		&sourceEvidence,
 		&opportunity.ImpactScore,
+		&urgency,
+		&effortEstimate,
 		&statusStr,
 		&opportunity.ContentHash,
 		&actionID,
@@ -374,8 +421,13 @@ func (p *PostgreSQL) GetOpportunityByContentHash(ctx context.Context, promptID, 
 		return nil, err
 	}
 
+	opportunity.OrgID = orgID.String
 	opportunity.ResponseID = responseID.String
 	opportunity.ActionID = actionID.String
+	opportunity.CurrentState = currentState.String
+	opportunity.SourceEvidence = sourceEvidence.String
+	opportunity.Urgency = urgency.String
+	opportunity.EffortEstimate = effortEstimate.String
 	opportunity.Type = models.OpportunityType(typeStr)
 	opportunity.Status = models.OpportunityStatus(statusStr)
 	opportunity.Metadata = jsonToMap(metadataJSON)
