@@ -402,3 +402,65 @@ func (h *HybridDB) GetRunningGEOCampaignByBrand(ctx context.Context, brand strin
 func (h *HybridDB) UpdateGEOCampaign(ctx context.Context, campaign *models.GEOCampaign) error {
 	return h.nosqlDB.UpdateGEOCampaign(ctx, campaign)
 }
+
+// Opportunity operations - Use NoSQL
+func (h *HybridDB) CreateOpportunity(ctx context.Context, opportunity *models.Opportunity) error {
+	return h.nosqlDB.CreateOpportunity(ctx, opportunity)
+}
+
+func (h *HybridDB) GetOpportunity(ctx context.Context, id string) (*models.Opportunity, error) {
+	return h.nosqlDB.GetOpportunity(ctx, id)
+}
+
+func (h *HybridDB) ListOpportunities(ctx context.Context, filter models.OpportunityFilter) ([]*models.Opportunity, error) {
+	return h.nosqlDB.ListOpportunities(ctx, filter)
+}
+
+func (h *HybridDB) CountOpportunities(ctx context.Context, filter models.OpportunityFilter) (int64, error) {
+	return h.nosqlDB.CountOpportunities(ctx, filter)
+}
+
+func (h *HybridDB) UpdateOpportunity(ctx context.Context, opportunity *models.Opportunity) error {
+	return h.nosqlDB.UpdateOpportunity(ctx, opportunity)
+}
+
+func (h *HybridDB) DeleteOpportunity(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteOpportunity(ctx, id)
+}
+
+func (h *HybridDB) GetOpportunityByContentHash(ctx context.Context, promptID, contentHash string) (*models.Opportunity, error) {
+	return h.nosqlDB.GetOpportunityByContentHash(ctx, promptID, contentHash)
+}
+
+func (h *HybridDB) GetOpportunitySummary(ctx context.Context, brandID string) (*models.OpportunitySummary, error) {
+	return h.nosqlDB.GetOpportunitySummary(ctx, brandID)
+}
+
+// Action operations - Use NoSQL
+func (h *HybridDB) CreateAction(ctx context.Context, action *models.Action) error {
+	return h.nosqlDB.CreateAction(ctx, action)
+}
+
+func (h *HybridDB) GetAction(ctx context.Context, id string) (*models.Action, error) {
+	return h.nosqlDB.GetAction(ctx, id)
+}
+
+func (h *HybridDB) GetActionByOpportunityID(ctx context.Context, opportunityID string) (*models.Action, error) {
+	return h.nosqlDB.GetActionByOpportunityID(ctx, opportunityID)
+}
+
+func (h *HybridDB) ListActions(ctx context.Context, filter models.ActionFilter) ([]*models.Action, error) {
+	return h.nosqlDB.ListActions(ctx, filter)
+}
+
+func (h *HybridDB) CountActions(ctx context.Context, filter models.ActionFilter) (int64, error) {
+	return h.nosqlDB.CountActions(ctx, filter)
+}
+
+func (h *HybridDB) UpdateAction(ctx context.Context, action *models.Action) error {
+	return h.nosqlDB.UpdateAction(ctx, action)
+}
+
+func (h *HybridDB) DeleteAction(ctx context.Context, id string) error {
+	return h.nosqlDB.DeleteAction(ctx, id)
+}

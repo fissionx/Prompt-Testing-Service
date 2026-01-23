@@ -89,6 +89,57 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to create analytics cache indexes: %w", err)
 	}
 
+	// Migrate existing tables to add new columns (for existing deployments)
+	if err := p.migrateOpportunitiesTable(ctx); err != nil {
+		return fmt.Errorf("failed to migrate opportunities table: %w", err)
+	}
+
+	return nil
+}
+
+// migrateOpportunitiesTable adds new columns to existing opportunities and actions tables
+func (p *PostgreSQL) migrateOpportunitiesTable(ctx context.Context) error {
+	// List of columns to add if they don't exist
+	// PostgreSQL allows ADD COLUMN IF NOT EXISTS
+	alterStatements := []string{
+		// Org ID for both tables
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS org_id TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS org_id TEXT",
+
+		// WHY - Evidence and reasoning
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS gap_analysis TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS current_state TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS competitor_context TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS source_evidence TEXT",
+
+		// WHAT - Specific recommendation
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS recommended_action TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS expected_outcome TEXT",
+
+		// WHERE - Target and context
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS target_platform TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS target_audience TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS keywords JSONB DEFAULT '[]'::jsonb",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS related_urls JSONB DEFAULT '[]'::jsonb",
+
+		// Priority and scoring
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS impact_reasoning TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS urgency TEXT",
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS effort_estimate TEXT",
+
+		// Indexes for org_id
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_org_id ON opportunities(org_id)",
+		"CREATE INDEX IF NOT EXISTS idx_actions_org_id ON actions(org_id)",
+	}
+
+	for _, stmt := range alterStatements {
+		if _, err := p.db.ExecContext(ctx, stmt); err != nil {
+			// Ignore errors for columns that already exist (some older PostgreSQL versions)
+			// The IF NOT EXISTS should handle this, but just in case
+			continue
+		}
+	}
+
 	return nil
 }
 
@@ -343,6 +394,66 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
+
+	-- Opportunities table - stores identified gaps and improvement areas
+	CREATE TABLE IF NOT EXISTS opportunities (
+		id TEXT PRIMARY KEY,
+		org_id TEXT,
+		brand_id TEXT NOT NULL,
+		prompt_id TEXT NOT NULL,
+		response_id TEXT,
+		type TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'new',
+		
+		-- Core opportunity details
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		
+		-- WHY - Evidence and reasoning for this opportunity
+		gap_analysis TEXT,
+		current_state TEXT,
+		competitor_context TEXT,
+		source_evidence TEXT,
+		
+		-- WHAT - Specific recommendation
+		recommended_action TEXT,
+		expected_outcome TEXT,
+		
+		-- WHERE - Target and context
+		target_platform TEXT,
+		target_audience TEXT,
+		keywords JSONB DEFAULT '[]'::jsonb,
+		related_urls JSONB DEFAULT '[]'::jsonb,
+		
+		-- Priority and scoring
+		impact_score INTEGER NOT NULL,
+		impact_reasoning TEXT,
+		urgency TEXT,
+		effort_estimate TEXT,
+		
+		-- Internal fields
+		content_hash TEXT NOT NULL,
+		action_id TEXT,
+		metadata JSONB DEFAULT '{}'::jsonb,
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
+
+	-- Actions table - stores detailed action plans for opportunities
+	CREATE TABLE IF NOT EXISTS actions (
+		id TEXT PRIMARY KEY,
+		org_id TEXT,
+		opportunity_id TEXT NOT NULL,
+		brand_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		steps JSONB DEFAULT '[]'::jsonb,
+		estimated_effort TEXT,
+		resources JSONB DEFAULT '[]'::jsonb,
+		status TEXT NOT NULL DEFAULT 'pending',
+		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
 	`
 
 	_, err := p.db.ExecContext(ctx, schema)
@@ -439,6 +550,24 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_campaign ON cached_prompt_time_series(prompt_id, campaign_id)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_prompt_time ON cached_prompt_time_series(prompt_id, start_time DESC, end_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_cached_prompt_time_series_brand_id ON cached_prompt_time_series(brand_id) WHERE brand_id IS NOT NULL",
+
+		// Opportunities indexes
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_brand_id ON opportunities(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_prompt_id ON opportunities(prompt_id)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_response_id ON opportunities(response_id) WHERE response_id IS NOT NULL",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_type ON opportunities(type)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_impact_score ON opportunities(impact_score DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_brand_status ON opportunities(brand_id, status)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_prompt_status ON opportunities(prompt_id, status)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_created_at ON opportunities(created_at DESC)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunities_prompt_content_hash ON opportunities(prompt_id, content_hash)",
+
+		// Actions indexes
+		"CREATE INDEX IF NOT EXISTS idx_actions_opportunity_id ON actions(opportunity_id)",
+		"CREATE INDEX IF NOT EXISTS idx_actions_brand_id ON actions(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status)",
+		"CREATE INDEX IF NOT EXISTS idx_actions_created_at ON actions(created_at DESC)",
 	}
 
 	for _, indexSQL := range indexes {

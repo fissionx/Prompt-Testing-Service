@@ -932,3 +932,99 @@ type SavePromptsResponse struct {
 	CreatedCount   int      `json:"createdCount"`   // Number of new prompts created
 	ExistingCount  int      `json:"existingCount"`  // Number of existing prompt IDs provided
 }
+
+// ==================== OPPORTUNITIES FEATURE ====================
+
+// OpportunityFilter represents filters for listing opportunities
+type OpportunityFilter struct {
+	BrandID   string `json:"brandId" form:"brandId"`
+	PromptID  string `json:"promptId" form:"promptId"`
+	Status    string `json:"status" form:"status"`       // new, in_progress, completed, archived
+	Type      string `json:"type" form:"type"`           // opportunity type filter
+	MinImpact int    `json:"minImpact" form:"minImpact"` // minimum impact score
+	Limit     int    `json:"limit" form:"limit"`
+	Offset    int    `json:"offset" form:"offset"`
+}
+
+// ListOpportunitiesResponse represents the response for listing opportunities
+type ListOpportunitiesResponse struct {
+	Brand         string        `json:"brand"`
+	BrandID       string        `json:"brandId"`
+	Opportunities []Opportunity `json:"opportunities"`
+	Total         int64         `json:"total"`
+	Pagination    Pagination    `json:"pagination"`
+}
+
+// OpportunityDetailResponse represents a single opportunity with full details
+type OpportunityDetailResponse struct {
+	Opportunity Opportunity `json:"opportunity"`
+	Action      *Action     `json:"action,omitempty"` // Linked action if exists
+	Prompt      *Prompt     `json:"prompt,omitempty"` // Related prompt details
+}
+
+// SuppressOpportunityRequest represents the request to suppress/archive an opportunity
+type SuppressOpportunityRequest struct {
+	Reason string `json:"reason,omitempty"` // Optional reason for suppression
+}
+
+// SuppressOpportunityResponse represents the response after suppressing an opportunity
+type SuppressOpportunityResponse struct {
+	OpportunityID string    `json:"opportunityId"`
+	Status        string    `json:"status"`
+	SuppressedAt  time.Time `json:"suppressedAt"`
+	Message       string    `json:"message"`
+}
+
+// ConvertToActionRequest represents the request to convert an opportunity to an action
+type ConvertToActionRequest struct {
+	AdditionalContext string `json:"additionalContext,omitempty"` // Extra context for LLM
+}
+
+// ConvertToActionResponse represents the response after converting opportunity to action
+type ConvertToActionResponse struct {
+	OpportunityID string  `json:"opportunityId"`
+	Action        *Action `json:"action"`
+	Message       string  `json:"message"`
+}
+
+// ListActionsResponse represents the response for listing actions
+type ListActionsResponse struct {
+	Brand      string     `json:"brand"`
+	BrandID    string     `json:"brandId"`
+	Actions    []Action   `json:"actions"`
+	Total      int64      `json:"total"`
+	Pagination Pagination `json:"pagination"`
+}
+
+// UpdateActionRequest represents the request to update an action
+type UpdateActionRequest struct {
+	Status        *ActionStatus `json:"status,omitempty"`
+	CompletedStep *int          `json:"completedStep,omitempty"` // Mark a specific step as completed
+}
+
+// UpdateActionResponse represents the response after updating an action
+type UpdateActionResponse struct {
+	Action  *Action `json:"action"`
+	Message string  `json:"message"`
+}
+
+// ActionFilter represents filters for listing actions
+type ActionFilter struct {
+	BrandID       string `json:"brandId" form:"brandId"`
+	OpportunityID string `json:"opportunityId" form:"opportunityId"`
+	Status        string `json:"status" form:"status"`
+	Limit         int    `json:"limit" form:"limit"`
+	Offset        int    `json:"offset" form:"offset"`
+}
+
+// OpportunitySummary represents a summary of opportunities for dashboard
+type OpportunitySummary struct {
+	TotalOpportunities      int            `json:"totalOpportunities"`
+	NewOpportunities        int            `json:"newOpportunities"`
+	InProgressOpportunities int            `json:"inProgressOpportunities"`
+	CompletedOpportunities  int            `json:"completedOpportunities"`
+	ArchivedOpportunities   int            `json:"archivedOpportunities"`
+	ByType                  map[string]int `json:"byType"`
+	AvgImpactScore          float64        `json:"avgImpactScore"`
+	TopOpportunities        []Opportunity  `json:"topOpportunities"` // Top 5 by impact score
+}

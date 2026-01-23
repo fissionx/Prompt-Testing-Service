@@ -272,6 +272,18 @@ func (s *Server) setupRoutes() {
 		geo.POST("/brand/:brandId/prompts/execute/bulk", s.saveAndExecutePrompts)
 		geo.DELETE("/brand/:brandId/prompts", s.deletePromptsByIDs)         // Deletes prompts by IDs (request body with promptIds array)
 		geo.DELETE("/brand/:brandId/prompts/brand", s.deletePromptsByBrand) // Deletes all prompts by brand
+
+		// Opportunities Management
+		geo.GET("/brand/:brandId/opportunities", s.listOpportunities)                                  // List all opportunities for brand
+		geo.GET("/brand/:brandId/opportunities/summary", s.getOpportunitySummary)                      // Get opportunity summary/stats
+		geo.GET("/brand/:brandId/opportunities/prompt/:promptId", s.listOpportunitiesByPrompt)         // List opportunities for specific prompt
+		geo.GET("/brand/:brandId/opportunities/:opportunityId", s.getOpportunity)                      // Get single opportunity details
+		geo.POST("/brand/:brandId/opportunities/:opportunityId/suppress", s.suppressOpportunity)       // Archive/suppress opportunity
+		geo.POST("/brand/:brandId/opportunities/:opportunityId/convert", s.convertOpportunityToAction) // Convert to action
+
+		// Actions Management
+		geo.GET("/brand/:brandId/actions", s.listActions)              // List all actions for brand
+		geo.PATCH("/brand/:brandId/actions/:actionId", s.updateAction) // Update action status
 	}
 }
 

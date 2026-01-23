@@ -19,15 +19,17 @@ import (
 
 // BulkExecutionService handles batch execution of prompts across multiple LLMs
 type BulkExecutionService struct {
-	db          db.Database
-	llmRegistry *llm.Registry
+	db                 db.Database
+	llmRegistry        *llm.Registry
+	opportunityService *OpportunityService
 }
 
 // NewBulkExecutionService creates a new bulk execution service
 func NewBulkExecutionService(database db.Database, registry *llm.Registry) *BulkExecutionService {
 	return &BulkExecutionService{
-		db:          database,
-		llmRegistry: registry,
+		db:                 database,
+		llmRegistry:        registry,
+		opportunityService: NewOpportunityService(database, registry),
 	}
 }
 
@@ -272,7 +274,65 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	responseModel.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
 
 	// Save response
-	return s.db.CreateResponse(ctx, responseModel)
+	if err := s.db.CreateResponse(ctx, responseModel); err != nil {
+		return err
+	}
+
+	// Generate opportunities from the response (async, don't block execution)
+	if brand != "" && s.opportunityService != nil {
+		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources)
+	}
+
+	return nil
+}
+
+// generateOpportunitiesAsync generates opportunities in the background
+func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in generateOpportunitiesAsync: %v", r)
+		}
+	}()
+
+	// Skip if no search answer
+	if searchAnswer == "" {
+		return
+	}
+
+	// Get competitors for the brand (if available)
+	var competitors []string
+	brandCompetitors, err := s.db.GetBrandCompetitors(ctx, brandID)
+	if err == nil && brandCompetitors != nil {
+		competitors = brandCompetitors.Competitors
+	}
+
+	// Build sources info string
+	sourcesInfo := ""
+	if len(groundingSources) > 0 {
+		sourcesInfo = fmt.Sprintf("\n\nGROUNDING SOURCES (URLs cited by the AI):\n%s", strings.Join(groundingSources, "\n"))
+	}
+
+	// Generate opportunities using the service
+	_, opportunities, err := s.opportunityService.AnalyzeAndGenerateOpportunities(
+		ctx,
+		orgID,
+		brandID,
+		brandName,
+		promptID,
+		responseID,
+		searchQuery,
+		searchAnswer,
+		sourcesInfo,
+		competitors,
+	)
+	if err != nil {
+		log.Printf("Failed to generate opportunities for prompt %s: %v", promptID, err)
+		return
+	}
+
+	if len(opportunities) > 0 {
+		log.Printf("✅ Generated %d opportunities for prompt %s", len(opportunities), promptID)
+	}
 }
 
 // getPrompts fetches prompts by IDs - optimized: batch fetch instead of N queries

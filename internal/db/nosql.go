@@ -105,4 +105,23 @@ type NoSQLDatabase interface {
 	UpdateSchedule(ctx context.Context, schedule *models.Schedule) error
 	DeleteSchedule(ctx context.Context, id string) error
 	DeleteAllSchedules(ctx context.Context) (int, error)
+
+	// Opportunity operations
+	CreateOpportunity(ctx context.Context, opportunity *models.Opportunity) error
+	GetOpportunity(ctx context.Context, id string) (*models.Opportunity, error)
+	ListOpportunities(ctx context.Context, filter models.OpportunityFilter) ([]*models.Opportunity, error)
+	CountOpportunities(ctx context.Context, filter models.OpportunityFilter) (int64, error)
+	UpdateOpportunity(ctx context.Context, opportunity *models.Opportunity) error
+	DeleteOpportunity(ctx context.Context, id string) error
+	GetOpportunityByContentHash(ctx context.Context, promptID, contentHash string) (*models.Opportunity, error)
+	GetOpportunitySummary(ctx context.Context, brandID string) (*models.OpportunitySummary, error)
+
+	// Action operations
+	CreateAction(ctx context.Context, action *models.Action) error
+	GetAction(ctx context.Context, id string) (*models.Action, error)
+	GetActionByOpportunityID(ctx context.Context, opportunityID string) (*models.Action, error)
+	ListActions(ctx context.Context, filter models.ActionFilter) ([]*models.Action, error)
+	CountActions(ctx context.Context, filter models.ActionFilter) (int64, error)
+	UpdateAction(ctx context.Context, action *models.Action) error
+	DeleteAction(ctx context.Context, id string) error
 }
