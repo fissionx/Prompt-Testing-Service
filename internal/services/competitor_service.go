@@ -10,6 +10,7 @@ import (
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
 	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/utils"
 	"github.com/google/uuid"
 )
 
@@ -254,35 +255,7 @@ func (s *CompetitorService) tryLLMForSuggestions(
 	brandContext := strings.Join(contextParts, "\n")
 
 	// Build the LLM prompt for competitor suggestion
-	prompt := fmt.Sprintf(`You are a competitive intelligence analyst. Based on the following brand information, identify the main competitors in the market.
-
-%s
-
----
-
-TASK: Identify 5-15 direct competitors for this brand/company.
-
-RULES:
-1. Focus on DIRECT competitors that offer similar products/services
-2. Include both well-known industry leaders and emerging competitors
-3. Consider companies that target the same customer base
-4. Include companies that appear in the same "best of" lists or comparison articles
-5. Be specific with company/product names (not generic terms)
-6. Incase any competitors or comparision is mentioned in the website content, use that for competitors list
-
-RESPOND WITH ONLY A JSON ARRAY of competitor names and their domains. No explanations, no markdown, just the JSON array. The domain should be the domain of the competitor website.
-
-Few sample examples of competitor names:
-  1. brand name is walmart, then competitors are amazon, target, costco, etc.
-  2. brand name is apple, then competitors are samsung, google, microsoft, etc.
-  3. brand name is IIT then competitors are IIT Madras, IIT Bombay, IIT Kanpur, etc.
-  4. brand name is Zoho then competitors are Salesforce, SAP, Oracle, Freshworks, etc.
-  5. brand name is instagram then competitors are facebook, twitter, tiktok, etc.
-
-Example response format:
-[{"name": "Competitor 1", "domain": "www.competitor1.com"}, {"name": "Competitor 2", "domain": "www.competitor2.com"}, {"name": "Competitor 3", "domain": "www.competitor3.com"}]
-
-RESPOND NOW:`, brandContext)
+	prompt := utils.CompetitorSuggestionPrompt(brandContext)
 
 	// Call LLM
 	llmConfigStruct := llm.Config{

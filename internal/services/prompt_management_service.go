@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -55,10 +54,12 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brandID string) (*m
 						continue // Skip invalid prompts
 					}
 					activePrompts = append(activePrompts, models.PromptDetail{
-						ID:         prompt.ID,
-						Template:   prompt.Template,
-						PromptType: prompt.PromptType,
-						Category:   prompt.Category,
+						ID:                      prompt.ID,
+						Template:                prompt.Template,
+						PromptType:              prompt.PromptType,
+						Category:                prompt.Category,
+						TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+						SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 					})
 				}
 			} else {
@@ -70,10 +71,12 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brandID string) (*m
 					// Only add if we haven't seen this template before
 					if _, exists := templateMap[normalizedTemplate]; !exists {
 						detail := models.PromptDetail{
-							ID:         prompt.ID,
-							Template:   prompt.Template,
-							PromptType: prompt.PromptType,
-							Category:   prompt.Category,
+							ID:                      prompt.ID,
+							Template:                prompt.Template,
+							PromptType:              prompt.PromptType,
+							Category:                prompt.Category,
+							TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+							SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 						}
 						templateMap[normalizedTemplate] = detail
 						activePrompts = append(activePrompts, detail)
@@ -110,10 +113,12 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brandID string) (*m
 			// Convert batch-fetched prompts to PromptDetail
 			for _, prompt := range prompts {
 				suggestedPrompts = append(suggestedPrompts, models.PromptDetail{
-					ID:         prompt.ID,
-					Template:   prompt.Template,
-					PromptType: prompt.PromptType,
-					Category:   prompt.Category,
+					ID:                      prompt.ID,
+					Template:                prompt.Template,
+					PromptType:              prompt.PromptType,
+					Category:                prompt.Category,
+					TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+					SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 				})
 			}
 		}
@@ -156,6 +161,7 @@ func (s *BrandPromptService) SuggestPrompts(
 		if existing != nil && len(existing.SuggestedPromptIDs) > 0 {
 			// Fetch prompt details - optimized: batch fetch instead of N+1 queries
 			var prompts []models.PromptDetail
+			missingStructuredFields := false
 			promptRecords, err := s.db.GetPromptsByIDs(ctx, existing.SuggestedPromptIDs)
 			if err != nil {
 				// If batch fetch fails, fall back to individual fetches (backward compatibility)
@@ -164,31 +170,48 @@ func (s *BrandPromptService) SuggestPrompts(
 					if err != nil || prompt == nil {
 						continue
 					}
+					// Auto-refresh cache if legacy prompts are missing new structured fields
+					// (this happens for prompts generated before we started storing them).
+					if len(prompt.TargetingSearchKeywords) == 0 || len(prompt.SupportingFanoutQueries) == 0 {
+						missingStructuredFields = true
+					}
 					prompts = append(prompts, models.PromptDetail{
-						ID:         prompt.ID,
-						Template:   prompt.Template,
-						PromptType: prompt.PromptType,
-						Category:   prompt.Category,
+						ID:                      prompt.ID,
+						Template:                prompt.Template,
+						PromptType:              prompt.PromptType,
+						Category:                prompt.Category,
+						TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+						SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 					})
 				}
 			} else {
 				// Convert batch-fetched prompts to PromptDetail
 				for _, prompt := range promptRecords {
+					if len(prompt.TargetingSearchKeywords) == 0 || len(prompt.SupportingFanoutQueries) == 0 {
+						missingStructuredFields = true
+					}
 					prompts = append(prompts, models.PromptDetail{
-						ID:         prompt.ID,
-						Template:   prompt.Template,
-						PromptType: prompt.PromptType,
-						Category:   prompt.Category,
+						ID:                      prompt.ID,
+						Template:                prompt.Template,
+						PromptType:              prompt.PromptType,
+						Category:                prompt.Category,
+						TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+						SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 					})
 				}
 			}
-			return &models.SuggestPromptsResponse{
-				Brand:      brand,
-				Prompts:    prompts,
-				Source:     "cached",
-				Message:    "Returning cached prompt suggestions",
-				LLMDetails: nil, // LLM details not available for cached responses
-			}, nil
+			// If cached prompts don't contain the structured fields, treat cache as stale and regenerate.
+			if !missingStructuredFields {
+				return &models.SuggestPromptsResponse{
+					Brand:      brand,
+					Prompts:    prompts,
+					Source:     "cached",
+					Message:    "Returning cached prompt suggestions",
+					LLMDetails: nil, // LLM details not available for cached responses
+				}, nil
+			}
+
+			fmt.Printf("⚠️ Cached suggested prompts missing structured fields; regenerating suggestions for brandID=%s\n", brandID)
 		}
 	} else {
 		// Even if force refresh, we need to get existing record to preserve active prompts
@@ -218,20 +241,30 @@ func (s *BrandPromptService) SuggestPrompts(
 	// Create prompt records and get their IDs
 	var promptIDs []string
 	var promptDetails []models.PromptDetail
-	for _, template := range promptTemplates {
+	for _, result := range promptTemplates {
+		// Map intentType to PromptType
+		promptType := mapIntentTypeToPromptType(result.IntentType)
+
+		// If intentType is empty or mapping failed, use default
+		if promptType == models.PromptTypeCustom {
+			promptType = models.PromptTypeCustom
+		}
+
 		prompt := &models.Prompt{
-			ID:         uuid.New().String(),
-			BrandID:    brandID,
-			OrgID:      orgID,
-			Template:   template,
-			PromptType: models.PromptTypeCustom, // Default type
-			Category:   category,
-			Domain:     domain,
-			Brand:      brand,
-			Generated:  true,
-			Enabled:    false, // Suggested prompts are not enabled by default
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			ID:                      uuid.New().String(),
+			BrandID:                 brandID,
+			OrgID:                   orgID,
+			Template:                result.Prompt,
+			PromptType:              promptType,
+			Category:                category,
+			Domain:                  domain,
+			Brand:                   brand,
+			Generated:               true,
+			Enabled:                 false, // Suggested prompts are not enabled by default
+			TargetingSearchKeywords: result.TargetingSearchKeywords,
+			SupportingFanoutQueries: result.SupportingFanoutQueries,
+			CreatedAt:               time.Now(),
+			UpdatedAt:               time.Now(),
 		}
 
 		if err := s.db.CreatePrompt(ctx, prompt); err != nil {
@@ -241,10 +274,12 @@ func (s *BrandPromptService) SuggestPrompts(
 
 		promptIDs = append(promptIDs, prompt.ID)
 		promptDetails = append(promptDetails, models.PromptDetail{
-			ID:         prompt.ID,
-			Template:   prompt.Template,
-			PromptType: prompt.PromptType,
-			Category:   prompt.Category,
+			ID:                      prompt.ID,
+			Template:                prompt.Template,
+			PromptType:              prompt.PromptType,
+			Category:                prompt.Category,
+			TargetingSearchKeywords: prompt.TargetingSearchKeywords,
+			SupportingFanoutQueries: prompt.SupportingFanoutQueries,
 		})
 	}
 
@@ -309,7 +344,7 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 	domain string,
 	description string,
 	count int,
-) ([]string, *models.LLMDetails, error) {
+) ([]PromptGenerationResult, *models.LLMDetails, error) {
 	// Get all enabled LLMs from the database
 	enabled := true
 	llms, err := s.db.ListLLMs(ctx, &enabled)
@@ -332,8 +367,8 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 		}
 
 		// Try to get suggestions with this LLM
-		prompts, err := s.tryLLMForPromptSuggestions(ctx, provider, llmConfig, brand, website, category, domain, description, count)
-		if err == nil && len(prompts) > 0 {
+		results, err := s.tryLLMForPromptSuggestions(ctx, provider, llmConfig, brand, website, category, domain, description, count)
+		if err == nil && len(results) > 0 {
 			// Success! Return the results with LLM details
 			llmDetails := &models.LLMDetails{
 				ID:       llmConfig.ID,
@@ -341,7 +376,7 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 				Provider: llmConfig.Provider,
 				Model:    llmConfig.Model,
 			}
-			return prompts, llmDetails, nil
+			return results, llmDetails, nil
 		}
 
 		// This LLM failed, log and try next
@@ -358,6 +393,7 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 }
 
 // tryLLMForPromptSuggestions attempts to get prompt suggestions from a specific LLM
+// Uses the shared generatePromptsWithLLM function for consistency
 func (s *BrandPromptService) tryLLMForPromptSuggestions(
 	ctx context.Context,
 	provider llm.Provider,
@@ -368,7 +404,7 @@ func (s *BrandPromptService) tryLLMForPromptSuggestions(
 	domain string,
 	description string,
 	count int,
-) ([]string, error) {
+) ([]PromptGenerationResult, error) {
 	// Scrape website if provided to enrich context
 	var websiteContent *WebsiteContent
 	if website != "" {
@@ -383,145 +419,25 @@ func (s *BrandPromptService) tryLLMForPromptSuggestions(
 		}
 	}
 
-	// Build rich context for prompt suggestion
-	var contextParts []string
-	contextParts = append(contextParts, fmt.Sprintf("Brand/Company: %s", brand))
-
-	if website != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Website: %s", website))
+	// Get model from config
+	model := ""
+	if llmConfig != nil {
+		model = llmConfig.Model
 	}
 
-	if description != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Description: %s", description))
-	}
-
-	if category != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Category/Industry: %s", category))
-	}
-
-	if domain != "" {
-		contextParts = append(contextParts, fmt.Sprintf("Domain: %s", domain))
-	}
-
-	// Add scraped website content for richer context
-	if websiteContent != nil {
-		if websiteContent.Title != "" {
-			contextParts = append(contextParts, fmt.Sprintf("Website Title: %s", websiteContent.Title))
-		}
-		if websiteContent.Description != "" && description == "" {
-			contextParts = append(contextParts, fmt.Sprintf("Website Meta: %s", websiteContent.Description))
-		}
-	}
-
-	brandContext := strings.Join(contextParts, "\n")
-
-	// Build the LLM prompt for prompt suggestion
-	prompt := fmt.Sprintf(`You are a prompt generation expert. Based on the following brand information, generate %d SEO-optimized prompts/questions that would help this brand appear in AI search results.
-
-%s
-
----
-
-TASK: Generate %d diverse prompts/questions that:
-1. Are relevant to this brand/company
-2. Would help the brand appear in AI search results (like ChatGPT, Gemini, etc.)
-3. Cover different question types (what, how, comparison, top/best lists, brand-specific)
-4. Are natural, conversational, and search-friendly
-
-RULES:
-1. Each prompt should be a complete question or search query
-2. Make prompts specific and actionable
-3. Include brand name naturally where appropriate
-4. Vary the question types (what, how, which, best, top, etc.)
-5. Focus on topics relevant to the brand's domain/category
-
-RESPOND WITH ONLY A JSON ARRAY of prompt strings. No explanations, no markdown, just the JSON array.
-
-Example response format:
-["What is Brand X?", "How does Brand X work?", "Best alternatives to Brand X", "Brand X vs Competitor Y"]
-
-RESPOND NOW:`, count, brandContext, count)
-
-	// Call LLM
-	llmConfigStruct := llm.Config{
-		Temperature: 0.7, // Higher temperature for more creative prompts
-		MaxTokens:   1000,
-	}
-
-	// Use model from LLM config if available
-	if llmConfig.Model != "" {
-		llmConfigStruct.Model = llmConfig.Model
-	}
-
-	response, err := provider.Generate(ctx, prompt, llmConfigStruct)
+	// Use shared function for prompt generation
+	results, err := generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, count, "[BrandPromptService]")
 	if err != nil {
-		return nil, fmt.Errorf("LLM generation failed: %w", err)
+		return nil, err
 	}
 
-	// Check for errors in response
-	if response.Error != "" {
-		return nil, fmt.Errorf("LLM returned error: %s", response.Error)
-	}
-
-	// Parse the JSON response
-	prompts, err := parsePromptResponse(response.Text)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse LLM response: %w", err)
-	}
-
-	if len(prompts) == 0 {
+	// Check for errors in response (handled in generatePromptsWithLLM)
+	if len(results) == 0 {
 		return nil, fmt.Errorf("LLM returned empty prompt list")
 	}
 
-	return prompts, nil
-}
-
-// parsePromptResponse parses the LLM response into a list of prompts
-func parsePromptResponse(response string) ([]string, error) {
-	// Clean up the response
-	response = strings.TrimSpace(response)
-
-	// Remove markdown code blocks if present
-	response = strings.TrimPrefix(response, "```json")
-	response = strings.TrimPrefix(response, "```")
-	response = strings.TrimSuffix(response, "```")
-	response = strings.TrimSpace(response)
-
-	// Try to parse as JSON array
-	var prompts []string
-	if err := json.Unmarshal([]byte(response), &prompts); err == nil {
-		// Successfully parsed as JSON
-		return prompts, nil
-	}
-
-	// If JSON parsing fails, try to parse line by line
-	lines := strings.Split(response, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Remove list markers (1., 2., -, *, etc.)
-		line = strings.TrimPrefix(line, "- ")
-		line = strings.TrimPrefix(line, "* ")
-		if len(line) > 2 && (line[1] == '.' || line[1] == ')') && (line[0] >= '0' && line[0] <= '9') {
-			line = strings.TrimSpace(line[2:])
-		}
-
-		// Remove quotes if present
-		line = strings.Trim(line, `"'`)
-
-		if line != "" {
-			prompts = append(prompts, line)
-		}
-	}
-
-	if len(prompts) == 0 {
-		return nil, fmt.Errorf("no valid prompts found in response")
-	}
-
-	return prompts, nil
+	fmt.Printf("✅ [BrandPromptService] Successfully parsed %d prompts\n", len(results))
+	return results, nil
 }
 
 // SavePrompts saves prompts (moves from suggested to active)

@@ -151,10 +151,12 @@ type ScheduledCampaignDetail struct {
 
 // PromptDetail represents prompt details for scheduled campaign
 type PromptDetail struct {
-	ID         string     `json:"id"`
-	Template   string     `json:"template"`
-	PromptType PromptType `json:"promptType"`
-	Category   string     `json:"category,omitempty"`
+	ID                      string     `json:"id"`
+	Template                string     `json:"template"`
+	PromptType              PromptType  `json:"promptType"`
+	Category                string     `json:"category,omitempty"`
+	TargetingSearchKeywords []string   `json:"targetingSearchKeywords,omitempty"` // Keywords for targeting
+	SupportingFanoutQueries []string   `json:"supportingFanoutQueries,omitempty"`   // Related queries
 }
 
 // LLMDetail represents LLM details for scheduled campaign

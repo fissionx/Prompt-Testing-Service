@@ -215,6 +215,7 @@ type GeneratePromptsRequest struct {
 // GeneratePromptsResponse represents the response with generated prompts
 type GeneratePromptsResponse struct {
 	Brand         string                     `json:"brand"`
+	BrandID       string                     `json:"brandId"`
 	Category      string                     `json:"category"`
 	Domain        string                     `json:"domain"`
 	PromptsByType map[string][]PromptPreview `json:"promptsByType"`

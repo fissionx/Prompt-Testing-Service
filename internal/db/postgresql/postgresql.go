@@ -130,9 +130,15 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		source_id TEXT,
 		generated BOOLEAN DEFAULT false,
 		enabled BOOLEAN DEFAULT true,
+		targeting_search_keywords JSONB DEFAULT '[]'::jsonb,
+		supporting_fanout_queries JSONB DEFAULT '[]'::jsonb,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
+
+	-- Backward-compatible schema evolution (existing installs)
+	ALTER TABLE prompts ADD COLUMN IF NOT EXISTS targeting_search_keywords JSONB DEFAULT '[]'::jsonb;
+	ALTER TABLE prompts ADD COLUMN IF NOT EXISTS supporting_fanout_queries JSONB DEFAULT '[]'::jsonb;
 
 	-- Responses table
 	CREATE TABLE IF NOT EXISTS responses (
@@ -504,8 +510,12 @@ func (p *PostgreSQL) CreatePrompt(ctx context.Context, prompt *models.Prompt) er
 	}
 
 	query := `
-		INSERT INTO prompts (id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		INSERT INTO prompts (
+			id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled,
+			targeting_search_keywords, supporting_fanout_queries,
+			created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`
 
 	_, err := p.db.ExecContext(ctx, query,
@@ -521,6 +531,8 @@ func (p *PostgreSQL) CreatePrompt(ctx context.Context, prompt *models.Prompt) er
 		prompt.SourceID,
 		prompt.Generated,
 		prompt.Enabled,
+		sliceToJSON(prompt.TargetingSearchKeywords),
+		sliceToJSON(prompt.SupportingFanoutQueries),
 		prompt.CreatedAt,
 		prompt.UpdatedAt,
 	)
@@ -533,12 +545,14 @@ func (p *PostgreSQL) CreatePrompt(ctx context.Context, prompt *models.Prompt) er
 func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, error) {
 	start := time.Now()
 	query := `
-		SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at
+		SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled,
+		       targeting_search_keywords, supporting_fanout_queries,
+		       created_at, updated_at
 		FROM prompts WHERE id = $1
 	`
 
 	var prompt models.Prompt
-	var tagsJSON, promptTypeStr string
+	var tagsJSON, promptTypeStr, targetingKeywordsJSON, fanoutQueriesJSON string
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&prompt.ID,
@@ -553,6 +567,8 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 		&prompt.SourceID,
 		&prompt.Generated,
 		&prompt.Enabled,
+		&targetingKeywordsJSON,
+		&fanoutQueriesJSON,
 		&prompt.CreatedAt,
 		&prompt.UpdatedAt,
 	)
@@ -568,6 +584,8 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 
 	prompt.PromptType = models.PromptType(promptTypeStr)
 	prompt.Tags = jsonToSlice(tagsJSON)
+	prompt.TargetingSearchKeywords = jsonToSlice(targetingKeywordsJSON)
+	prompt.SupportingFanoutQueries = jsonToSlice(fanoutQueriesJSON)
 
 	// Decompress template if it was compressed
 	if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
@@ -581,7 +599,9 @@ func (p *PostgreSQL) GetPrompt(ctx context.Context, id string) (*models.Prompt, 
 // ListPrompts lists all prompts, optionally filtered by enabled status
 func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
-	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled,
+	                 targeting_search_keywords, supporting_fanout_queries,
+	                 created_at, updated_at 
 		FROM prompts WHERE 1=1`
 	args := []interface{}{}
 	argPos := 1
@@ -605,7 +625,7 @@ func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.
 	var prompts []*models.Prompt
 	for rows.Next() {
 		var prompt models.Prompt
-		var tagsJSON, promptTypeStr string
+		var tagsJSON, promptTypeStr, targetingKeywordsJSON, fanoutQueriesJSON string
 
 		err := rows.Scan(
 			&prompt.ID,
@@ -620,6 +640,8 @@ func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.
 			&prompt.SourceID,
 			&prompt.Generated,
 			&prompt.Enabled,
+			&targetingKeywordsJSON,
+			&fanoutQueriesJSON,
 			&prompt.CreatedAt,
 			&prompt.UpdatedAt,
 		)
@@ -630,6 +652,8 @@ func (p *PostgreSQL) ListPrompts(ctx context.Context, enabled *bool) ([]*models.
 
 		prompt.PromptType = models.PromptType(promptTypeStr)
 		prompt.Tags = jsonToSlice(tagsJSON)
+		prompt.TargetingSearchKeywords = jsonToSlice(targetingKeywordsJSON)
+		prompt.SupportingFanoutQueries = jsonToSlice(fanoutQueriesJSON)
 
 		// Decompress template if it was compressed
 		if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
@@ -651,7 +675,9 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 	}
 
 	// Build query with IN clause
-	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled,
+	                 targeting_search_keywords, supporting_fanout_queries,
+	                 created_at, updated_at 
 		FROM prompts WHERE id = ANY($1)`
 
 	rows, err := p.db.QueryContext(ctx, query, pq.Array(ids))
@@ -664,7 +690,7 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 	var prompts []*models.Prompt
 	for rows.Next() {
 		var prompt models.Prompt
-		var tagsJSON, promptTypeStr string
+		var tagsJSON, promptTypeStr, targetingKeywordsJSON, fanoutQueriesJSON string
 
 		err := rows.Scan(
 			&prompt.ID,
@@ -679,6 +705,8 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 			&prompt.SourceID,
 			&prompt.Generated,
 			&prompt.Enabled,
+			&targetingKeywordsJSON,
+			&fanoutQueriesJSON,
 			&prompt.CreatedAt,
 			&prompt.UpdatedAt,
 		)
@@ -689,6 +717,8 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 
 		prompt.PromptType = models.PromptType(promptTypeStr)
 		prompt.Tags = jsonToSlice(tagsJSON)
+		prompt.TargetingSearchKeywords = jsonToSlice(targetingKeywordsJSON)
+		prompt.SupportingFanoutQueries = jsonToSlice(fanoutQueriesJSON)
 
 		// Decompress template if it was compressed
 		if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
@@ -705,7 +735,9 @@ func (p *PostgreSQL) GetPromptsByIDs(ctx context.Context, ids []string) ([]*mode
 // ListPromptsByBrand lists prompts filtered by brand and optionally by enabled status
 func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabled *bool) ([]*models.Prompt, error) {
 	start := time.Now()
-	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled, created_at, updated_at 
+	query := `SELECT id, brand_id, org_id, template, prompt_type, tags, category, domain, brand, source_id, generated, enabled,
+	                 targeting_search_keywords, supporting_fanout_queries,
+	                 created_at, updated_at 
 		FROM prompts WHERE brand = $1`
 	args := []interface{}{brand}
 	argPos := 2
@@ -728,7 +760,7 @@ func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabl
 	var prompts []*models.Prompt
 	for rows.Next() {
 		var prompt models.Prompt
-		var tagsJSON, promptTypeStr string
+		var tagsJSON, promptTypeStr, targetingKeywordsJSON, fanoutQueriesJSON string
 
 		err := rows.Scan(
 			&prompt.ID,
@@ -743,6 +775,8 @@ func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabl
 			&prompt.SourceID,
 			&prompt.Generated,
 			&prompt.Enabled,
+			&targetingKeywordsJSON,
+			&fanoutQueriesJSON,
 			&prompt.CreatedAt,
 			&prompt.UpdatedAt,
 		)
@@ -753,6 +787,8 @@ func (p *PostgreSQL) ListPromptsByBrand(ctx context.Context, brand string, enabl
 
 		prompt.PromptType = models.PromptType(promptTypeStr)
 		prompt.Tags = jsonToSlice(tagsJSON)
+		prompt.TargetingSearchKeywords = jsonToSlice(targetingKeywordsJSON)
+		prompt.SupportingFanoutQueries = jsonToSlice(fanoutQueriesJSON)
 
 		// Decompress template if it was compressed
 		if decompressed, err := shared.DecompressString(prompt.Template); err == nil {
@@ -781,8 +817,10 @@ func (p *PostgreSQL) UpdatePrompt(ctx context.Context, prompt *models.Prompt) er
 
 	query := `
 		UPDATE prompts 
-		SET brand_id = $1, org_id = $2, template = $3, prompt_type = $4, tags = $5, category = $6, domain = $7, brand = $8, source_id = $9, generated = $10, enabled = $11, updated_at = $12
-		WHERE id = $13
+		SET brand_id = $1, org_id = $2, template = $3, prompt_type = $4, tags = $5, category = $6, domain = $7, brand = $8, source_id = $9, generated = $10, enabled = $11,
+		    targeting_search_keywords = $12, supporting_fanout_queries = $13,
+		    updated_at = $14
+		WHERE id = $15
 	`
 
 	result, err := p.db.ExecContext(ctx, query,
@@ -797,6 +835,8 @@ func (p *PostgreSQL) UpdatePrompt(ctx context.Context, prompt *models.Prompt) er
 		prompt.SourceID,
 		prompt.Generated,
 		prompt.Enabled,
+		sliceToJSON(prompt.TargetingSearchKeywords),
+		sliceToJSON(prompt.SupportingFanoutQueries),
 		prompt.UpdatedAt,
 		prompt.ID,
 	)

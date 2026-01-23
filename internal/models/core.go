@@ -34,20 +34,22 @@ type LLMConfig struct {
 
 // Prompt represents a prompt template
 type Prompt struct {
-	ID         string     `json:"id" bson:"_id"`
-	BrandID    string     `json:"brandId,omitempty" bson:"brand_id,omitempty"` // Brand ID (UUID)
-	OrgID      string     `json:"orgId,omitempty" bson:"org_id,omitempty"`     // Organization ID
-	Template   string     `json:"template" bson:"template"`
-	PromptType PromptType `json:"promptType,omitempty" bson:"prompt_type,omitempty"`
-	Tags       []string   `json:"tags,omitempty" bson:"tags,omitempty"`
-	Category   string     `json:"category,omitempty" bson:"category,omitempty"`
-	Domain     string     `json:"domain,omitempty" bson:"domain,omitempty"`
-	Brand      string     `json:"brand,omitempty" bson:"brand,omitempty"` // Brand name (kept for backward compatibility)
-	SourceID   string     `json:"sourceId,omitempty" bson:"source_id,omitempty"`
-	Generated  bool       `json:"generated" bson:"generated"`
-	Enabled    bool       `json:"enabled" bson:"enabled"`
-	CreatedAt  time.Time  `json:"createdAt" bson:"created_at"`
-	UpdatedAt  time.Time  `json:"updatedAt" bson:"updated_at"`
+	ID                      string     `json:"id" bson:"_id"`
+	BrandID                 string     `json:"brandId,omitempty" bson:"brand_id,omitempty"` // Brand ID (UUID)
+	OrgID                   string     `json:"orgId,omitempty" bson:"org_id,omitempty"`     // Organization ID
+	Template                string     `json:"template" bson:"template"`
+	PromptType              PromptType `json:"promptType,omitempty" bson:"prompt_type,omitempty"`
+	Tags                    []string   `json:"tags,omitempty" bson:"tags,omitempty"`
+	Category                string     `json:"category,omitempty" bson:"category,omitempty"`
+	Domain                  string     `json:"domain,omitempty" bson:"domain,omitempty"`
+	Brand                   string     `json:"brand,omitempty" bson:"brand,omitempty"` // Brand name (kept for backward compatibility)
+	SourceID                string     `json:"sourceId,omitempty" bson:"source_id,omitempty"`
+	Generated               bool       `json:"generated" bson:"generated"`
+	Enabled                 bool       `json:"enabled" bson:"enabled"`
+	TargetingSearchKeywords []string   `json:"targetingSearchKeywords,omitempty" bson:"targeting_search_keywords,omitempty"` // Keywords for targeting
+	SupportingFanoutQueries []string   `json:"supportingFanoutQueries,omitempty" bson:"supporting_fanout_queries,omitempty"` // Related queries
+	CreatedAt               time.Time  `json:"createdAt" bson:"created_at"`
+	UpdatedAt               time.Time  `json:"updatedAt" bson:"updated_at"`
 }
 
 // Schedule represents a scheduler configuration
@@ -213,4 +215,12 @@ type WebSearchCallDetails struct {
 	Sources     []string  `json:"sources" bson:"sources"`          // URLs found in this search
 	ResultCount int       `json:"resultCount" bson:"result_count"` // Number of results
 	Timestamp   time.Time `json:"timestamp" bson:"timestamp"`      // When the search was performed
+}
+
+// BrandPromptGenerationItem represents a single prompt item in the new structured format
+type BrandPromptGenerationItem struct {
+	Prompt                  string   `json:"prompt"`                  // The search query text
+	IntentType              string   `json:"intentType"`              // "unbranded_discovery" or "branded_comparison"
+	TargetingSearchKeywords []string `json:"targetingSearchKeywords"` // Keywords for targeting
+	SupportingFanoutQueries []string `json:"supportingFanoutQueries"` // Related queries
 }

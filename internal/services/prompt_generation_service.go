@@ -10,6 +10,7 @@ import (
 
 	"github.com/fissionx/gego/internal/db"
 	"github.com/fissionx/gego/internal/llm"
+	"github.com/fissionx/gego/internal/utils"
 
 	// "github.com/fissionx/gego/internal/llm/anthropic"
 	// "github.com/fissionx/gego/internal/llm/google"
@@ -44,6 +45,7 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 	if count > 100 {
 		count = 100
 	}
+	fmt.Printf("🔍 Generating prompts: brandID=%s, orgID=%s, brand=%s, website=%s, category=%s, domain=%s, description=%s, count=%d\n", brandID, orgID, brand, website, category, domain, description, count)
 
 	// Step 1: Scrape website if provided to enrich context
 	var websiteContent *WebsiteContent
@@ -101,7 +103,6 @@ func (s *PromptGenerationService) GeneratePromptsForBrand(ctx context.Context, b
 
 	return savedPrompts, 0, len(savedPrompts), nil
 }
-
 
 // createProviderFromConfig creates an LLM provider instance from LLMConfig
 func (s *PromptGenerationService) createProviderFromConfig(llmConfig *models.LLMConfig) (llm.Provider, error) {
@@ -183,30 +184,7 @@ func (s *PromptGenerationService) deriveBrandMetadata(ctx context.Context, brand
 
 	brandContext := strings.Join(contextParts, "\n")
 
-	derivationPrompt := fmt.Sprintf(`Analyze this brand based on the provided information and determine its industry domain and BROAD category.
-
-IMPORTANT: Use BROAD, GENERIC categories that apply to many similar organizations. DO NOT be too specific.
-
-%s
-
-Respond in EXACTLY this format (one line for domain, one for category):
-Domain: <industry domain like "technology", "healthcare", "finance", "retail", "education", etc>
-Category: <BROAD category that would apply to similar organizations>
-
-Examples of GOOD (broad) categories:
-- Domain: technology, Category: ai tools
-- Domain: technology, Category: crm software
-- Domain: education, Category: engineering college
-- Domain: education, Category: business school
-- Domain: healthcare, Category: hospital
-- Domain: finance, Category: payment platform
-
-Examples of BAD (too specific) categories:
-- "premier higher education institution" ❌ (too specific, use "engineering college")
-- "technical university in south asia" ❌ (too specific, use "engineering college")
-- "AI-powered content optimization platform" ❌ (too specific, use "ai tools")
-
-Choose the BROADEST category that accurately describes what this organization does.`, brandContext)
+	derivationPrompt := utils.BrandMetadataDerivationPrompt(brandContext)
 
 	response, err := provider.Generate(ctx, derivationPrompt, llm.Config{
 		Model:       model,
@@ -293,7 +271,6 @@ func normalizeCategory(cat string) string {
 	return cat
 }
 
-
 // calculatePromptTypeDistribution calculates how many prompts of each type to generate
 func calculatePromptTypeDistribution(total int) map[string]int {
 	distribution := make(map[string]int)
@@ -317,8 +294,9 @@ func calculatePromptTypeDistribution(total int) map[string]int {
 	return distribution
 }
 
-// generateNewPrompts generates new prompts using an LLM
-func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, websiteContent *WebsiteContent, count int, existingPrompts []models.Prompt, llmConfig *models.LLMConfig) ([]string, error) {
+// generateNewPrompts generates new prompts using an LLM with the new structured format
+// Uses the shared generatePromptsWithLLM function
+func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand, category, domain, description string, websiteContent *WebsiteContent, count int, existingPrompts []models.Prompt, llmConfig *models.LLMConfig) ([]PromptGenerationResult, error) {
 	// Create provider from config
 	provider, err := s.createProviderFromConfig(llmConfig)
 	if err != nil {
@@ -330,135 +308,8 @@ func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand,
 		model = llmConfig.Model
 	}
 
-	// Build the generation prompt
-	existingText := ""
-	if len(existingPrompts) > 0 {
-		var templates []string
-		for _, p := range existingPrompts {
-			templates = append(templates, p.Template)
-		}
-		existingText = fmt.Sprintf("\n\nEXISTING PROMPTS (avoid duplication):\n%s", strings.Join(templates, "\n"))
-	}
-
-	// Build rich brand context
-	brandInfo := fmt.Sprintf("Brand: %s", brand)
-	if category != "" {
-		brandInfo += fmt.Sprintf("\nCategory: %s", category)
-	}
-	if domain != "" {
-		brandInfo += fmt.Sprintf("\nDomain/Industry: %s", domain)
-	}
-	if description != "" {
-		brandInfo += fmt.Sprintf("\nDescription: %s", description)
-	}
-
-	// Add scraped website content for hyper-realistic prompts
-	if websiteContent != nil {
-		brandInfo += "\n\n=== WEBSITE CONTENT (use this to understand what they actually do) ==="
-		if websiteContent.Title != "" {
-			brandInfo += fmt.Sprintf("\nWebsite: %s", websiteContent.Title)
-		}
-		if websiteContent.Description != "" {
-			brandInfo += fmt.Sprintf("\nTagline: %s", websiteContent.Description)
-		}
-		if len(websiteContent.Keywords) > 0 {
-			brandInfo += fmt.Sprintf("\nKeywords: %s", strings.Join(websiteContent.Keywords, ", "))
-		}
-		if websiteContent.MainContent != "" {
-			content := websiteContent.MainContent
-			if len(content) > 1000 {
-				content = content[:1000] + "..."
-			}
-			brandInfo += fmt.Sprintf("\nMain Content: %s", content)
-		}
-	}
-
-	// Calculate distribution across question types for diversity
-	distribution := calculatePromptTypeDistribution(count)
-
-	generationPrompt := fmt.Sprintf(`Generate %d unique, natural questions that people would ask when searching for products/services in this space.
-
-%s%s
-
-CRITICAL REQUIREMENTS:
-1. Questions MUST BE GENERIC - DO NOT mention the specific brand name "%s"
-2. Questions should apply to ANY brand in this category
-3. Questions MUST be balanced across these 5 types:
-
-TYPE 1: WHAT QUESTIONS (%d questions) [PREFIX: WHAT|]
-- Definitional, explanatory questions
-- Examples: "What is GEO?", "What are the benefits of..."
-- Format: WHAT|What is GEO and why is it important?
-
-TYPE 2: HOW QUESTIONS (%d questions) [PREFIX: HOW|]
-- Instructional, process-oriented questions
-- Examples: "How to appear in AI search?", "How does X work?"
-- Format: HOW|How to optimize content for AI search?
-
-TYPE 3: COMPARISON QUESTIONS (%d questions) [PREFIX: COMPARE|]
-- Competitive analysis, versus questions
-- Examples: "X vs Y", "Which is better for...", "How does X compare to Y?"
-- Format: COMPARE|How does brand A compare to brand B for SEO?
-
-TYPE 4: TOP/BEST QUESTIONS (%d questions) [PREFIX: TOPBEST|]
-- List-based, recommendation questions
-- Examples: "Best AI SEO tools", "Top platforms for...", "Most popular..."
-- Format: TOPBEST|What are the best AI SEO tools for small businesses?
-
-TYPE 5: BRAND-SPECIFIC PATTERN (%d questions) [PREFIX: BRAND|]
-- Questions that follow "what does [BRAND] do" pattern (but keep generic)
-- Examples: "What features do [category] platforms offer?", "How do [category] tools help?"
-- Format: BRAND|What features do AI SEO platforms typically offer?
-
-IMPORTANT:
-- Use EXACT prefixes (WHAT|, HOW|, COMPARE|, TOPBEST|, BRAND|)
-- Generate the EXACT count for each type as specified above
-- Questions must be generic (no specific brand names)
-- One question per line
-- NO numbers, bullets, or extra formatting
-
-Generate exactly %d questions in this format:`, count, brandInfo, existingText, brand,
-		distribution["what"], distribution["how"], distribution["comparison"], distribution["top_best"], distribution["brand"], count)
-
-	response, err := provider.Generate(ctx, generationPrompt, llm.Config{
-		Model:       model,
-		Temperature: 0.9, // High creativity for diverse prompts
-		MaxTokens:   4096,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the response - split by newlines and extract type prefix
-	lines := strings.Split(response.Text, "\n")
-	var prompts []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-		// Remove any numbering or bullet points
-		line = strings.TrimPrefix(line, "-")
-		line = strings.TrimPrefix(line, "*")
-		line = strings.TrimPrefix(line, "•")
-		// Remove leading numbers like "1. " or "1) "
-		for i := 0; i < 100; i++ {
-			line = strings.TrimPrefix(line, fmt.Sprintf("%d. ", i))
-			line = strings.TrimPrefix(line, fmt.Sprintf("%d) ", i))
-		}
-		line = strings.TrimSpace(line)
-
-		if line != "" && len(line) > 10 {
-			prompts = append(prompts, line)
-		}
-	}
-
-	if len(prompts) == 0 {
-		return nil, fmt.Errorf("failed to parse generated prompts from LLM response")
-	}
-
-	return prompts, nil
+	// Use shared function for prompt generation
+	return generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, count, "")
 }
 
 // parsePromptType extracts prompt type from prefix (e.g., "WHAT|question" → "what", "question")
@@ -495,26 +346,33 @@ func parsePromptType(text string) (models.PromptType, string) {
 }
 
 // savePrompts saves generated prompts to the database
-func (s *PromptGenerationService) savePrompts(ctx context.Context, promptTexts []string, brandID string, orgID string, brand, category, domain string) ([]models.Prompt, error) {
+func (s *PromptGenerationService) savePrompts(ctx context.Context, promptResults []PromptGenerationResult, brandID string, orgID string, brand, category, domain string) ([]models.Prompt, error) {
 	var savedPrompts []models.Prompt
 
-	for _, text := range promptTexts {
-		// Parse prompt type from prefix
-		promptType, cleanText := parsePromptType(text)
+	for _, result := range promptResults {
+		// Map intentType to PromptType
+		promptType := mapIntentTypeToPromptType(result.IntentType)
+
+		// If intentType is empty or mapping failed, try to infer from prompt text
+		if promptType == models.PromptTypeCustom && result.Prompt != "" {
+			promptType, _ = parsePromptType(result.Prompt)
+		}
 
 		prompt := &models.Prompt{
-			ID:         uuid.New().String(),
-			BrandID:    brandID,
-			OrgID:      orgID,
-			Template:   cleanText,
-			PromptType: promptType,
-			Category:   category,
-			Domain:     domain,
-			Brand:      brand,
-			Generated:  true,
-			Enabled:    false, // Generated prompts are suggestions - only enabled when saved via /save API
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
+			ID:                      uuid.New().String(),
+			BrandID:                 brandID,
+			OrgID:                   orgID,
+			Template:                result.Prompt,
+			PromptType:              promptType,
+			Category:                category,
+			Domain:                  domain,
+			Brand:                   brand,
+			Generated:               true,
+			Enabled:                 false, // Generated prompts are suggestions - only enabled when saved via /save API
+			TargetingSearchKeywords: result.TargetingSearchKeywords,
+			SupportingFanoutQueries: result.SupportingFanoutQueries,
+			CreatedAt:               time.Now(),
+			UpdatedAt:               time.Now(),
 		}
 
 		if err := s.db.CreatePrompt(ctx, prompt); err != nil {

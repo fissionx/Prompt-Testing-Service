@@ -11,7 +11,6 @@ import (
 
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
-	"github.com/fissionx/gego/internal/shared"
 )
 
 // deletePromptsByBrand handles DELETE /api/v1/geo/brand/:brandId/prompts/brand
@@ -73,21 +72,9 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 		s.errorResponse(c, http.StatusNotFound, "Failed to fetch brand info: "+err.Error())
 		return
 	}
-
 	brandName := brandInfo.Name
-	normalizedDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
-
-	// Use domain from brand info as website (convert to https URL)
-	website := ""
-	if normalizedDomain != "" {
-		website = "https://" + normalizedDomain
-	}
-
 	// Use category from brand info
 	category := brandInfo.Category
-
-	// Use normalized domain
-	domain := normalizedDomain
 
 	// No description needed - will be derived from brand info if needed
 	description := ""
@@ -103,7 +90,7 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 	// Parse forceRefresh parameter (default: false)
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, description, count, forceRefresh)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, brandInfo.Domain, category, brandInfo.Domain, description, count, forceRefresh)
 }
 
 // getBrandPromptsResponse is a helper function that builds and returns the prompts response

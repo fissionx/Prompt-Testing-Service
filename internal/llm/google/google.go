@@ -12,6 +12,7 @@ import (
 
 	"github.com/fissionx/gego/internal/llm"
 	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/utils"
 )
 
 // Provider implements the LLM Provider interface for Google AI
@@ -196,43 +197,7 @@ func (p *Provider) Generate(ctx context.Context, prompt string, config llm.Confi
 		}
 	}
 
-	geoPrompt := fmt.Sprintf(`Analyze the following search response for brand visibility, sentiment, and competitors.
-
-BRAND TO ANALYZE: %s
-
-SEARCH QUERY: %s
-
-SEARCH RESPONSE:
-%s%s
-
----
-
-CRITICAL ANALYSIS INSTRUCTIONS:
-1. Check if "%s" is mentioned in the search response text
-2. Check if the brand's domain appears in the GROUNDING SOURCES (cited URLs)  
-3. Identify ALL competitor brands/products mentioned in the response
-4. If brand is mentioned, analyze the sentiment (positive/neutral/negative)
-5. Scoring: 
-   - Score 0: Not in text, not in sources
-   - Score 1-3: In sources but not in text (low visibility)
-   - Score 4-6: Mentioned in text with context
-   - Score 7-10: Prominently featured in text AND sources
-
-You MUST respond with ONLY a valid JSON object (no markdown, no code blocks):
-
-{"search_answer":"%s","geo_analysis":{"visibility_score":0,"brand_mentioned":false,"in_grounding_sources":false,"mention_status":"Where/how brand appeared or why absent","reason":"Why brand is/isn't cited, considering text and sources","sentiment":"positive|neutral|negative (only if brand mentioned)","competitors":["Competitor1","Competitor2"],"insights":["Insight 1","Insight 2","Insight 3"],"actions":["Action 1: Blog topic","Action 2: LinkedIn content","Action 3: Get featured on X","Action 4: Target keyword Y","Action 5: Technical SEO tip"],"competitor_info":"What competitors are doing to get cited"}}
-
-Rules:
-- visibility_score: integer 0-10
-- brand_mentioned: true if in text OR sources
-- in_grounding_sources: true if brand domain in cited URLs
-- sentiment: "positive" (recommended/praised), "neutral" (just mentioned), "negative" (criticized), or empty string if not mentioned
-- competitors: array of competitor names mentioned (empty array if none)
-- insights: 3-5 insights about visibility
-- actions: 5 specific actionable recommendations
-- competitor_info: what competitors do well
-
-RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, searchAnswer, sourcesInfo, config.Brand, escapeJSONString(searchAnswer))
+	geoPrompt := utils.GEOAnalysisPrompt(config.Brand, prompt, searchAnswer, sourcesInfo)
 
 	geoContent := []*genai.Content{
 		{
@@ -289,16 +254,6 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, config.Brand, prompt, search
 		WebSearchQueries: webSearchQueries,
 		SearchAnswer:     searchAnswer, // Store original search answer before GEO analysis
 	}, nil
-}
-
-// escapeJSONString escapes special characters for JSON string embedding
-func escapeJSONString(s string) string {
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "\"", "\\\"")
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	s = strings.ReplaceAll(s, "\r", "\\r")
-	s = strings.ReplaceAll(s, "\t", "\\t")
-	return s
 }
 
 // ListModels lists available Google AI models

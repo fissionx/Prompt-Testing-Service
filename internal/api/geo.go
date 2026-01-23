@@ -38,8 +38,6 @@ func (s *Server) generatePrompts(c *gin.Context) {
 		return
 	}
 
-	// Normalize domain to www. format
-	normalizedDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
 	brandName := brandInfo.Name
 
 	// Get LLM config if LLMID is provided
@@ -60,22 +58,16 @@ func (s *Server) generatePrompts(c *gin.Context) {
 	// Create prompt generation service
 	promptGenService := services.NewPromptGenerationService(s.db, s.llmRegistry)
 
-	// Use brand info domain if not provided in request, otherwise use normalized domain
-	domain := normalizedDomain
-	if req.Domain != "" {
-		domain = shared.NormalizeDomainToURL(req.Domain)
-	}
-
 	// Generate prompts with optional website scraping
 	prompts, existingCount, generatedCount, err := promptGenService.GeneratePromptsForBrand(
 		c.Request.Context(),
 		req.BrandID,
 		brandInfo.OrgID,
 		brandName,
-		req.Website,
-		req.Category,
-		domain,
-		req.Description,
+		brandInfo.Domain,
+		brandInfo.Category,
+		brandInfo.Domain,
+		brandInfo.Description,
 		req.Count,
 		llmConfig,
 	)
@@ -109,7 +101,7 @@ func (s *Server) generatePrompts(c *gin.Context) {
 	response := models.GeneratePromptsResponse{
 		Brand:         brandName,
 		Category:      req.Category,
-		Domain:        domain,
+		Domain:        brandInfo.Domain,
 		PromptsByType: promptsByType,
 		Existing:      existingCount,
 		Generated:     generatedCount,
@@ -535,17 +527,6 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 	}
 
 	brandName := brandInfo.Name
-	normalizedDomain := shared.NormalizeDomainToURL(brandInfo.Domain)
-
-	// Use domain from brand info as website (convert to https URL)
-	website := ""
-	if normalizedDomain != "" {
-		website = "https://" + normalizedDomain
-	}
-
-	// Use category from brand info
-	category := brandInfo.Category
-	domain := normalizedDomain
 
 	// Validate that at least promptIds or customPrompts are provided
 	if len(req.PromptIDs) == 0 && len(req.CustomPrompts) == 0 {
@@ -578,8 +559,15 @@ func (s *Server) saveCustomPrompts(c *gin.Context) {
 		return
 	}
 
-	// Return the updated prompts list in the same format as GET endpoint
-	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
+	// Return the updated prompts list directly without triggering suggestions
+	// This avoids unnecessary prompt regeneration when just saving existing prompts
+	response, err := s.brandPromptService.GetPrompts(ctx, brandID)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to get prompts: "+err.Error())
+		return
+	}
+
+	s.successResponse(c, response)
 }
 
 // deletePromptsByIDs handles DELETE /api/v1/geo/prompts
