@@ -114,9 +114,18 @@ func (p *PostgreSQL) migrateOpportunitiesTable(ctx context.Context) error {
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS urgency TEXT",
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS effort_estimate TEXT",
 
+		// Archive flag
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE",
+
+		// LLM ID for tracking which LLM was used for analysis
+		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS llm_id TEXT",
+
 		// Indexes for org_id
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_org_id ON opportunities(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_actions_org_id ON actions(org_id)",
+
+		// Index for llm_id
+		"CREATE INDEX IF NOT EXISTS idx_opportunities_llm_id ON opportunities(llm_id)",
 	}
 
 	for _, stmt := range alterStatements {
@@ -408,6 +417,8 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		-- Internal fields
 		content_hash TEXT NOT NULL,
 		action_id TEXT,
+		llm_id TEXT,
+		is_archived BOOLEAN NOT NULL DEFAULT FALSE,
 		metadata JSONB DEFAULT '{}'::jsonb,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -427,6 +438,22 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		status TEXT NOT NULL DEFAULT 'pending',
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+	);
+
+	-- Opportunity embeddings table - stores semantic vectors for deduplication
+	CREATE TABLE IF NOT EXISTS opportunity_embeddings (
+		id TEXT PRIMARY KEY,
+		brand_id TEXT NOT NULL,
+		opportunity_id TEXT NOT NULL,
+		opportunity_type TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		normalized_text TEXT NOT NULL,
+		key_concepts TEXT[] DEFAULT '{}',
+		action_verbs TEXT[] DEFAULT '{}',
+		target_entities TEXT[] DEFAULT '{}',
+		embedding_vector FLOAT8[] DEFAULT '{}',
+		created_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
 	`
 
@@ -471,6 +498,12 @@ func (p *PostgreSQL) createIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand_id ON geo_campaigns(brand_id)",
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_status ON geo_campaigns(status)",
 		"CREATE INDEX IF NOT EXISTS idx_geo_campaigns_brand_status_completed ON geo_campaigns(brand, status, completed_at) WHERE completed_at IS NULL",
+
+		// Opportunity Embeddings indexes
+		"CREATE INDEX IF NOT EXISTS idx_opportunity_embeddings_brand_id ON opportunity_embeddings(brand_id)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunity_embeddings_opportunity_id ON opportunity_embeddings(opportunity_id)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunity_embeddings_type ON opportunity_embeddings(opportunity_type)",
+		"CREATE INDEX IF NOT EXISTS idx_opportunity_embeddings_key_concepts ON opportunity_embeddings USING gin(key_concepts)",
 	}
 
 	for _, indexSQL := range indexes {
@@ -535,6 +568,7 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_brand_status ON opportunities(brand_id, status)",
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_prompt_status ON opportunities(prompt_id, status)",
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_created_at ON opportunities(created_at DESC)",
+		// Note: idx_opportunities_llm_id is created in migrateOpportunitiesTable after the column is added
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunities_prompt_content_hash ON opportunities(prompt_id, content_hash)",
 
 		// Actions indexes

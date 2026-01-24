@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/fissionx/gego/internal/llm"
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
 )
@@ -179,9 +184,9 @@ func (s *Server) suppressOpportunity(c *gin.Context) {
 
 	response := models.SuppressOpportunityResponse{
 		OpportunityID: opportunityID,
-		Status:        string(models.OpportunityStatusArchived),
-		SuppressedAt:  opportunity.UpdatedAt,
-		Message:       "Opportunity suppressed successfully",
+		IsArchived:    true,
+		SuppressedAt:  time.Now(),
+		Message:       "Opportunity archived successfully",
 	}
 
 	s.successResponse(c, response)
@@ -214,6 +219,7 @@ func (s *Server) convertOpportunityToAction(c *gin.Context) {
 		return
 	}
 
+	// ConvertToAction now uses the LLM ID stored in the opportunity
 	action, err := opportunityService.ConvertToAction(c.Request.Context(), opportunityID, req.AdditionalContext)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to convert opportunity to action: "+err.Error())
@@ -341,6 +347,90 @@ func (s *Server) getOpportunitySummary(c *gin.Context) {
 	s.successResponse(c, summary)
 }
 
+// batchConvertOpportunitiesToActions handles POST /api/v1/geo/brand/:brandId/opportunities/convert
+// Converts multiple opportunities to actions in a single batch operation
+// Each opportunity uses its stored LLM ID for action generation
+func (s *Server) batchConvertOpportunitiesToActions(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand ID is required")
+		return
+	}
+
+	var req models.BatchConvertToActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	if len(req.OpportunityIDs) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one opportunity ID is required")
+		return
+	}
+
+	// Limit batch size to prevent abuse
+	const maxBatchSize = 50
+	if len(req.OpportunityIDs) > maxBatchSize {
+		s.errorResponse(c, http.StatusBadRequest, fmt.Sprintf("Batch size exceeds maximum allowed (%d)", maxBatchSize))
+		return
+	}
+
+	opportunityService := services.NewOpportunityService(s.db, s.llmRegistry)
+	response, err := opportunityService.BatchConvertToActions(
+		c.Request.Context(),
+		brandID,
+		req.OpportunityIDs,
+		req.AdditionalContext,
+	)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Batch conversion failed: "+err.Error())
+		return
+	}
+
+	s.successResponse(c, response)
+}
+
+// batchSuppressOpportunities handles POST /api/v1/geo/brand/:brandId/opportunities/suppress
+// Suppresses/archives multiple opportunities in a single batch operation
+func (s *Server) batchSuppressOpportunities(c *gin.Context) {
+	brandID := c.Param("brandId")
+	if brandID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand ID is required")
+		return
+	}
+
+	var req models.BatchSuppressOpportunityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	if len(req.OpportunityIDs) == 0 {
+		s.errorResponse(c, http.StatusBadRequest, "At least one opportunity ID is required")
+		return
+	}
+
+	// Limit batch size to prevent abuse
+	const maxBatchSize = 100
+	if len(req.OpportunityIDs) > maxBatchSize {
+		s.errorResponse(c, http.StatusBadRequest, fmt.Sprintf("Batch size exceeds maximum allowed (%d)", maxBatchSize))
+		return
+	}
+
+	opportunityService := services.NewOpportunityService(s.db, s.llmRegistry)
+	response, err := opportunityService.BatchSuppressOpportunities(
+		c.Request.Context(),
+		brandID,
+		req.OpportunityIDs,
+	)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Batch suppression failed: "+err.Error())
+		return
+	}
+
+	s.successResponse(c, response)
+}
+
 // Helper function to parse int with default value
 func parseIntOrDefault(s string, defaultVal int) int {
 	if s == "" {
@@ -351,4 +441,88 @@ func parseIntOrDefault(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return val
+}
+
+// getLLMForBrand returns the LLM provider and model configured for a brand (from schedule)
+func (s *Server) getLLMForBrand(ctx context.Context, brandID string) (llm.Provider, string, error) {
+	// Get schedules for this brand to find the LLM config
+	enabled := true
+	schedules, err := s.db.ListSchedules(ctx, brandID, &enabled)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get schedules for brand: %w", err)
+	}
+
+	if len(schedules) == 0 {
+		// Fallback to best available LLM
+		return s.getBestLLM(ctx)
+	}
+
+	// Get the first schedule's LLM IDs
+	schedule := schedules[0]
+	if len(schedule.LLMIDs) == 0 {
+		// Fallback to best available LLM
+		return s.getBestLLM(ctx)
+	}
+
+	// Get the first LLM config
+	llmID := schedule.LLMIDs[0]
+	llmConfig, err := s.db.GetLLM(ctx, llmID)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get LLM config: %w", err)
+	}
+
+	if llmConfig == nil || !llmConfig.Enabled {
+		// Fallback to best available LLM
+		return s.getBestLLM(ctx)
+	}
+
+	// Get the provider from registry
+	provider, ok := s.llmRegistry.Get(llmConfig.Provider)
+	if !ok {
+		return nil, "", fmt.Errorf("LLM provider not found: %s", llmConfig.Provider)
+	}
+
+	fmt.Printf("🔧 Using LLM from schedule: provider=%s, model=%s\n", llmConfig.Provider, llmConfig.Model)
+	return provider, llmConfig.Model, nil
+}
+
+// getBestLLM returns the best available LLM provider and model
+func (s *Server) getBestLLM(ctx context.Context) (llm.Provider, string, error) {
+	preferredProviders := []string{"google", "openai", "anthropic", "perplexity"}
+
+	enabled := true
+	llmConfigs, err := s.db.ListLLMs(ctx, &enabled)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to list LLMs: %w", err)
+	}
+
+	if len(llmConfigs) == 0 {
+		return nil, "", fmt.Errorf("no enabled LLMs configured")
+	}
+
+	// Find best LLM by provider preference
+	var selectedConfig *models.LLMConfig
+	for _, preferredProvider := range preferredProviders {
+		for _, config := range llmConfigs {
+			if strings.ToLower(config.Provider) == preferredProvider {
+				selectedConfig = config
+				break
+			}
+		}
+		if selectedConfig != nil {
+			break
+		}
+	}
+
+	// If no preferred provider found, use first available
+	if selectedConfig == nil {
+		selectedConfig = llmConfigs[0]
+	}
+
+	provider, ok := s.llmRegistry.Get(selectedConfig.Provider)
+	if !ok {
+		return nil, "", fmt.Errorf("LLM provider not found: %s", selectedConfig.Provider)
+	}
+
+	return provider, selectedConfig.Model, nil
 }

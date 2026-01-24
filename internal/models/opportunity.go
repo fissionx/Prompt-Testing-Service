@@ -28,10 +28,10 @@ const (
 type OpportunityStatus string
 
 const (
-	OpportunityStatusNew        OpportunityStatus = "new"
+	OpportunityStatusOpen       OpportunityStatus = "open"
 	OpportunityStatusInProgress OpportunityStatus = "in_progress"
 	OpportunityStatusCompleted  OpportunityStatus = "completed"
-	OpportunityStatusArchived   OpportunityStatus = "archived" // suppressed
+	OpportunityStatusDismissed  OpportunityStatus = "dismissed" // suppressed/archived
 )
 
 // Opportunity represents a gap or improvement area identified from AI response analysis
@@ -41,6 +41,7 @@ type Opportunity struct {
 	BrandID     string            `json:"brandId" bson:"brand_id"`
 	PromptID    string            `json:"promptId" bson:"prompt_id"`
 	ResponseID  string            `json:"responseId" bson:"response_id"`
+	LLMID       string            `json:"llmId,omitempty" bson:"llm_id,omitempty"` // LLM ID used for analysis (for action generation)
 	Type        OpportunityType   `json:"type" bson:"type"`
 	Status      OpportunityStatus `json:"status" bson:"status"`
 
@@ -60,6 +61,7 @@ type Opportunity struct {
 	// Internal fields
 	ContentHash string                 `json:"contentHash" bson:"content_hash"` // For deduplication
 	ActionID    string                 `json:"actionId,omitempty" bson:"action_id,omitempty"`
+	IsArchived  bool                   `json:"isArchived" bson:"is_archived"` // True when suppressed
 	Metadata    map[string]interface{} `json:"metadata,omitempty" bson:"metadata,omitempty"` // Additional flexible data
 	CreatedAt   time.Time              `json:"createdAt" bson:"created_at"`
 	UpdatedAt   time.Time              `json:"updatedAt" bson:"updated_at"`

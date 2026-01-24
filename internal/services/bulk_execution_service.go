@@ -281,14 +281,14 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	// Generate opportunities from the response (async, don't block execution)
 	// Pass the same LLM provider that was used for executing the prompt
 	if brand != "" && s.opportunityService != nil {
-		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources, provider, llmConfig.Model)
+		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources, provider, llmConfig.ID, llmConfig.Model)
 	}
 
 	return nil
 }
 
 // generateOpportunitiesAsync generates opportunities in the background using the same LLM that executed the prompt
-func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string, llmProvider llm.Provider, llmModel string) {
+func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string, llmProvider llm.Provider, llmID, llmModel string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovered from panic in generateOpportunitiesAsync: %v", r)
@@ -331,6 +331,7 @@ func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, o
 		sourcesInfo,
 		competitors,
 		llmProvider,
+		llmID,
 		llmModel,
 	)
 	if err != nil {

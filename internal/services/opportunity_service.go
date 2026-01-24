@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fissionx/gego/internal/db"
@@ -21,9 +20,6 @@ import (
 type OpportunityService struct {
 	db          db.Database
 	llmRegistry *llm.Registry
-	// In-memory matchers per brand for semantic deduplication
-	matchers   map[string]*utils.OpportunityMatcher
-	matchersMu sync.RWMutex
 }
 
 // NewOpportunityService creates a new OpportunityService
@@ -31,38 +27,7 @@ func NewOpportunityService(database db.Database, llmRegistry *llm.Registry) *Opp
 	return &OpportunityService{
 		db:          database,
 		llmRegistry: llmRegistry,
-		matchers:    make(map[string]*utils.OpportunityMatcher),
 	}
-}
-
-// getOrCreateMatcher gets or creates an opportunity matcher for a brand
-func (s *OpportunityService) getOrCreateMatcher(ctx context.Context, brandID string) *utils.OpportunityMatcher {
-	s.matchersMu.Lock()
-	defer s.matchersMu.Unlock()
-
-	if matcher, exists := s.matchers[brandID]; exists {
-		return matcher
-	}
-
-	// Create new matcher with 0.75 similarity threshold
-	matcher := utils.NewOpportunityMatcher(0.75)
-
-	// Pre-populate with existing opportunities for this brand
-	filter := models.OpportunityFilter{
-		BrandID: brandID,
-		Limit:   200, // Load recent opportunities
-	}
-	existingOpps, err := s.db.ListOpportunities(ctx, filter)
-	if err == nil {
-		for _, opp := range existingOpps {
-			if opp.Status != models.OpportunityStatusArchived {
-				matcher.AddOpportunity(opp.ID, string(opp.Type), opp.Title, opp.Description)
-			}
-		}
-	}
-
-	s.matchers[brandID] = matcher
-	return matcher
 }
 
 // GEOAnalysisWithOpportunitiesResult represents the combined GEO analysis and opportunities result
@@ -100,20 +65,28 @@ func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	sourcesInfo string,
 	competitors []string,
 	llmProvider llm.Provider,
+	llmID string,
 	llmModel string,
 ) (*GEOAnalysisWithOpportunitiesResult, []*models.Opportunity, error) {
 	fmt.Printf("🎯 AnalyzeAndGenerateOpportunities called for brand: %s, prompt: %s\n", brandName, promptID)
-	fmt.Printf("✅ Using same LLM model: %s for opportunity analysis\n", llmModel)
+	fmt.Printf("✅ Using same LLM model: %s (ID: %s) for opportunity analysis\n", llmModel, llmID)
 
 	// Use the provided LLM provider (same one that executed the prompt)
 	provider := llmProvider
 	model := llmModel
 
-	// Generate the combined prompt
-	prompt := utils.GEOAnalysisWithOpportunitiesPrompt(brandName, searchQuery, searchAnswer, sourcesInfo, competitors)
+	// === LLM-BASED DEDUPLICATION ===
+	// Fetch existing opportunities for this brand to pass to LLM for deduplication
+	existingOpps := s.getExistingOpportunitiesForDedup(ctx, brandID)
+	fmt.Printf("📊 Found %d existing opportunities to pass for LLM deduplication\n", len(existingOpps))
+
+	// Generate the combined prompt WITH existing opportunities for deduplication
+	prompt := utils.GEOAnalysisWithOpportunitiesPromptWithDedup(
+		brandName, searchQuery, searchAnswer, sourcesInfo, competitors, existingOpps,
+	)
 
 	// Call LLM
-	fmt.Printf("📤 Calling LLM for opportunity analysis (prompt length: %d chars)\n", len(prompt))
+	fmt.Printf("📤 Calling LLM for opportunity analysis with deduplication (prompt length: %d chars)\n", len(prompt))
 	response, err := provider.Generate(ctx, prompt, llm.Config{
 		Model:       model,
 		Temperature: 0.3, // Lower temperature for more consistent analysis
@@ -129,13 +102,13 @@ func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	result, err := s.parseGEOAnalysisWithOpportunities(response.Text)
 	if err != nil {
 		fmt.Printf("❌ Failed to parse LLM response: %v\n", err)
-		fmt.Printf("📋 Raw response (first 500 chars): %s\n", truncateString(response.Text, 500))
+		fmt.Printf("📋 Raw response (first 500 chars): %s\n", truncateForLog(response.Text, 500))
 		return nil, nil, fmt.Errorf("failed to parse LLM response: %w", err)
 	}
-	fmt.Printf("✅ Parsed response - found %d opportunities\n", len(result.Opportunities))
+	fmt.Printf("✅ Parsed response - found %d NEW opportunities (LLM filtered duplicates)\n", len(result.Opportunities))
 
-	// Convert LLM opportunities to database models with deduplication
-	opportunities, err := s.processOpportunities(ctx, orgID, brandID, promptID, responseID, result.Opportunities)
+	// Convert LLM opportunities to database models (minimal dedup since LLM already filtered)
+	opportunities, err := s.processOpportunities(ctx, orgID, brandID, promptID, responseID, llmID, result.Opportunities)
 	if err != nil {
 		fmt.Printf("❌ Failed to process opportunities: %v\n", err)
 		return nil, nil, fmt.Errorf("failed to process opportunities: %w", err)
@@ -143,6 +116,36 @@ func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	fmt.Printf("✅ Saved %d opportunities to database\n", len(opportunities))
 
 	return result, opportunities, nil
+}
+
+// getExistingOpportunitiesForDedup fetches existing opportunities for LLM-based deduplication
+func (s *OpportunityService) getExistingOpportunitiesForDedup(ctx context.Context, brandID string) []utils.ExistingOpportunity {
+	// Fetch all non-archived opportunities for this brand
+	filter := models.OpportunityFilter{
+		BrandID: brandID,
+		Limit:   100, // Limit to avoid prompt getting too large
+	}
+
+	opps, err := s.db.ListOpportunities(ctx, filter)
+	if err != nil {
+		fmt.Printf("⚠️ Warning: could not fetch existing opportunities for dedup: %v\n", err)
+		return nil
+	}
+
+	var existing []utils.ExistingOpportunity
+	for _, opp := range opps {
+		// Skip archived opportunities
+		if opp.IsArchived {
+			continue
+		}
+		existing = append(existing, utils.ExistingOpportunity{
+			Title:       opp.Title,
+			Type:        string(opp.Type),
+			Description: opp.Description,
+		})
+	}
+
+	return existing
 }
 
 // parseGEOAnalysisWithOpportunities parses the LLM response into structured data
@@ -211,62 +214,75 @@ func (s *OpportunityService) parseGEOAnalysisWithOpportunities(responseText stri
 	return &result, nil
 }
 
-// processOpportunities converts LLM opportunities to database models with semantic deduplication
+// processOpportunities converts LLM opportunities to database models
+// RULE: Only ONE opportunity per type per prompt
+// - If type exists with no action_id → UPDATE with new data
+// - If type exists with action_id → skip (action in progress)
+// - If type doesn't exist → CREATE new
 func (s *OpportunityService) processOpportunities(
 	ctx context.Context,
 	orgID string,
 	brandID string,
 	promptID string,
 	responseID string,
+	llmID string,
 	llmOpportunities []models.LLMOpportunity,
 ) ([]*models.Opportunity, error) {
 	var opportunities []*models.Opportunity
 
-	// Get or create in-memory matcher for this brand (pre-populated with existing opportunities)
-	matcher := s.getOrCreateMatcher(ctx, brandID)
+	fmt.Printf("🔍 Processing %d opportunities from LLM (one per type per prompt)\n", len(llmOpportunities))
 
-	for _, llmOpp := range llmOpportunities {
-		// Generate content hash for fast deduplication
-		contentHash := s.generateContentHash(llmOpp.Type, llmOpp.Title, promptID)
+	for i, llmOpp := range llmOpportunities {
+		oppType := models.ParseOpportunityType(llmOpp.Type)
 
-		// Fast path: Check if opportunity already exists by hash (same prompt)
-		existing, err := s.db.GetOpportunityByContentHash(ctx, promptID, contentHash)
+		// Check if an opportunity of this type already exists for this prompt
+		existing, err := s.db.GetOpportunityByPromptAndType(ctx, promptID, string(oppType))
 		if err != nil {
-			fmt.Printf("Warning: failed to check for existing opportunity by hash: %v\n", err)
+			fmt.Printf("Warning: failed to check for existing opportunity by type: %v\n", err)
 		}
 
 		if existing != nil {
-			// Skip if already exists and not new (archived opportunities should stay archived)
-			if existing.Status != models.OpportunityStatusNew {
+			// Type already exists for this prompt
+			if existing.ActionID != "" {
+				// Has action associated - don't overwrite, skip
+				fmt.Printf("  [%d] Skipping (action in progress): type=%s, title=%s\n", i+1, llmOpp.Type, existing.Title)
+				opportunities = append(opportunities, existing)
 				continue
 			}
-			// Update existing new opportunity with fresh data
+
+			// No action associated - UPDATE with new data
 			existing.ResponseID = responseID
+			existing.LLMID = llmID
+			existing.Title = llmOpp.Title
+			existing.Description = llmOpp.Description
+			existing.CurrentState = llmOpp.CurrentState
+			existing.SourceEvidence = llmOpp.SourceEvidence
 			existing.ImpactScore = llmOpp.ImpactScore
+			existing.Urgency = llmOpp.Urgency
+			existing.EffortEstimate = llmOpp.EffortEstimate
+			existing.ContentHash = s.generateContentHash(llmOpp.Type, llmOpp.Title, promptID)
 			existing.UpdatedAt = time.Now()
+
 			if err := s.db.UpdateOpportunity(ctx, existing); err != nil {
 				fmt.Printf("Warning: failed to update existing opportunity: %v\n", err)
+			} else {
+				fmt.Printf("  [%d] 🔄 UPDATED: type=%s, title=%s\n", i+1, llmOpp.Type, llmOpp.Title)
 			}
 			opportunities = append(opportunities, existing)
 			continue
 		}
 
-		// Semantic deduplication using in-memory embeddings (no LLM calls)
-		isDuplicate, similarID, similarity := matcher.FindDuplicate(llmOpp.Type, llmOpp.Title, llmOpp.Description)
-		if isDuplicate {
-			fmt.Printf("Skipping duplicate opportunity (%.2f similar to %s): %s\n", similarity, similarID, llmOpp.Title)
-			continue
-		}
-
-		// Create new opportunity
+		// Type doesn't exist for this prompt - CREATE new
+		contentHash := s.generateContentHash(llmOpp.Type, llmOpp.Title, promptID)
 		opportunity := &models.Opportunity{
 			ID:         uuid.New().String(),
 			OrgID:      orgID,
 			BrandID:    brandID,
 			PromptID:   promptID,
 			ResponseID: responseID,
-			Type:       models.ParseOpportunityType(llmOpp.Type),
-			Status:     models.OpportunityStatusNew,
+			LLMID:      llmID, // Store the LLM ID used for analysis
+			Type:       oppType,
+			Status:     models.OpportunityStatusOpen, // New opportunities start as "open"
 
 			// Core details
 			Title:       llmOpp.Title,
@@ -291,16 +307,17 @@ func (s *OpportunityService) processOpportunities(
 		if err := s.db.CreateOpportunity(ctx, opportunity); err != nil {
 			// If it fails due to unique constraint, skip silently
 			if strings.Contains(err.Error(), "unique") || strings.Contains(err.Error(), "duplicate") {
+				fmt.Printf("  [%d] Skipping (DB unique constraint): type=%s\n", i+1, llmOpp.Type)
 				continue
 			}
 			return nil, fmt.Errorf("failed to create opportunity: %w", err)
 		}
 
+		fmt.Printf("  [%d] ✅ CREATED: type=%s, title=%s, impact=%d\n", i+1, llmOpp.Type, llmOpp.Title, llmOpp.ImpactScore)
 		opportunities = append(opportunities, opportunity)
-
-		// Add to matcher for subsequent dedup checks in this batch
-		matcher.AddOpportunity(opportunity.ID, string(opportunity.Type), opportunity.Title, opportunity.Description)
 	}
+
+	fmt.Printf("📊 Result: %d opportunities processed\n", len(opportunities))
 
 	return opportunities, nil
 }
@@ -320,6 +337,7 @@ func (s *OpportunityService) generateContentHash(oppType, title, promptID string
 }
 
 // ConvertToAction generates a detailed action plan for an opportunity
+// Uses the LLM stored in the opportunity (from when it was analyzed) for action generation
 func (s *OpportunityService) ConvertToAction(
 	ctx context.Context,
 	opportunityID string,
@@ -343,11 +361,44 @@ func (s *OpportunityService) ConvertToAction(
 	// Get brand name for context
 	brandName := opportunity.BrandID // Default to ID if name not available
 
-	// Get the best available LLM
-	provider, model, err := s.getBestLLM(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("no LLM available: %w", err)
+	// Get LLM provider from stored LLM ID (use the same LLM that analyzed this opportunity)
+	var provider llm.Provider
+	var model string
+
+	if opportunity.LLMID != "" {
+		// Use the stored LLM ID
+		llmConfig, err := s.db.GetLLM(ctx, opportunity.LLMID)
+		if err != nil || llmConfig == nil || !llmConfig.Enabled {
+			fmt.Printf("⚠️ Stored LLM ID %s not found or disabled, falling back to best available\n", opportunity.LLMID)
+			provider, model, err = s.getBestLLM(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("no LLM available: %w", err)
+			}
+		} else {
+			provider, _ = s.llmRegistry.Get(llmConfig.Provider)
+			if provider == nil {
+				fmt.Printf("⚠️ Provider %s not found, falling back to best available\n", llmConfig.Provider)
+				provider, model, err = s.getBestLLM(ctx)
+				if err != nil {
+					return nil, fmt.Errorf("no LLM available: %w", err)
+				}
+			} else {
+				model = llmConfig.Model
+				fmt.Printf("✅ Using stored LLM: provider=%s, model=%s (ID: %s)\n", llmConfig.Provider, model, opportunity.LLMID)
+			}
+		}
+	} else {
+		// No stored LLM ID, fall back to brand's schedule or best available
+		fmt.Printf("⚠️ No LLM ID stored in opportunity, falling back to brand schedule or best available\n")
+		provider, model, err = s.getLLMForBrand(ctx, opportunity.BrandID)
+		if err != nil {
+			provider, model, err = s.getBestLLM(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("no LLM available: %w", err)
+			}
+		}
 	}
+	fmt.Printf("✅ Using LLM model: %s for action generation\n", model)
 
 	// Generate action plan prompt
 	prompt := utils.ActionGenerationPrompt(
@@ -406,6 +457,150 @@ func (s *OpportunityService) ConvertToAction(
 	return action, nil
 }
 
+// BatchConvertToActions converts multiple opportunities to actions in a single batch operation
+// Uses the LLM stored in each opportunity for action generation
+// Returns results for each opportunity including successes and failures
+func (s *OpportunityService) BatchConvertToActions(
+	ctx context.Context,
+	brandID string,
+	opportunityIDs []string,
+	additionalContext string,
+) (*models.BatchConvertToActionResponse, error) {
+	results := make([]models.BatchConvertResult, 0, len(opportunityIDs))
+	successCount := 0
+	failureCount := 0
+
+	for _, oppID := range opportunityIDs {
+		result := models.BatchConvertResult{
+			OpportunityID: oppID,
+		}
+
+		// Verify the opportunity belongs to the brand
+		opportunity, err := s.db.GetOpportunity(ctx, oppID)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("opportunity not found: %v", err)
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		if opportunity.BrandID != brandID {
+			result.Success = false
+			result.Error = "opportunity does not belong to this brand"
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		// Check if already archived
+		if opportunity.IsArchived {
+			result.Success = false
+			result.Error = "opportunity is archived"
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		// Convert the opportunity to action (uses stored LLM ID)
+		action, err := s.ConvertToAction(ctx, oppID, additionalContext)
+		if err != nil {
+			result.Success = false
+			result.Error = err.Error()
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		result.Success = true
+		result.Action = action
+		results = append(results, result)
+		successCount++
+	}
+
+	response := &models.BatchConvertToActionResponse{
+		Results:      results,
+		TotalCount:   len(opportunityIDs),
+		SuccessCount: successCount,
+		FailureCount: failureCount,
+		Message:      fmt.Sprintf("Batch conversion completed: %d succeeded, %d failed", successCount, failureCount),
+	}
+
+	return response, nil
+}
+
+// BatchSuppressOpportunities archives/suppresses multiple opportunities in a single batch operation
+// Returns results for each opportunity including successes and failures
+func (s *OpportunityService) BatchSuppressOpportunities(
+	ctx context.Context,
+	brandID string,
+	opportunityIDs []string,
+) (*models.BatchSuppressOpportunityResponse, error) {
+	results := make([]models.BatchSuppressResult, 0, len(opportunityIDs))
+	successCount := 0
+	failureCount := 0
+
+	for _, oppID := range opportunityIDs {
+		result := models.BatchSuppressResult{
+			OpportunityID: oppID,
+		}
+
+		// Verify the opportunity belongs to the brand
+		opportunity, err := s.db.GetOpportunity(ctx, oppID)
+		if err != nil {
+			result.Success = false
+			result.Error = fmt.Sprintf("opportunity not found: %v", err)
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		if opportunity.BrandID != brandID {
+			result.Success = false
+			result.Error = "opportunity does not belong to this brand"
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		// Check if already archived
+		if opportunity.IsArchived {
+			result.Success = true
+			result.IsArchived = true
+			result.SuppressedAt = opportunity.UpdatedAt
+			result.Error = "opportunity was already archived"
+			results = append(results, result)
+			successCount++ // Count as success since the desired state is achieved
+			continue
+		}
+
+		// Suppress the opportunity
+		if err := s.SuppressOpportunity(ctx, oppID); err != nil {
+			result.Success = false
+			result.Error = err.Error()
+			results = append(results, result)
+			failureCount++
+			continue
+		}
+
+		result.Success = true
+		result.IsArchived = true
+		result.SuppressedAt = time.Now()
+		results = append(results, result)
+		successCount++
+	}
+
+	response := &models.BatchSuppressOpportunityResponse{
+		Results:      results,
+		TotalCount:   len(opportunityIDs),
+		SuccessCount: successCount,
+		FailureCount: failureCount,
+		Message:      fmt.Sprintf("Batch suppression completed: %d succeeded, %d failed", successCount, failureCount),
+	}
+
+	return response, nil
+}
+
 // parseActionPlan parses the LLM response into an action plan
 func (s *OpportunityService) parseActionPlan(responseText string) (*models.LLMActionPlan, error) {
 	// Clean up the response
@@ -450,14 +645,14 @@ func convertLLMSteps(llmSteps []models.LLMActionStep) []models.ActionStep {
 	return steps
 }
 
-// SuppressOpportunity archives/suppresses an opportunity
+// SuppressOpportunity archives/suppresses an opportunity by setting IsArchived = true
 func (s *OpportunityService) SuppressOpportunity(ctx context.Context, opportunityID string) error {
 	opportunity, err := s.db.GetOpportunity(ctx, opportunityID)
 	if err != nil {
 		return fmt.Errorf("opportunity not found: %w", err)
 	}
 
-	opportunity.Status = models.OpportunityStatusArchived
+	opportunity.IsArchived = true
 	opportunity.UpdatedAt = time.Now()
 
 	return s.db.UpdateOpportunity(ctx, opportunity)
@@ -558,6 +753,46 @@ func (s *OpportunityService) UpdateActionStatus(ctx context.Context, actionID st
 // GetOpportunitySummary returns a summary of opportunities for a brand
 func (s *OpportunityService) GetOpportunitySummary(ctx context.Context, brandID string) (*models.OpportunitySummary, error) {
 	return s.db.GetOpportunitySummary(ctx, brandID)
+}
+
+// getLLMForBrand returns the LLM provider and model configured for a brand (from schedule)
+func (s *OpportunityService) getLLMForBrand(ctx context.Context, brandID string) (llm.Provider, string, error) {
+	// Get schedules for this brand to find the LLM config
+	enabled := true
+	schedules, err := s.db.ListSchedules(ctx, brandID, &enabled)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get schedules for brand: %w", err)
+	}
+
+	if len(schedules) == 0 {
+		return nil, "", fmt.Errorf("no schedules found for brand")
+	}
+
+	// Get the first schedule's LLM IDs
+	schedule := schedules[0]
+	if len(schedule.LLMIDs) == 0 {
+		return nil, "", fmt.Errorf("no LLM configured in schedule")
+	}
+
+	// Get the first LLM config
+	llmID := schedule.LLMIDs[0]
+	llmConfig, err := s.db.GetLLM(ctx, llmID)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get LLM config: %w", err)
+	}
+
+	if llmConfig == nil || !llmConfig.Enabled {
+		return nil, "", fmt.Errorf("LLM not found or disabled: %s", llmID)
+	}
+
+	// Get the provider from registry
+	provider, ok := s.llmRegistry.Get(llmConfig.Provider)
+	if !ok {
+		return nil, "", fmt.Errorf("LLM provider not found: %s", llmConfig.Provider)
+	}
+
+	fmt.Printf("🔧 Using LLM from schedule: provider=%s, model=%s\n", llmConfig.Provider, llmConfig.Model)
+	return provider, llmConfig.Model, nil
 }
 
 // getBestLLM returns the best available LLM provider and model for analysis

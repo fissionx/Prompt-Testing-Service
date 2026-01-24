@@ -5,14 +5,54 @@ import (
 	"strings"
 )
 
+// ExistingOpportunity represents a simplified opportunity for deduplication context
+type ExistingOpportunity struct {
+	Title       string
+	Type        string
+	Description string
+}
+
 // GEOAnalysisWithOpportunitiesPrompt generates a prompt for analyzing search responses
 // and identifying improvement opportunities in a single LLM call
+// Now includes existing opportunities for LLM-based deduplication
 func GEOAnalysisWithOpportunitiesPrompt(brand, searchQuery, searchAnswer, sourcesInfo string, competitors []string) string {
+	return GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo, competitors, nil)
+}
+
+// GEOAnalysisWithOpportunitiesPromptWithDedup generates a prompt that includes existing opportunities
+// for LLM-based deduplication - the LLM will only generate NEW unique opportunities
+func GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo string, competitors []string, existingOpportunities []ExistingOpportunity) string {
 	escapedSearchAnswer := escapeJSONString(searchAnswer)
 
 	competitorsInfo := ""
 	if len(competitors) > 0 {
 		competitorsInfo = fmt.Sprintf("\n\nKNOWN COMPETITORS: %s", strings.Join(competitors, ", "))
+	}
+
+	// Build existing opportunities section for deduplication
+	existingOppsSection := ""
+	if len(existingOpportunities) > 0 {
+		var oppsList []string
+		for i, opp := range existingOpportunities {
+			oppsList = append(oppsList, fmt.Sprintf("%d. [%s] %s - %s", i+1, opp.Type, opp.Title, truncateString(opp.Description, 150)))
+		}
+		existingOppsSection = fmt.Sprintf(`
+
+=== EXISTING OPPORTUNITIES (DO NOT DUPLICATE) ===
+The following opportunities have ALREADY been identified for this brand. 
+DO NOT generate any opportunity that is semantically similar to these:
+
+%s
+
+IMPORTANT DEDUPLICATION RULES:
+- If an existing opportunity is about "updating content with latest dates" - DO NOT suggest similar updates
+- If an existing opportunity is about "Reddit engagement" - DO NOT suggest similar Reddit activities  
+- If an existing opportunity is about "creating comparison pages" - DO NOT suggest similar comparisons
+- Consider semantic meaning, not just exact words - "refresh content" = "update content" = "modernize content"
+- Only generate opportunities that are TRULY NEW and DIFFERENT from the above list
+- If you cannot find any new unique opportunities, return an EMPTY opportunities array []
+=== END EXISTING OPPORTUNITIES ===
+`, strings.Join(oppsList, "\n"))
 	}
 
 	return fmt.Sprintf(`Analyze the following search response for brand visibility, sentiment, competitors, and identify actionable improvement opportunities.
@@ -22,7 +62,7 @@ BRAND TO ANALYZE: %s
 SEARCH QUERY: %s
 
 SEARCH RESPONSE:
-%s%s%s
+%s%s%s%s
 
 ---
 
@@ -118,7 +158,7 @@ Rules:
 - actions: 3-5 specific actionable recommendations (brief)
 - opportunities: array of 1-5 specific improvement opportunities
 
-RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, brand, escapedSearchAnswer)
+RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, existingOppsSection, brand, escapedSearchAnswer)
 }
 
 // ActionGenerationPrompt generates a prompt for creating a detailed action plan from an opportunity
@@ -287,4 +327,15 @@ func getTypeSpecificGuidance(opportunityType string) string {
 - Include relevant keywords and internal links
 - Measure impact through visibility tracking`
 	}
+}
+
+// truncateString truncates a string to maxLen characters, adding "..." if truncated
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }

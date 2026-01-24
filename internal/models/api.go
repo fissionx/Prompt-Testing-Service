@@ -970,7 +970,7 @@ type SuppressOpportunityRequest struct {
 // SuppressOpportunityResponse represents the response after suppressing an opportunity
 type SuppressOpportunityResponse struct {
 	OpportunityID string    `json:"opportunityId"`
-	Status        string    `json:"status"`
+	IsArchived    bool      `json:"isArchived"`
 	SuppressedAt  time.Time `json:"suppressedAt"`
 	Message       string    `json:"message"`
 }
@@ -985,6 +985,53 @@ type ConvertToActionResponse struct {
 	OpportunityID string  `json:"opportunityId"`
 	Action        *Action `json:"action"`
 	Message       string  `json:"message"`
+}
+
+// BatchConvertToActionRequest represents the request to convert multiple opportunities to actions
+type BatchConvertToActionRequest struct {
+	OpportunityIDs    []string `json:"opportunityIds" binding:"required,min=1"` // List of opportunity IDs to convert
+	AdditionalContext string   `json:"additionalContext,omitempty"`             // Extra context for LLM (applied to all)
+}
+
+// BatchConvertResult represents the result of converting a single opportunity in a batch operation
+type BatchConvertResult struct {
+	OpportunityID string  `json:"opportunityId"`
+	Success       bool    `json:"success"`
+	Action        *Action `json:"action,omitempty"`
+	Error         string  `json:"error,omitempty"`
+}
+
+// BatchConvertToActionResponse represents the response after converting multiple opportunities to actions
+type BatchConvertToActionResponse struct {
+	Results      []BatchConvertResult `json:"results"`
+	TotalCount   int                  `json:"totalCount"`
+	SuccessCount int                  `json:"successCount"`
+	FailureCount int                  `json:"failureCount"`
+	Message      string               `json:"message"`
+}
+
+// BatchSuppressOpportunityRequest represents the request to suppress multiple opportunities
+type BatchSuppressOpportunityRequest struct {
+	OpportunityIDs []string `json:"opportunityIds" binding:"required,min=1"` // List of opportunity IDs to suppress
+	Reason         string   `json:"reason,omitempty"`                        // Optional reason for suppression (applied to all)
+}
+
+// BatchSuppressResult represents the result of suppressing a single opportunity in a batch operation
+type BatchSuppressResult struct {
+	OpportunityID string    `json:"opportunityId"`
+	Success       bool      `json:"success"`
+	IsArchived    bool      `json:"isArchived"`
+	SuppressedAt  time.Time `json:"suppressedAt,omitempty"`
+	Error         string    `json:"error,omitempty"`
+}
+
+// BatchSuppressOpportunityResponse represents the response after suppressing multiple opportunities
+type BatchSuppressOpportunityResponse struct {
+	Results      []BatchSuppressResult `json:"results"`
+	TotalCount   int                   `json:"totalCount"`
+	SuccessCount int                   `json:"successCount"`
+	FailureCount int                   `json:"failureCount"`
+	Message      string                `json:"message"`
 }
 
 // ListActionsResponse represents the response for listing actions
@@ -1020,10 +1067,10 @@ type ActionFilter struct {
 // OpportunitySummary represents a summary of opportunities for dashboard
 type OpportunitySummary struct {
 	TotalOpportunities      int            `json:"totalOpportunities"`
-	NewOpportunities        int            `json:"newOpportunities"`
+	OpenOpportunities       int            `json:"openOpportunities"`
 	InProgressOpportunities int            `json:"inProgressOpportunities"`
 	CompletedOpportunities  int            `json:"completedOpportunities"`
-	ArchivedOpportunities   int            `json:"archivedOpportunities"`
+	DismissedOpportunities  int            `json:"dismissedOpportunities"`
 	ByType                  map[string]int `json:"byType"`
 	AvgImpactScore          float64        `json:"avgImpactScore"`
 	TopOpportunities        []Opportunity  `json:"topOpportunities"` // Top 5 by impact score

@@ -277,9 +277,11 @@ func (s *Server) setupRoutes() {
 		geo.GET("/brand/:brandId/opportunities", s.listOpportunities)                                  // List all opportunities for brand
 		geo.GET("/brand/:brandId/opportunities/summary", s.getOpportunitySummary)                      // Get opportunity summary/stats
 		geo.GET("/brand/:brandId/opportunities/prompt/:promptId", s.listOpportunitiesByPrompt)         // List opportunities for specific prompt
+		geo.POST("/brand/:brandId/opportunities/convert", s.batchConvertOpportunitiesToActions)        // Batch convert multiple opportunities to actions
+		geo.POST("/brand/:brandId/opportunities/suppress", s.batchSuppressOpportunities)               // Batch suppress/archive multiple opportunities
 		geo.GET("/brand/:brandId/opportunities/:opportunityId", s.getOpportunity)                      // Get single opportunity details
-		geo.POST("/brand/:brandId/opportunities/:opportunityId/suppress", s.suppressOpportunity)       // Archive/suppress opportunity
-		geo.POST("/brand/:brandId/opportunities/:opportunityId/convert", s.convertOpportunityToAction) // Convert to action
+		geo.POST("/brand/:brandId/opportunities/:opportunityId/suppress", s.suppressOpportunity)       // Archive/suppress single opportunity
+		geo.POST("/brand/:brandId/opportunities/:opportunityId/convert", s.convertOpportunityToAction) // Convert single opportunity to action
 
 		// Actions Management
 		geo.GET("/brand/:brandId/actions", s.listActions)              // List all actions for brand

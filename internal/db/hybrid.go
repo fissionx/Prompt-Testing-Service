@@ -432,6 +432,10 @@ func (h *HybridDB) GetOpportunityByContentHash(ctx context.Context, promptID, co
 	return h.nosqlDB.GetOpportunityByContentHash(ctx, promptID, contentHash)
 }
 
+func (h *HybridDB) GetOpportunityByPromptAndType(ctx context.Context, promptID, oppType string) (*models.Opportunity, error) {
+	return h.nosqlDB.GetOpportunityByPromptAndType(ctx, promptID, oppType)
+}
+
 func (h *HybridDB) GetOpportunitySummary(ctx context.Context, brandID string) (*models.OpportunitySummary, error) {
 	return h.nosqlDB.GetOpportunitySummary(ctx, brandID)
 }
@@ -463,4 +467,33 @@ func (h *HybridDB) UpdateAction(ctx context.Context, action *models.Action) erro
 
 func (h *HybridDB) DeleteAction(ctx context.Context, id string) error {
 	return h.nosqlDB.DeleteAction(ctx, id)
+}
+
+// Opportunity Embedding operations - Use PostgreSQL directly
+func (h *HybridDB) CreateOpportunityEmbedding(ctx context.Context, emb *postgresql.OpportunityEmbedding) error {
+	if pgDB := h.GetPostgreSQLDatabase(); pgDB != nil {
+		return pgDB.CreateOpportunityEmbedding(ctx, emb)
+	}
+	return fmt.Errorf("PostgreSQL database not available")
+}
+
+func (h *HybridDB) ListOpportunityEmbeddingsByBrand(ctx context.Context, brandID string, limit int) ([]*postgresql.OpportunityEmbedding, error) {
+	if pgDB := h.GetPostgreSQLDatabase(); pgDB != nil {
+		return pgDB.ListOpportunityEmbeddingsByBrand(ctx, brandID, limit)
+	}
+	return nil, fmt.Errorf("PostgreSQL database not available")
+}
+
+func (h *HybridDB) DeleteOpportunityEmbedding(ctx context.Context, id string) error {
+	if pgDB := h.GetPostgreSQLDatabase(); pgDB != nil {
+		return pgDB.DeleteOpportunityEmbedding(ctx, id)
+	}
+	return fmt.Errorf("PostgreSQL database not available")
+}
+
+func (h *HybridDB) DeleteOpportunityEmbeddingsByBrand(ctx context.Context, brandID string) error {
+	if pgDB := h.GetPostgreSQLDatabase(); pgDB != nil {
+		return pgDB.DeleteOpportunityEmbeddingsByBrand(ctx, brandID)
+	}
+	return fmt.Errorf("PostgreSQL database not available")
 }

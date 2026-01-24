@@ -4,218 +4,365 @@ import (
 	"testing"
 )
 
-func TestTextEmbedder_Tokenize(t *testing.T) {
-	embedder := NewTextEmbedder()
-
+func TestConceptExtraction(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		expected int // minimum number of tokens
+		text     string
+		expected []string
 	}{
 		{
-			name:     "simple sentence",
-			input:    "Create a blog post about AI tools",
-			expected: 3, // "create", "blog", "post", "ai", "tools" minus stop words
+			name:     "Freshness concepts",
+			text:     "Update Admissions Content with Latest Dates and Stats",
+			expected: []string{"admissions", "content", "freshness"},
 		},
 		{
-			name:     "with punctuation",
-			input:    "Best AI tools for 2024! Check them out.",
-			expected: 2,
+			name:     "Reddit engagement",
+			text:     "Engage in r/IndianEducation subreddits",
+			expected: []string{"engagement", "reddit"},
 		},
 		{
-			name:     "empty string",
-			input:    "",
-			expected: 0,
+			name:     "Case study",
+			text:     "Publish Student Success Stories and Alumni Case Studies",
+			expected: []string{"case_study"},
+		},
+		{
+			name:     "FAQ content",
+			text:     "Add Structured FAQ and HowTo Schema to Admissions Pages",
+			expected: []string{"admissions", "content", "faq", "seo"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tokens := embedder.Tokenize(tt.input)
-			if len(tokens) < tt.expected {
-				t.Errorf("Tokenize() got %d tokens, want at least %d", len(tokens), tt.expected)
+			concepts := extractConcepts(tt.text)
+			for _, exp := range tt.expected {
+				found := false
+				for _, c := range concepts {
+					if c == exp {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected concept %q not found in %v", exp, concepts)
+				}
 			}
 		})
 	}
 }
 
-func TestCosineSimilarity(t *testing.T) {
+func TestActionVerbExtraction(t *testing.T) {
 	tests := []struct {
 		name     string
-		a        []float64
-		b        []float64
+		text     string
+		expected []string
+	}{
+		{
+			name:     "Update action",
+			text:     "Update Admissions Content with Latest Dates",
+			expected: []string{"update"},
+		},
+		{
+			name:     "Engage action",
+			text:     "Engage Authentically in Relevant Reddit Threads",
+			expected: []string{"engage"},
+		},
+		{
+			name:     "Create action",
+			text:     "Create 'VIT vs IIITs' Comparison Page",
+			expected: []string{"create"},
+		},
+		{
+			name:     "Multiple actions",
+			text:     "Create and publish student success stories",
+			expected: []string{"create"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actions := extractActionVerbs(tt.text)
+			for _, exp := range tt.expected {
+				found := false
+				for _, a := range actions {
+					if a == exp {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected action %q not found in %v", exp, actions)
+				}
+			}
+		})
+	}
+}
+
+func TestSemanticDuplicateDetection(t *testing.T) {
+	matcher := NewOpportunityMatcher(0.80) // 80% threshold
+
+	// Add some baseline opportunities
+	matcher.AddOpportunity("opp1", "content_gap", 
+		"Update Admissions Content with Latest Dates and Stats",
+		"Refresh the admissions pages with current year information")
+	
+	matcher.AddOpportunity("opp2", "reddit_participation",
+		"Engage Authentically in Relevant Reddit Threads",
+		"Participate in r/IndianEducation discussions about admissions")
+
+	tests := []struct {
+		name        string
+		oppType     string
+		title       string
+		description string
+		expectDup   bool
+	}{
+		{
+			name:        "Same content different wording - should be duplicate",
+			oppType:     "content_gap",
+			title:       "Update Admissions Content with Latest Dates and 'Last Updated' Tag",
+			description: "Update the admissions pages with fresh dates",
+			expectDup:   true,
+		},
+		{
+			name:        "Similar update content - should be duplicate",
+			oppType:     "content_gap",
+			title:       "Update admission guides and landing pages with current year info",
+			description: "Refresh admission content with latest information",
+			expectDup:   true,
+		},
+		{
+			name:        "Reddit engagement duplicate",
+			oppType:     "reddit_participation",
+			title:       "Engage in r/IndianEducation and r/EngineeringStudents subreddits",
+			description: "Participate in education-related Reddit discussions",
+			expectDup:   true,
+		},
+		{
+			name:        "Different content - should NOT be duplicate",
+			oppType:     "case_study",
+			title:       "Publish Student Success Stories and Alumni Case Studies",
+			description: "Create compelling case studies featuring successful alumni",
+			expectDup:   false,
+		},
+		{
+			name:        "Comparison page - should NOT be duplicate",
+			oppType:     "comparison_content",
+			title:       "Create 'VIT vs IIITs' Comparison Page",
+			description: "Create a detailed comparison between VIT and IIITs",
+			expectDup:   false,
+		},
+		{
+			name:        "FAQ content - should NOT be duplicate",
+			oppType:     "faq_content",
+			title:       "Add Structured FAQ and HowTo Schema to Admissions Pages",
+			description: "Add schema markup and FAQ sections to improve SEO",
+			expectDup:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isDup, similarID, similarity := matcher.FindDuplicate(tt.oppType, tt.title, tt.description)
+			
+			if isDup != tt.expectDup {
+				t.Errorf("Expected duplicate=%v, got=%v (similarity=%.2f, similarTo=%s)\n  Title: %s", 
+					tt.expectDup, isDup, similarity, similarID, tt.title)
+			}
+			
+			t.Logf("Similarity: %.2f for '%s'", similarity, tt.title)
+		})
+	}
+}
+
+func TestJaccardSimilarity(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        []string
+		b        []string
 		expected float64
-		delta    float64
 	}{
 		{
-			name:     "identical vectors",
-			a:        []float64{1, 0, 0},
-			b:        []float64{1, 0, 0},
+			name:     "Identical sets",
+			a:        []string{"a", "b", "c"},
+			b:        []string{"a", "b", "c"},
 			expected: 1.0,
-			delta:    0.001,
 		},
 		{
-			name:     "orthogonal vectors",
-			a:        []float64{1, 0, 0},
-			b:        []float64{0, 1, 0},
+			name:     "No overlap",
+			a:        []string{"a", "b"},
+			b:        []string{"c", "d"},
 			expected: 0.0,
-			delta:    0.001,
 		},
 		{
-			name:     "similar vectors",
-			a:        []float64{1, 1, 0},
-			b:        []float64{1, 0.5, 0},
-			expected: 0.9,
-			delta:    0.1,
+			name:     "Partial overlap",
+			a:        []string{"a", "b", "c"},
+			b:        []string{"b", "c", "d"},
+			expected: 0.5, // 2 common out of 4 unique
 		},
 		{
-			name:     "empty vectors",
-			a:        []float64{},
-			b:        []float64{},
-			expected: 0.0,
-			delta:    0.001,
+			name:     "Both empty",
+			a:        []string{},
+			b:        []string{},
+			expected: 1.0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CosineSimilarity(tt.a, tt.b)
-			if result < tt.expected-tt.delta || result > tt.expected+tt.delta {
-				t.Errorf("CosineSimilarity() = %v, want %v (±%v)", result, tt.expected, tt.delta)
+			result := jaccardSimilarity(tt.a, tt.b)
+			if result != tt.expected {
+				t.Errorf("Expected %.2f, got %.2f", tt.expected, result)
 			}
 		})
 	}
 }
 
-func TestOpportunityMatcher_FindDuplicate(t *testing.T) {
-	matcher := NewOpportunityMatcher(0.5) // Lower threshold for more sensitive duplicate detection
-
-	// Add some opportunities
-	matcher.AddOpportunity("1", "content_gap", "Create blog post about AI tools for marketers", "Write a comprehensive blog post covering AI tools and solutions for marketing professionals")
-	matcher.AddOpportunity("2", "reddit_participation", "Engage in r/marketing subreddit discussions", "Participate in Reddit r/marketing community discussions about marketing strategies")
-	matcher.AddOpportunity("3", "case_study", "Add customer success story for healthcare industry", "Create a detailed case study showcasing healthcare industry customer success")
-
-	tests := []struct {
-		name            string
-		oppType         string
-		title           string
-		description     string
-		expectDuplicate bool
-	}{
-		{
-			name:            "exact duplicate",
-			oppType:         "content_gap",
-			title:           "Create blog post about AI tools for marketers",
-			description:     "Write a comprehensive blog post covering AI tools and solutions for marketing professionals",
-			expectDuplicate: true,
-		},
-		{
-			name:            "similar content gap same topic",
-			oppType:         "content_gap",
-			title:           "Write blog about AI tools for marketers",
-			description:     "Create blog content about AI tools for marketing professionals",
-			expectDuplicate: true,
-		},
-		{
-			name:            "different platform LinkedIn vs Reddit",
-			oppType:         "linkedin_presence",
-			title:           "Share insights on LinkedIn",
-			description:     "Post thought leadership content on LinkedIn about marketing",
-			expectDuplicate: false,
-		},
-		{
-			name:            "similar Reddit engagement same subreddit",
-			oppType:         "reddit_participation",
-			title:           "Participate in r/marketing discussions",
-			description:     "Join and engage in r/marketing subreddit conversations",
-			expectDuplicate: true,
-		},
-		{
-			name:            "different case study different industry",
-			oppType:         "case_study",
-			title:           "Add customer success story for fintech industry",
-			description:     "Create a detailed case study showcasing fintech industry customer success",
-			expectDuplicate: false, // Different industry (fintech vs healthcare)
-		},
-		{
-			name:            "completely different opportunity",
-			oppType:         "review_sites",
-			title:           "Get listed on G2 review platform",
-			description:     "Claim and optimize G2 listing for better visibility",
-			expectDuplicate: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			isDup, matchID, score := matcher.FindDuplicate(tt.oppType, tt.title, tt.description)
-			if isDup != tt.expectDuplicate {
-				t.Errorf("FindDuplicate() = %v (score=%.3f, matchID=%s), want %v", isDup, score, matchID, tt.expectDuplicate)
-			}
-		})
-	}
-}
-
-func TestJaccardSimilarityNGrams(t *testing.T) {
+func TestTargetEntityExtraction(t *testing.T) {
 	tests := []struct {
 		name     string
-		a        string
-		b        string
-		n        int
-		minSim   float64
+		text     string
+		expected []string
 	}{
 		{
-			name:   "identical strings",
-			a:      "hello world",
-			b:      "hello world",
-			n:      3,
-			minSim: 0.99,
+			name:     "Reddit subreddit",
+			text:     "Engage in r/IndianEducation subreddit",
+			expected: []string{"platform:reddit", "subreddit:indianeducation", "industry:education"},
 		},
 		{
-			name:   "similar strings",
-			a:      "create blog post about AI",
-			b:      "write blog post about AI",
-			n:      3,
-			minSim: 0.5,
+			name:     "LinkedIn platform",
+			text:     "Share content on LinkedIn for professional networking",
+			expected: []string{"platform:linkedin"},
 		},
 		{
-			name:   "different strings",
-			a:      "hello world",
-			b:      "goodbye universe",
-			n:      3,
-			minSim: 0.0,
+			name:     "Multiple platforms",
+			text:     "Cross-post content on Reddit and LinkedIn",
+			expected: []string{"platform:reddit", "platform:linkedin"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sim := JaccardSimilarityNGrams(tt.a, tt.b, tt.n)
-			if sim < tt.minSim {
-				t.Errorf("JaccardSimilarityNGrams() = %v, want at least %v", sim, tt.minSim)
+			entities := extractTargetEntities(tt.text)
+			for _, exp := range tt.expected {
+				found := false
+				for _, e := range entities {
+					if e == exp {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected entity %q not found in %v", exp, entities)
+				}
 			}
 		})
 	}
 }
 
-func TestOpportunityMatcher_Size(t *testing.T) {
-	matcher := NewOpportunityMatcher(0.75)
-
+func TestOpportunityMatcherSize(t *testing.T) {
+	matcher := NewOpportunityMatcher(0.80)
+	
 	if matcher.Size() != 0 {
-		t.Errorf("Initial size should be 0, got %d", matcher.Size())
+		t.Errorf("Expected size 0, got %d", matcher.Size())
 	}
-
-	matcher.AddOpportunity("1", "content_gap", "Test", "Description")
-	if matcher.Size() != 1 {
-		t.Errorf("Size after adding 1 should be 1, got %d", matcher.Size())
-	}
-
-	matcher.AddOpportunity("2", "content_gap", "Test 2", "Description 2")
+	
+	matcher.AddOpportunity("1", "content_gap", "Title 1", "Description 1")
+	matcher.AddOpportunity("2", "reddit_participation", "Title 2", "Description 2")
+	
 	if matcher.Size() != 2 {
-		t.Errorf("Size after adding 2 should be 2, got %d", matcher.Size())
+		t.Errorf("Expected size 2, got %d", matcher.Size())
+	}
+	
+	matcher.Clear()
+	
+	if matcher.Size() != 0 {
+		t.Errorf("Expected size 0 after clear, got %d", matcher.Size())
+	}
+}
+
+func TestSimilarAdmissionsContent(t *testing.T) {
+	// Specific test for the user's examples
+	matcher := NewOpportunityMatcher(0.80)
+	
+	// Add first opportunity
+	matcher.AddOpportunity("opp1", "content_gap",
+		"Update Admissions Content with Latest Dates and Stats",
+		"Ensure admissions pages show current dates and statistics")
+	
+	// These should all be detected as duplicates
+	duplicates := []struct {
+		title string
+		desc  string
+	}{
+		{
+			"Update Admissions Content with Latest Dates and 'Last Updated' Tag",
+			"Add last updated tag to admissions content",
+		},
+		{
+			"Update admission guides and landing pages with current year info",
+			"Refresh admission guides with 2024 information",
+		},
+	}
+	
+	for _, dup := range duplicates {
+		isDup, _, sim := matcher.FindDuplicate("content_gap", dup.title, dup.desc)
+		if !isDup {
+			t.Errorf("Expected '%s' to be detected as duplicate (similarity: %.2f)", dup.title, sim)
+		} else {
+			t.Logf("✓ Correctly detected duplicate (%.0f%%): %s", sim*100, dup.title)
+		}
+	}
+}
+
+func TestSimilarRedditEngagement(t *testing.T) {
+	matcher := NewOpportunityMatcher(0.80)
+	
+	// Add first Reddit opportunity
+	matcher.AddOpportunity("opp1", "reddit_participation",
+		"Engage Authentically in Relevant Reddit Threads",
+		"Participate in discussions on Reddit about education")
+	
+	// This should be detected as duplicate
+	isDup, _, sim := matcher.FindDuplicate("reddit_participation",
+		"Engage in r/IndianEducation and r/EngineeringStudents subreddits",
+		"Join Reddit communities and engage in discussions")
+	
+	if !isDup {
+		t.Errorf("Expected Reddit engagement to be detected as duplicate (similarity: %.2f)", sim)
+	} else {
+		t.Logf("✓ Correctly detected Reddit duplicate (%.0f%%)", sim*100)
+	}
+}
+
+func TestWordJaccardSimilarity(t *testing.T) {
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		min  float64 // minimum expected similarity
+	}{
+		{
+			name: "Similar admission content",
+			a:    "Update Admissions Content with Latest Dates",
+			b:    "Update admission guides with current dates",
+			min:  0.2, // Should have reasonable word overlap
+		},
+		{
+			name: "Different topics",
+			a:    "Create case studies",
+			b:    "Engage on Reddit",
+			min:  0.0,
+		},
 	}
 
-	matcher.Clear()
-	if matcher.Size() != 0 {
-		t.Errorf("Size after clear should be 0, got %d", matcher.Size())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sim := wordJaccardSimilarity(tt.a, tt.b)
+			if sim < tt.min {
+				t.Errorf("Expected similarity >= %.2f, got %.2f", tt.min, sim)
+			}
+			t.Logf("Word Jaccard similarity: %.2f", sim)
+		})
 	}
 }

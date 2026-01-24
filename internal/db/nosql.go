@@ -114,6 +114,7 @@ type NoSQLDatabase interface {
 	UpdateOpportunity(ctx context.Context, opportunity *models.Opportunity) error
 	DeleteOpportunity(ctx context.Context, id string) error
 	GetOpportunityByContentHash(ctx context.Context, promptID, contentHash string) (*models.Opportunity, error)
+	GetOpportunityByPromptAndType(ctx context.Context, promptID, oppType string) (*models.Opportunity, error)
 	GetOpportunitySummary(ctx context.Context, brandID string) (*models.OpportunitySummary, error)
 
 	// Action operations
