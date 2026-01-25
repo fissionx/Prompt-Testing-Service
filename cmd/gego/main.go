@@ -244,6 +244,11 @@ func main() {
 	fmt.Println("  Execute:")
 	fmt.Println("    POST   /api/v1/execute           - Execute prompt with LLM")
 	fmt.Println()
+	fmt.Println("  Actions:")
+	fmt.Println("    GET    /api/v1/opportunities/:opportunityId/actions - Get actions for an opportunity")
+	fmt.Println("    GET    /api/v1/actions/:actionId                    - Get a single action")
+	fmt.Println("    POST   /api/v1/actions/:actionId/status             - Update action status")
+	fmt.Println()
 	fmt.Println("Press Ctrl+C to stop the server")
 
 	address := fmt.Sprintf("%s:%s", *apiHost, *apiPort)

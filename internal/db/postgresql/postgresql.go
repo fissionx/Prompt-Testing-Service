@@ -120,12 +120,18 @@ func (p *PostgreSQL) migrateOpportunitiesTable(ctx context.Context) error {
 		// LLM ID for tracking which LLM was used for analysis
 		"ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS llm_id TEXT",
 
+		// Assignee for actions
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS assignee TEXT",
+
 		// Indexes for org_id
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_org_id ON opportunities(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_actions_org_id ON actions(org_id)",
 
 		// Index for llm_id
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_llm_id ON opportunities(llm_id)",
+
+		// Index for assignee
+		"CREATE INDEX IF NOT EXISTS idx_actions_assignee ON actions(assignee)",
 	}
 
 	for _, stmt := range alterStatements {
@@ -436,6 +442,7 @@ func (p *PostgreSQL) createSchema(ctx context.Context) error {
 		estimated_effort TEXT,
 		resources JSONB DEFAULT '[]'::jsonb,
 		status TEXT NOT NULL DEFAULT 'pending',
+		assignee TEXT,
 		created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 	);
@@ -575,6 +582,7 @@ func (p *PostgreSQL) createAnalyticsCacheIndexes(ctx context.Context) error {
 		"CREATE INDEX IF NOT EXISTS idx_actions_opportunity_id ON actions(opportunity_id)",
 		"CREATE INDEX IF NOT EXISTS idx_actions_brand_id ON actions(brand_id)",
 		"CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status)",
+		// Note: idx_actions_assignee is created in migrateOpportunitiesTable after the column is added
 		"CREATE INDEX IF NOT EXISTS idx_actions_created_at ON actions(created_at DESC)",
 	}
 

@@ -284,8 +284,11 @@ func (s *Server) setupRoutes() {
 		geo.POST("/brand/:brandId/opportunities/:opportunityId/convert", s.convertOpportunityToAction) // Convert single opportunity to action
 
 		// Actions Management
-		geo.GET("/brand/:brandId/actions", s.listActions)              // List all actions for brand
-		geo.PATCH("/brand/:brandId/actions/:actionId", s.updateAction) // Update action status
+		geo.GET("/brand/:brandId/actions", s.listActions)                                        // List all actions for brand
+		geo.GET("/brand/:brandId/actions/:actionId", s.getAction)                                // Get a single action
+		geo.GET("/brand/:brandId/opportunities/:opportunityId/actions", s.getOpportunityActions) // Get actions for an opportunity
+		geo.PATCH("/brand/:brandId/actions/:actionId", s.updateAction)                           // Update action status
+		geo.POST("/brand/:brandId/actions/:actionId/status", s.updateActionStatus)               // Update action status
 	}
 }
 

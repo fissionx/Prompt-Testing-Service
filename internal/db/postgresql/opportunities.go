@@ -670,14 +670,15 @@ func (p *PostgreSQL) CreateAction(ctx context.Context, action *models.Action) er
 
 	query := `
 		INSERT INTO actions (
-			id, opportunity_id, brand_id, title, description, steps,
-			estimated_effort, resources, status, created_at, updated_at
+			id, org_id, opportunity_id, brand_id, title, description, steps,
+			estimated_effort, resources, status, assignee, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
 	_, err = p.db.ExecContext(ctx, query,
 		action.ID,
+		action.OrgID,
 		action.OpportunityID,
 		action.BrandID,
 		action.Title,
@@ -686,6 +687,7 @@ func (p *PostgreSQL) CreateAction(ctx context.Context, action *models.Action) er
 		action.EstimatedEffort,
 		resourcesJSON,
 		string(action.Status),
+		action.Assignee,
 		action.CreatedAt,
 		action.UpdatedAt,
 	)
@@ -698,17 +700,19 @@ func (p *PostgreSQL) CreateAction(ctx context.Context, action *models.Action) er
 func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, error) {
 	start := time.Now()
 	query := `
-		SELECT id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, created_at, updated_at
+		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
+		       estimated_effort, resources, status, assignee, created_at, updated_at
 		FROM actions WHERE id = $1
 	`
 
 	var action models.Action
 	var stepsJSON, resourcesJSON string
 	var statusStr string
+	var assignee sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
 		&action.ID,
+		&action.OrgID,
 		&action.OpportunityID,
 		&action.BrandID,
 		&action.Title,
@@ -717,6 +721,7 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 		&action.EstimatedEffort,
 		&resourcesJSON,
 		&statusStr,
+		&assignee,
 		&action.CreatedAt,
 		&action.UpdatedAt,
 	)
@@ -732,6 +737,9 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 
 	action.Status = models.ActionStatus(statusStr)
 	action.Resources = jsonToSlice(resourcesJSON)
+	if assignee.Valid {
+		action.Assignee = assignee.String
+	}
 
 	// Parse steps
 	if stepsJSON != "" && stepsJSON != "[]" {
@@ -749,17 +757,19 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID string) (*models.Action, error) {
 	start := time.Now()
 	query := `
-		SELECT id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, created_at, updated_at
+		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
+		       estimated_effort, resources, status, assignee, created_at, updated_at
 		FROM actions WHERE opportunity_id = $1
 	`
 
 	var action models.Action
 	var stepsJSON, resourcesJSON string
 	var statusStr string
+	var assignee sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, opportunityID).Scan(
 		&action.ID,
+		&action.OrgID,
 		&action.OpportunityID,
 		&action.BrandID,
 		&action.Title,
@@ -768,6 +778,7 @@ func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID
 		&action.EstimatedEffort,
 		&resourcesJSON,
 		&statusStr,
+		&assignee,
 		&action.CreatedAt,
 		&action.UpdatedAt,
 	)
@@ -783,6 +794,9 @@ func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID
 
 	action.Status = models.ActionStatus(statusStr)
 	action.Resources = jsonToSlice(resourcesJSON)
+	if assignee.Valid {
+		action.Assignee = assignee.String
+	}
 
 	if stepsJSON != "" && stepsJSON != "[]" {
 		if err := json.Unmarshal([]byte(stepsJSON), &action.Steps); err != nil {
@@ -800,8 +814,8 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 	start := time.Now()
 
 	query := `
-		SELECT id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, created_at, updated_at
+		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
+		       estimated_effort, resources, status, assignee, created_at, updated_at
 		FROM actions WHERE 1=1
 	`
 	args := []interface{}{}
@@ -851,9 +865,11 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 		var action models.Action
 		var stepsJSON, resourcesJSON string
 		var statusStr string
+		var assignee sql.NullString
 
 		err := rows.Scan(
 			&action.ID,
+			&action.OrgID,
 			&action.OpportunityID,
 			&action.BrandID,
 			&action.Title,
@@ -862,6 +878,7 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 			&action.EstimatedEffort,
 			&resourcesJSON,
 			&statusStr,
+			&assignee,
 			&action.CreatedAt,
 			&action.UpdatedAt,
 		)
@@ -872,6 +889,9 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 
 		action.Status = models.ActionStatus(statusStr)
 		action.Resources = jsonToSlice(resourcesJSON)
+		if assignee.Valid {
+			action.Assignee = assignee.String
+		}
 
 		if stepsJSON != "" && stepsJSON != "[]" {
 			if err := json.Unmarshal([]byte(stepsJSON), &action.Steps); err != nil {
@@ -938,12 +958,13 @@ func (p *PostgreSQL) UpdateAction(ctx context.Context, action *models.Action) er
 
 	query := `
 		UPDATE actions 
-		SET opportunity_id = $1, brand_id = $2, title = $3, description = $4,
-		    steps = $5, estimated_effort = $6, resources = $7, status = $8, updated_at = $9
-		WHERE id = $10
+		SET org_id = $1, opportunity_id = $2, brand_id = $3, title = $4, description = $5,
+		    steps = $6, estimated_effort = $7, resources = $8, status = $9, assignee = $10, updated_at = $11
+		WHERE id = $12
 	`
 
 	result, err := p.db.ExecContext(ctx, query,
+		action.OrgID,
 		action.OpportunityID,
 		action.BrandID,
 		action.Title,
@@ -952,6 +973,7 @@ func (p *PostgreSQL) UpdateAction(ctx context.Context, action *models.Action) er
 		action.EstimatedEffort,
 		resourcesJSON,
 		string(action.Status),
+		action.Assignee,
 		action.UpdatedAt,
 		action.ID,
 	)

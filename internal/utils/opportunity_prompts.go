@@ -161,6 +161,38 @@ Rules:
 RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, existingOppsSection, brand, escapedSearchAnswer)
 }
 
+const ActionGenerationPromptTemplateExpriment2 = `You are an expert in Generative Engine Optimization (GEO) the emerging discipline of optimizing content to be referenced and recommended by large language models (LLMs) like ChatGPT, Claude, Gemini, and Perplexity.`
+
+const ActionGenerationPromptTemplateExpriment1 = `You are an expert in Generative Engine Optimization (GEO) the emerging discipline of optimizing content to be referenced and recommended by large language models (LLMs) like ChatGPT, Claude, Gemini, and Perplexity.
+
+Your task is to take the content I paste below and optimize it so it becomes more likely to appear in the answers these LLMs generate when users ask related questions.
+
+Here is the content to optimize:
+[PASTE YOUR CONTENT HERE]
+
+Please rewrite the content with the following enhancements:
+
+1. Contextual Relevance
+   - Add clear signals about who the content is for and what problem it solves.
+   - Embed real-world use cases or questions this content answers.
+
+2. Semantic Richness
+   - Use natural language that matches how users ask questions (e.g. “best tools for X”, “how do I…”).
+   - Include related keywords and phrases LLMs associate with the topic.
+
+3. Answer-Style Formatting
+   - Structure the content in a way that is easy for LLMs to extract as a direct response.
+   - Use bullet points, numbered lists, and headers for clarity.
+
+4. Topical Authority Signals
+   - Mention data points, user outcomes, or unique value props.
+   - Use specific, useful, and trust-building language.
+
+5. Natural Brand Integration
+   - If a brand, product, or service is being mentioned, weave it in naturally as a recommended or reputable option.
+
+Please output only the optimized version. Do **not** explain your changes. Write it as if it’s a standalone, publish-ready piece designed to be cited by LLMs when generating responses`
+
 // ActionGenerationPrompt generates a prompt for creating a detailed action plan from an opportunity
 func ActionGenerationPrompt(brand, opportunityTitle, opportunityDescription, opportunityType string, metadata map[string]interface{}, additionalContext string) string {
 	metadataStr := ""
@@ -195,14 +227,19 @@ OPPORTUNITY DESCRIPTION:
 
 ---
 
-TASK: Generate a comprehensive, SPECIFIC action plan with step-by-step instructions.
+TASK: Generate a comprehensive, SPECIFIC action plan with step-by-step instructions and READY-TO-USE assets.
 
-REQUIREMENTS:
-1. Title: Create a clear, action-oriented title for this plan
-2. Description: Provide an executive summary of the plan (2-3 sentences)
-3. Steps: Create 4-7 detailed, actionable steps that are SPECIFIC to this brand and opportunity
-4. Estimated Effort: Rate as "low" (< 2 hours), "medium" (2-8 hours), or "high" (> 8 hours)
-5. Resources: List helpful tools, templates, or reference materials
+CRITICAL REQUIREMENTS:
+1. Title: Create a clear, action-oriented title for this plan (be SPECIFIC, not generic)
+2. Summary: Provide an executive summary explaining WHAT will be done and WHY it matters (2-3 sentences)
+3. Assets: Generate FULL, READY-TO-USE content assets:
+   - For blog posts: Provide COMPLETE blog content with headings, sections, and FAQ (not just outline)
+   - For Reddit posts: Provide COMPLETE post content ready to copy-paste (not just talking points)
+   - For checklists: Provide specific, actionable checklist items
+   - For URL lists: Provide full URLs (https://) for all platforms/subreddits/directories
+4. Steps: Create 3-7 detailed, actionable steps that are SPECIFIC to this brand and opportunity
+5. Success Criteria: Define measurable, verifiable outcomes
+6. Priority, Effort, Expected Impact: Assess realistically based on the opportunity
 
 STEP GUIDELINES:
 - Each step should be SPECIFIC and immediately actionable (not generic advice)
@@ -222,17 +259,216 @@ CONTENT STRUCTURE BEST PRACTICES (for content opportunities):
 
 You MUST respond with ONLY a valid JSON object (no markdown, no code blocks):
 
-{"title":"Action Plan Title","description":"Brief executive summary of the plan","steps":[{"order":1,"title":"Step title","description":"Detailed description of what to do, how to do it, and expected outcome. Be SPECIFIC with examples."},{"order":2,"title":"Next step title","description":"Next step details with specific examples"}],"estimated_effort":"low|medium|high","resources":["Tool or template name","Reference URL or guide"]}
+{
+  "action_type": "CONTENT_CREATION|CONTENT_UPDATE|SEO|STRUCTURED_DATA|SOCIAL|PR|INTEGRATION|COMPETITIVE|TRUST|VERIFICATION|OTHER",
+  "execution_mode": "manual_copy|api|manual",
+  "title": "Action Plan Title",
+  "summary": "Brief executive summary of the plan (2-3 sentences)",
+  "priority": "high|medium|low",
+  "effort": "low|medium|high",
+  "expected_impact": "high|medium|low",
+  "assets": [
+    {
+      "asset_type": "text|checklist|url_list|image|link",
+      "role": "blog_draft|reddit_post|on_page_seo|target_channels|template|reference",
+      "title": "Asset Title",
+      "content": "Asset content (string for text, array for checklist/url_list)"
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "title": "Step title",
+      "instruction": "Detailed instruction of what to do, how to do it, and expected outcome. Be SPECIFIC with examples."
+    }
+  ],
+  "success_criteria": [
+    "Criterion 1: Specific measurable outcome",
+    "Criterion 2: Another measurable outcome"
+  ],
+  "description": "Legacy field - same as summary",
+  "estimated_effort": "low|medium|high",
+  "resources": ["Tool or template name", "Reference URL or guide"]
+}
 
-Rules:
-- title: clear action-oriented title (max 100 chars)
-- description: executive summary (max 300 chars)
-- steps: array of 4-7 steps, each with:
-  - order: integer starting from 1
-  - title: short step title (max 80 chars)
-  - description: detailed, SPECIFIC instructions with examples (max 500 chars)
-- estimated_effort: "low", "medium", or "high"
-- resources: array of helpful tools, templates, or references (2-5 items)
+CRITICAL RULES:
+- action_type: Choose the MOST SPECIFIC type:
+  * "CONTENT_CREATION" - Creating new blog posts, pages, articles, FAQs, documentation
+  * "CONTENT_UPDATE" - Updating, refreshing, or restructuring existing content
+  * "SEO" - Technical SEO improvements (crawlability, indexability, rendering)
+  * "STRUCTURED_DATA" - Adding schemas, metadata, machine-readable signals
+  * "SOCIAL" - External distribution on platforms (Reddit, LinkedIn, Quora, X, etc.)
+  * "PR" - Reviews, citations, mentions, analyst reports, directories
+  * "INTEGRATION" - Integration pages, partnership docs, API pages
+  * "COMPETITIVE" - Competitive positioning (comparisons, rebuttals, alternatives)
+  * "TRUST" - Trust-building assets (case studies, testimonials, proof pages)
+  * "VERIFICATION" - Monitoring, verification, checks (AI crawl checks, audits)
+  * "OTHER" - Rare or experimental actions
+
+- execution_mode: 
+  * "manual_copy" - User manually copies content/assets (most common for content creation, Reddit posts)
+  * "api" - Automated via API integration
+  * "manual" - Manual execution without copying content
+
+- title: Clear, action-oriented title (max 100 chars). Be SPECIFIC: "Create and publish a detailed blog on VIT application process" not "Create blog"
+
+- summary: Executive summary (2-3 sentences, max 500 chars). Explain WHAT will be done and WHY it matters.
+
+- priority: 
+  * "high" - Urgent/important (competitors gaining ground, critical gaps)
+  * "medium" - Important but not urgent
+  * "low" - Nice to have improvements
+
+- effort: 
+  * "low" - < 2 hours
+  * "medium" - 2-8 hours
+  * "high" - > 8 hours
+
+- expected_impact:
+  * "high" - Significant visibility improvement expected
+  * "medium" - Moderate improvement expected
+  * "low" - Minor improvement expected
+
+- assets: Generate 1-5 assets that will be used/created. Each asset must be SPECIFIC and USEFUL:
+  * asset_type options:
+    - "text" - For blog drafts, post content, article content, FAQ content
+    - "checklist" - For SEO checklists, quality checklists, verification lists
+    - "url_list" - For lists of URLs (subreddits, platforms, directories, citation sources)
+    - "image" - For image assets (rare, only if specifically needed)
+    - "link" - For single reference links (rare, prefer url_list for multiple)
+  
+  * role options (choose based on opportunity type):
+    - "blog_draft" - Full blog post/article content (for CONTENT_CREATION)
+    - "reddit_post" - Reddit post content (for SOCIAL/reddit_participation)
+    - "on_page_seo" - SEO optimization checklist (for SEO, CONTENT_CREATION)
+    - "target_channels" - List of platforms/subreddits/communities to post in (for SOCIAL)
+    - "template" - Reusable templates
+    - "reference" - Reference materials
+  
+  * content format:
+    - For "text": Provide FULL, READY-TO-USE content (not just outline). Include headings, structure, key points.
+    - For "checklist": Array of strings, each a specific actionable item
+    - For "url_list": Array of URLs (full URLs with https://)
+
+- steps: Generate 3-7 SPECIFIC, actionable steps:
+  * Each step must be immediately executable
+  * Include SPECIFIC details (which subreddit, which page, what to include)
+  * Order logically: research → create → publish → promote → measure
+  * instruction: Detailed, SPECIFIC instructions with examples (max 500 chars)
+
+- success_criteria: 2-5 SPECIFIC, measurable criteria:
+  * Must be verifiable (e.g., "Post is approved by moderators", "Page is indexable")
+  * Include timing where relevant (e.g., "Page starts appearing in AI answers within 3-4 weeks")
+
+ASSET EXAMPLES BY OPPORTUNITY TYPE:
+
+For CONTENT_CREATION (blog/article):
+{
+  "assets": [
+    {
+      "asset_type": "text",
+      "role": "blog_draft",
+      "title": "Blog Content Draft",
+      "content": "## How to Apply to VIT (2026)\n\nThis guide explains eligibility, application steps, deadlines, documents required...\n\n### Eligibility\n\n### Application Steps\n\n### FAQ Section\n..."
+    },
+    {
+      "asset_type": "checklist",
+      "role": "on_page_seo",
+      "title": "On-page SEO Checklist",
+      "content": [
+        "Include FAQ section",
+        "Add internal links to admissions page",
+        "Add H2s answering common questions",
+        "Add structured data (FAQ schema)",
+        "Include current year (2026) in title and content"
+      ]
+    }
+  ]
+}
+
+For SOCIAL/Reddit (reddit_participation):
+{
+  "assets": [
+    {
+      "asset_type": "text",
+      "role": "reddit_post",
+      "title": "Reddit Post Draft",
+      "content": "A lot of students ask how to apply to VIT. Here's a clear step-by-step breakdown:\n\n1. Check eligibility requirements...\n\n2. Register for VITEEE...\n\n[Helpful, non-promotional content]"
+    },
+    {
+      "asset_type": "url_list",
+      "role": "target_channels",
+      "title": "Recommended Subreddits",
+      "content": [
+        "https://reddit.com/r/IndianAcademia",
+        "https://reddit.com/r/VITUniversity",
+        "https://reddit.com/r/EngineeringAdmissions"
+      ]
+    }
+  ]
+}
+
+For SEO improvements:
+{
+  "assets": [
+    {
+      "asset_type": "checklist",
+      "role": "on_page_seo",
+      "title": "SEO Optimization Checklist",
+      "content": [
+        "Ensure page is crawlable (robots.txt allows)",
+        "Add FAQ schema markup",
+        "Optimize meta descriptions",
+        "Add internal links to related content"
+      ]
+    }
+  ]
+}
+
+STEP EXAMPLES:
+
+For CONTENT_CREATION:
+[
+  {
+    "order": 1,
+    "title": "Create a new blog page",
+    "instruction": "Create a new blog under vit.ac.in/blog or admissions section. Use a clear URL structure like /blog/how-to-apply-to-vit-2026"
+  },
+  {
+    "order": 2,
+    "title": "Paste and review content",
+    "instruction": "Copy the draft content from the blog_draft asset and adjust tone if required. Ensure all headings, lists, and formatting are correct."
+  },
+  {
+    "order": 3,
+    "title": "Publish and index",
+    "instruction": "Publish the page and ensure it is indexed by search engines. Submit to Google Search Console and verify indexing within 48 hours."
+  }
+]
+
+For SOCIAL/Reddit:
+[
+  {
+    "order": 1,
+    "title": "Choose the subreddit",
+    "instruction": "Select ONE subreddit from the target_channels list. Post in one subreddit only to avoid spam signals. Start with r/IndianAcademia as it has the most relevant audience."
+  },
+  {
+    "order": 2,
+    "title": "Post content",
+    "instruction": "Use the reddit_post draft. Avoid promotional language. Focus on being helpful. Only mention the brand naturally when relevant. Include a link to the official guide if appropriate."
+  },
+  {
+    "order": 3,
+    "title": "Engage with comments",
+    "instruction": "Monitor the post for 24-48 hours. Respond to questions helpfully. Build karma before posting more content."
+  }
+]
+
+SUCCESS CRITERIA EXAMPLES:
+- For content: ["Blog page is publicly accessible", "Page is indexable and crawlable", "Page starts appearing in AI answers within 3-4 weeks"]
+- For Reddit: ["Post is approved by moderators", "Receives comments or upvotes", "AI engines cite Reddit thread"]
+- For SEO: ["Page passes technical SEO audit", "Structured data validates", "Page appears in search results within 2 weeks"]
 
 RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, opportunityType, opportunityTitle, opportunityDescription, metadataStr, additionalStr, typeGuidance)
 }
@@ -242,11 +478,13 @@ func getTypeSpecificGuidance(opportunityType string) string {
 	switch opportunityType {
 	case "content_gap":
 		return `TYPE-SPECIFIC GUIDANCE (Content Gap):
-- Focus on creating content that directly answers the search query
-- Structure content with clear headings, bullet points, and summaries
-- Include relevant keywords naturally throughout
-- Add internal links to related content
-- Consider adding comparison tables or infographics`
+- Use action_type: "CONTENT_CREATION" for new blog posts/articles
+- Generate a "blog_draft" asset with FULL, ready-to-use content (not just outline)
+- Include headings (H2, H3), structure, key points, and FAQ sections
+- Generate an "on_page_seo" checklist asset with specific SEO tasks
+- Steps should be specific: create page, paste content, publish, verify indexing
+- Include current year in title and content for freshness
+- Success criteria should include: public accessibility, indexability, AI visibility within 3-4 weeks`
 
 	case "content_freshness":
 		return `TYPE-SPECIFIC GUIDANCE (Content Freshness):
@@ -258,11 +496,14 @@ func getTypeSpecificGuidance(opportunityType string) string {
 
 	case "reddit_participation":
 		return `TYPE-SPECIFIC GUIDANCE (Reddit Participation):
-- Identify specific subreddits where the target audience is active
-- Focus on providing genuine value, not promotion
-- Build karma before posting about the brand
-- Answer questions helpfully, only mention brand when relevant
-- Consider doing an AMA if appropriate`
+- Use action_type: "SOCIAL" for Reddit posts
+- Generate a "reddit_post" asset with full post content (not just outline)
+- Include a "url_list" asset with "target_channels" role listing specific subreddits
+- Post content should be helpful, non-promotional, and answer common questions
+- Focus on providing value first, mention brand naturally when relevant
+- Post in ONE subreddit at a time to avoid spam signals
+- Steps should include: choosing subreddit, posting content, engaging with comments
+- Success criteria should include: moderator approval, engagement (upvotes/comments), AI citation`
 
 	case "case_study":
 		return `TYPE-SPECIFIC GUIDANCE (Case Study):

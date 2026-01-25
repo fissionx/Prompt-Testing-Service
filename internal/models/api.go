@@ -1055,6 +1055,33 @@ type UpdateActionResponse struct {
 	Message string  `json:"message"`
 }
 
+// UpdateActionStatusRequest represents the request to update action status
+type UpdateActionStatusRequest struct {
+	Status   ActionStatus `json:"status" binding:"required"` // "completed", "in_progress", etc.
+	Assignee *string      `json:"assignee,omitempty"`        // Optional: User ID or email to assign the action
+}
+
+// UpdateActionStatusResponse represents the response after updating action status
+type UpdateActionStatusResponse struct {
+	Action  *Action `json:"action"`
+	Message string  `json:"message"`
+}
+
+// GetActionResponse represents the response for getting a single action
+type GetActionResponse struct {
+	Action *Action `json:"action,omitempty"`
+	// Used when action is being prepared
+	Message string `json:"message,omitempty"`
+	Status  string `json:"status,omitempty"` // "preparing" when action is being generated
+}
+
+// GetOpportunityActionsResponse represents the response for getting actions for an opportunity
+type GetOpportunityActionsResponse struct {
+	OpportunityID string   `json:"opportunity_id"`
+	Actions       []Action `json:"actions"`
+	Total         int      `json:"total"`
+}
+
 // ActionFilter represents filters for listing actions
 type ActionFilter struct {
 	BrandID       string `json:"brandId" form:"brandId"`

@@ -431,6 +431,158 @@ func (s *Server) batchSuppressOpportunities(c *gin.Context) {
 	s.successResponse(c, response)
 }
 
+// getOpportunityActions handles GET /api/v1/geo/brand/:brandId/opportunities/:opportunityId/actions
+func (s *Server) getOpportunityActions(c *gin.Context) {
+	brandID := c.Param("brandId")
+	opportunityID := c.Param("opportunityId")
+	if brandID == "" || opportunityID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand ID and Opportunity ID are required")
+		return
+	}
+
+	// Verify opportunity exists and belongs to brand
+	opportunity, err := s.db.GetOpportunity(c.Request.Context(), opportunityID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Opportunity not found: "+err.Error())
+		return
+	}
+	if opportunity.BrandID != brandID {
+		s.errorResponse(c, http.StatusForbidden, "Opportunity does not belong to this brand")
+		return
+	}
+
+	// Get actions for this opportunity
+	filter := models.ActionFilter{
+		OpportunityID: opportunityID,
+		Limit:         100, // Get all actions for the opportunity
+		Offset:        0,
+	}
+
+	opportunityService := services.NewOpportunityService(s.db, s.llmRegistry)
+	actions, total, err := opportunityService.ListActions(c.Request.Context(), filter)
+	if err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to list actions: "+err.Error())
+		return
+	}
+
+	response := models.GetOpportunityActionsResponse{
+		OpportunityID: opportunityID,
+		Actions:       make([]models.Action, 0, len(actions)),
+		Total:         int(total),
+	}
+
+	for _, action := range actions {
+		response.Actions = append(response.Actions, *action)
+	}
+
+	s.successResponse(c, response)
+}
+
+// getAction handles GET /api/v1/geo/brand/:brandId/actions/:actionId
+func (s *Server) getAction(c *gin.Context) {
+	brandID := c.Param("brandId")
+	actionID := c.Param("actionId")
+	if brandID == "" || actionID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand ID and Action ID are required")
+		return
+	}
+
+	action, err := s.db.GetAction(c.Request.Context(), actionID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Action not found: "+err.Error())
+		return
+	}
+
+	// Verify the action belongs to the brand
+	if action.BrandID != brandID {
+		s.errorResponse(c, http.StatusForbidden, "Action does not belong to this brand")
+		return
+	}
+
+	// Check if action is in "preparing" status
+	if action.Status == models.ActionStatusPreparing {
+		response := models.GetActionResponse{
+			Message: "Your action is being prepared by our AI agent. Please wait for some time.",
+			Status:  "preparing",
+		}
+		s.successResponse(c, response)
+		return
+	}
+
+	response := models.GetActionResponse{
+		Action: action,
+	}
+	s.successResponse(c, response)
+}
+
+// updateActionStatus handles POST /api/v1/geo/brand/:brandId/actions/:actionId/status
+func (s *Server) updateActionStatus(c *gin.Context) {
+	brandID := c.Param("brandId")
+	actionID := c.Param("actionId")
+	if brandID == "" || actionID == "" {
+		s.errorResponse(c, http.StatusBadRequest, "Brand ID and Action ID are required")
+		return
+	}
+
+	var req models.UpdateActionStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid request: "+err.Error())
+		return
+	}
+
+	// Validate status
+	validStatuses := []models.ActionStatus{
+		models.ActionStatusReady,
+		models.ActionStatusPending,
+		models.ActionStatusInProgress,
+		models.ActionStatusCompleted,
+	}
+	isValid := false
+	for _, validStatus := range validStatuses {
+		if req.Status == validStatus {
+			isValid = true
+			break
+		}
+	}
+	if !isValid {
+		s.errorResponse(c, http.StatusBadRequest, "Invalid status. Valid statuses: ready, pending, in_progress, completed")
+		return
+	}
+
+	// Get existing action
+	action, err := s.db.GetAction(c.Request.Context(), actionID)
+	if err != nil {
+		s.errorResponse(c, http.StatusNotFound, "Action not found: "+err.Error())
+		return
+	}
+
+	// Verify the action belongs to the brand
+	if action.BrandID != brandID {
+		s.errorResponse(c, http.StatusForbidden, "Action does not belong to this brand")
+		return
+	}
+
+	// Update status
+	action.Status = req.Status
+	// Update assignee if provided
+	if req.Assignee != nil {
+		action.Assignee = *req.Assignee
+	}
+	action.UpdatedAt = time.Now()
+
+	if err := s.db.UpdateAction(c.Request.Context(), action); err != nil {
+		s.errorResponse(c, http.StatusInternalServerError, "Failed to update action status: "+err.Error())
+		return
+	}
+
+	response := models.UpdateActionStatusResponse{
+		Action:  action,
+		Message: "Action status updated successfully",
+	}
+
+	s.successResponse(c, response)
+}
+
 // Helper function to parse int with default value
 func parseIntOrDefault(s string, defaultVal int) int {
 	if s == "" {

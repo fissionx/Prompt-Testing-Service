@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS actions (
     estimated_effort TEXT CHECK (estimated_effort IN ('low', 'medium', 'high')),
     resources TEXT DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed')),
+    assignee TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -69,6 +70,7 @@ CREATE INDEX IF NOT EXISTS idx_actions_org_id ON actions(org_id);
 CREATE INDEX IF NOT EXISTS idx_actions_opportunity_id ON actions(opportunity_id);
 CREATE INDEX IF NOT EXISTS idx_actions_brand_id ON actions(brand_id);
 CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(status);
+CREATE INDEX IF NOT EXISTS idx_actions_assignee ON actions(assignee);
 CREATE INDEX IF NOT EXISTS idx_actions_created_at ON actions(created_at DESC);
 
 -- Create triggers to automatically update the updated_at timestamp

@@ -420,30 +420,106 @@ func (s *OpportunityService) ConvertToAction(
 		return nil, fmt.Errorf("LLM action generation failed: %w", err)
 	}
 
+	// Create action with "preparing" status first
+	actionID := uuid.New().String()
+	action := &models.Action{
+		ID:            actionID,
+		OrgID:         opportunity.OrgID,
+		OpportunityID: opportunityID,
+		BrandID:       opportunity.BrandID,
+		Status:        models.ActionStatusPreparing,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	// Save action with preparing status
+	if err := s.db.CreateAction(ctx, action); err != nil {
+		return nil, fmt.Errorf("failed to create action: %w", err)
+	}
+
 	// Parse the response
 	actionPlan, err := s.parseActionPlan(response.Text)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse action plan: %w", err)
+		// If parsing fails, update action with error status or keep as preparing
+		// For now, we'll leave it as preparing and let the user retry
+		return action, fmt.Errorf("failed to parse action plan: %w", err)
 	}
 
-	// Create action in database
-	action := &models.Action{
-		ID:              uuid.New().String(),
-		OrgID:           opportunity.OrgID,
-		OpportunityID:   opportunityID,
-		BrandID:         opportunity.BrandID,
-		Title:           actionPlan.Title,
-		Description:     actionPlan.Description,
-		Steps:           convertLLMSteps(actionPlan.Steps),
-		EstimatedEffort: actionPlan.EstimatedEffort,
-		Resources:       actionPlan.Resources,
-		Status:          models.ActionStatusPending,
-		CreatedAt:       time.Now(),
-		UpdatedAt:       time.Now(),
+	// Determine action type and execution mode
+	actionType := models.ActionTypeOther
+	if actionPlan.ActionType != "" {
+		switch strings.ToUpper(actionPlan.ActionType) {
+		case "CONTENT_CREATION":
+			actionType = models.ActionTypeContentCreation
+		case "SEO":
+			actionType = models.ActionTypeSEO
+		case "PR":
+			actionType = models.ActionTypePR
+		case "SOCIAL":
+			actionType = models.ActionTypeSocial
+		default:
+			actionType = models.ActionTypeOther
+		}
 	}
 
-	if err := s.db.CreateAction(ctx, action); err != nil {
-		return nil, fmt.Errorf("failed to create action: %w", err)
+	executionMode := models.ExecutionModeManual
+	if actionPlan.ExecutionMode != "" {
+		switch strings.ToLower(actionPlan.ExecutionMode) {
+		case "manual_copy":
+			executionMode = models.ExecutionModeManualCopy
+		case "api":
+			executionMode = models.ExecutionModeAPI
+		case "manual":
+			executionMode = models.ExecutionModeManual
+		default:
+			executionMode = models.ExecutionModeManual
+		}
+	}
+
+	// Use summary if available, otherwise use description
+	summary := actionPlan.Summary
+	if summary == "" {
+		summary = actionPlan.Description
+	}
+
+	// Determine priority, effort, expected_impact
+	priority := "medium"
+	if actionPlan.Priority != "" {
+		priority = strings.ToLower(actionPlan.Priority)
+	}
+
+	effort := actionPlan.Effort
+	if effort == "" {
+		effort = actionPlan.EstimatedEffort
+	}
+	if effort == "" {
+		effort = "medium"
+	}
+
+	expectedImpact := "medium"
+	if actionPlan.ExpectedImpact != "" {
+		expectedImpact = strings.ToLower(actionPlan.ExpectedImpact)
+	}
+
+	// Update action with full details
+	action.ActionType = actionType
+	action.ExecutionMode = executionMode
+	action.Title = actionPlan.Title
+	action.Summary = summary
+	action.Description = actionPlan.Description // Keep for backward compatibility
+	action.Priority = priority
+	action.Effort = effort
+	action.ExpectedImpact = expectedImpact
+	action.Assets = convertLLMAssets(actionPlan.Assets)
+	action.Steps = convertLLMSteps(actionPlan.Steps)
+	action.SuccessCriteria = actionPlan.SuccessCriteria
+	action.EstimatedEffort = actionPlan.EstimatedEffort // Keep for backward compatibility
+	action.Resources = actionPlan.Resources
+	action.Status = models.ActionStatusReady // Mark as ready after successful generation
+	action.UpdatedAt = time.Now()
+
+	if err := s.db.UpdateAction(ctx, action); err != nil {
+		return nil, fmt.Errorf("failed to update action: %w", err)
 	}
 
 	// Update opportunity with action ID and status
@@ -638,11 +714,25 @@ func convertLLMSteps(llmSteps []models.LLMActionStep) []models.ActionStep {
 		steps[i] = models.ActionStep{
 			Order:       s.Order,
 			Title:       s.Title,
-			Description: s.Description,
+			Instruction: s.Instruction,
 			Completed:   false,
 		}
 	}
 	return steps
+}
+
+// convertLLMAssets converts LLM action assets to model action assets
+func convertLLMAssets(llmAssets []models.LLMActionAsset) []models.ActionAsset {
+	assets := make([]models.ActionAsset, len(llmAssets))
+	for i, a := range llmAssets {
+		assets[i] = models.ActionAsset{
+			AssetType: a.AssetType,
+			Role:      a.Role,
+			Title:     a.Title,
+			Content:   a.Content,
+		}
+	}
+	return assets
 }
 
 // SuppressOpportunity archives/suppresses an opportunity by setting IsArchived = true
