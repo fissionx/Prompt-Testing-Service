@@ -46,13 +46,36 @@ func RunMigrations(ctx context.Context, db *sql.DB, migrationsDir string) error 
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
+	defer func() { _, _ = m.Close() }()
 
+	if err := runMigrationsUp(m); err != nil {
+		return err
+	}
+	return nil
+}
+
+func runMigrationsUp(m *migrate.Migrate) error {
 	if err := m.Up(); err != nil {
 		if errors.Is(err, migrate.ErrNoChange) {
 			return nil
 		}
+		// Handle dirty database state (e.g. migration failed mid-run, process killed)
+		var dirtyErr migrate.ErrDirty
+		if errors.As(err, &dirtyErr) {
+			lastGood := dirtyErr.Version - 1
+			if lastGood < 0 {
+				lastGood = 0
+			}
+			if forceErr := m.Force(lastGood); forceErr != nil {
+				return fmt.Errorf("failed to run migrations: %w; failed to force version %d: %v", err, lastGood, forceErr)
+			}
+			// Retry migrations from last known good version
+			if retryErr := m.Up(); retryErr != nil && !errors.Is(retryErr, migrate.ErrNoChange) {
+				return fmt.Errorf("failed to run migrations after dirty recovery: %w", retryErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
-
 	return nil
 }

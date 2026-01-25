@@ -96,6 +96,14 @@ func main() {
 	fmt.Printf("  SQL Database: %s (%s)\n", sqlConfig.Provider, sqlConfig.URI)
 	fmt.Printf("  NoSQL Database: %s\n", nosqlConfig.Provider)
 	if nosqlConfig.Provider == "postgresql" || nosqlConfig.Provider == "postgres" {
+		if nosqlConfig.URI == "" {
+			fmt.Fprintf(os.Stderr, "\n❌ ERROR: PostgreSQL URI is required but not set!\n\n")
+			fmt.Fprintf(os.Stderr, "For Fly.io deployment, set the secret with:\n")
+			fmt.Fprintf(os.Stderr, "  flyctl secrets set POSTGRESQL_URI=\"postgresql://user:password@host:port/database?sslmode=require\" --app gego\n\n")
+			fmt.Fprintf(os.Stderr, "Or set the POSTGRESQL_URI environment variable.\n")
+			fmt.Fprintf(os.Stderr, "Example: postgresql://user:pass@hostname:5432/gego?sslmode=require\n\n")
+			os.Exit(1)
+		}
 		maskedURI := maskPasswordInURI(nosqlConfig.URI)
 		fmt.Printf("  PostgreSQL URI: %s\n", maskedURI)
 		fmt.Printf("  Database Name: %s\n", nosqlConfig.Database)
@@ -107,19 +115,33 @@ func main() {
 
 	database, err := db.New(sqlConfig, nosqlConfig)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to create hybrid database: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Error: failed to create hybrid database: %v\n", err)
 		os.Exit(1)
 	}
 
 	ctx := context.Background()
+	fmt.Println("🔌 Connecting to databases...")
 	if err := database.Connect(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to connect to database: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n❌ Error: failed to connect to database: %v\n\n", err)
+		if nosqlConfig.Provider == "postgresql" || nosqlConfig.Provider == "postgres" {
+			fmt.Fprintf(os.Stderr, "This is likely a PostgreSQL connection issue.\n")
+			fmt.Fprintf(os.Stderr, "Please verify:\n")
+			fmt.Fprintf(os.Stderr, "  1. POSTGRESQL_URI secret is set correctly in Fly.io\n")
+			fmt.Fprintf(os.Stderr, "  2. The database is accessible from Fly.io\n")
+			fmt.Fprintf(os.Stderr, "  3. The connection string format is correct\n")
+			fmt.Fprintf(os.Stderr, "\nCheck secrets with: flyctl secrets list --app gego\n")
+		}
 		os.Exit(1)
 	}
 	defer database.Disconnect(ctx)
 
+	fmt.Println("🔍 Testing database connection...")
 	if err := database.Ping(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: database ping failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n❌ Error: database ping failed: %v\n\n", err)
+		if nosqlConfig.Provider == "postgresql" || nosqlConfig.Provider == "postgres" {
+			fmt.Fprintf(os.Stderr, "The database connection string may be incorrect or the database is unreachable.\n")
+			fmt.Fprintf(os.Stderr, "Verify your POSTGRESQL_URI secret in Fly.io.\n")
+		}
 		os.Exit(1)
 	}
 

@@ -1,7 +1,7 @@
 # Production Dockerfile for Gego - GEO Tracker
 # Optimized for production deployment with minimal image size
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata sqlite-dev gcc musl-dev
@@ -27,8 +27,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o 
 # Stage 2: Minimal runtime
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install ca-certificates for HTTPS requests and SQLite runtime library (required for CGO-enabled binary)
+RUN apk --no-cache add ca-certificates tzdata sqlite
 
 # Copy binary
 COPY --from=builder /app/gego /usr/local/bin/gego
@@ -45,6 +45,9 @@ ENV GEGO_DATA_PATH=/app/data
 ENV GEGO_LOG_PATH=/app/logs
 
 # Create default configuration using cat heredoc for proper YAML formatting
+# Note: POSTGRESQL_URI MUST be set via fly.io secrets for the app to start
+# The URI will be overridden by POSTGRESQL_URI environment variable if set
+# Setting uri to empty string - it MUST be provided via POSTGRESQL_URI secret
 RUN cat > /app/config/config.yaml <<EOF
 sql_database:
   provider: sqlite
@@ -52,8 +55,8 @@ sql_database:
   database: gego
 
 nosql_database:
-  provider: mongodb
-  uri: mongodb://mongodb:27017
+  provider: postgresql
+  uri: ""
   database: gego
 EOF
 
@@ -63,4 +66,4 @@ EXPOSE 8989
 # Health check removed - Fly.io handles this via fly.toml http_service.checks
 
 # Default command
-CMD ["/usr/local/bin/gego", "api", "--host", "0.0.0.0", "--port", "8989"]
+CMD ["/usr/local/bin/gego", "--host", "0.0.0.0", "--port", "8989"]

@@ -60,7 +60,6 @@ CREATE INDEX IF NOT EXISTS idx_opportunities_urgency ON opportunities(urgency);
 CREATE INDEX IF NOT EXISTS idx_opportunities_brand_status ON opportunities(brand_id, status);
 CREATE INDEX IF NOT EXISTS idx_opportunities_prompt_status ON opportunities(prompt_id, status);
 CREATE INDEX IF NOT EXISTS idx_opportunities_created_at ON opportunities(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_opportunities_target_platform ON opportunities(target_platform);
 
 -- Unique constraint to prevent duplicate opportunities per prompt
 CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunities_prompt_content_hash ON opportunities(prompt_id, content_hash);

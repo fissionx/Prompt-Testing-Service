@@ -1,11 +1,15 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/fissionx/gego/internal/models"
 )
@@ -85,10 +89,46 @@ func (s *Server) getStats(c *gin.Context) {
 
 // healthCheck handles GET /api/v1/health
 func (s *Server) healthCheck(c *gin.Context) {
-	if err := s.db.Ping(c.Request.Context()); err != nil {
+	// Try to ping with a timeout context
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	
+	if err := s.db.Ping(ctx); err != nil {
+		// Log the error for debugging
+		if s.logger != nil {
+			s.logger.Error("Health check failed: database ping error", zap.Error(err))
+		}
+		
+		// Determine the specific issue and provide appropriate hints
+		errMsg := err.Error()
+		var issue, hint string
+		
+		if strings.Contains(errMsg, "SQL database ping failed") {
+			if strings.Contains(errMsg, "database is closed") {
+				issue = "sqlite_connection_closed"
+				hint = "SQLite database connection was closed. This may indicate filesystem issues on the mounted volume. Check Fly.io volume status."
+			} else {
+				issue = "sqlite_connection_failed"
+				hint = "SQLite database connection failed. Check if the database file is accessible at /app/data/gego.db"
+			}
+		} else if strings.Contains(errMsg, "NoSQL database ping failed") {
+			issue = "postgresql_connection_failed"
+			hint = "PostgreSQL connection failed. Check POSTGRESQL_URI secret: flyctl secrets list --app gego"
+		} else {
+			issue = "database_connection_failed"
+			hint = "Database connection failed. Check both SQLite and PostgreSQL configurations."
+		}
+		
 		c.JSON(http.StatusServiceUnavailable, models.APIResponse{
 			Success: false,
-			Error:   "Database connection failed",
+			Error:   fmt.Sprintf("Database connection failed: %v", err),
+			Data: map[string]interface{}{
+				"status":    "unhealthy",
+				"timestamp": time.Now(),
+				"issue":     issue,
+				"hint":      hint,
+				"error":     errMsg,
+			},
 		})
 		return
 	}

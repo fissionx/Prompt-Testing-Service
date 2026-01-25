@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -18,6 +19,7 @@ import (
 type SQLite struct {
 	db     *sql.DB
 	config *models.Config
+	mu     sync.RWMutex // Protects database connection from concurrent access
 }
 
 // New creates a new SQLite database instance
@@ -29,6 +31,83 @@ func New(config *models.Config) (*SQLite, error) {
 
 // Connect establishes connection to SQLite
 func (s *SQLite) Connect(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.connectInternal(ctx)
+}
+
+// Disconnect closes the SQLite connection
+func (s *SQLite) Disconnect(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.db != nil {
+		err := s.db.Close()
+		s.db = nil
+		return err
+	}
+	return nil
+}
+
+// Ping checks the database connection and reconnects if necessary
+func (s *SQLite) Ping(ctx context.Context) error {
+	s.mu.RLock()
+	db := s.db
+	s.mu.RUnlock()
+	
+	if db == nil {
+		// Try to reconnect if not connected
+		s.mu.Lock()
+		if s.db == nil {
+			if err := s.connectInternal(ctx); err != nil {
+				s.mu.Unlock()
+				return fmt.Errorf("not connected to database and reconnect failed: %w", err)
+			}
+		}
+		db = s.db
+		s.mu.Unlock()
+	}
+	
+	// Try to ping the database
+	err := db.PingContext(ctx)
+	if err != nil {
+		// If ping fails with "database is closed", always try to reconnect
+		// The connection is definitely closed, so we need a new one
+		if strings.Contains(err.Error(), "database is closed") {
+			s.mu.Lock()
+			// Always reconnect when we get "database is closed" error
+			// Close the old connection if it still exists
+			if s.db != nil {
+				s.db.Close() // Ignore close errors
+				s.db = nil
+			}
+			// Attempt to reconnect
+			if reconnectErr := s.connectInternal(ctx); reconnectErr != nil {
+				s.mu.Unlock()
+				return fmt.Errorf("database connection closed and reconnect failed: %w (original error: %v)", reconnectErr, err)
+			}
+			db = s.db
+			s.mu.Unlock()
+			// Retry ping after reconnection
+			if db != nil {
+				return db.PingContext(ctx)
+			}
+			return fmt.Errorf("database connection closed and could not reconnect: %v", err)
+		}
+		return err
+	}
+	
+	return nil
+}
+
+// connectInternal performs the actual connection logic (without locking)
+func (s *SQLite) connectInternal(ctx context.Context) error {
+	// Close existing connection if any
+	if s.db != nil {
+		s.db.Close()
+		s.db = nil
+	}
+	
 	dbPath := s.config.URI
 	if strings.HasPrefix(dbPath, "~") {
 		home, err := os.UserHomeDir()
@@ -49,38 +128,36 @@ func (s *SQLite) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	// Configure SQLite connection string with proper settings for production
+	// Use WAL mode for better concurrency, longer busy timeout for mounted volumes
+	// Add _sync=NORMAL for better performance on network filesystems (like Fly.io volumes)
+	connStr := dbPath + "?_journal_mode=WAL&_busy_timeout=10000&_foreign_keys=1&_sync=NORMAL&_cache=shared"
+	
+	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return fmt.Errorf("failed to open SQLite database at path '%s': %w", dbPath, err)
 	}
 
+	// Configure connection pool settings for production use
+	// Keep connections alive longer to avoid "database is closed" errors
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2) // Keep 2 idle connections alive
+	db.SetConnMaxLifetime(30 * time.Minute) // Keep connections alive for 30 minutes
+	db.SetConnMaxIdleTime(15 * time.Minute) // Close idle connections after 15 minutes
+
 	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return fmt.Errorf("failed to ping SQLite database at path '%s': %w", dbPath, err)
 	}
 
 	s.db = db
-
 	return nil
-}
-
-// Disconnect closes the SQLite connection
-func (s *SQLite) Disconnect(ctx context.Context) error {
-	if s.db != nil {
-		return s.db.Close()
-	}
-	return nil
-}
-
-// Ping checks the database connection
-func (s *SQLite) Ping(ctx context.Context) error {
-	if s.db == nil {
-		return fmt.Errorf("not connected to database")
-	}
-	return s.db.PingContext(ctx)
 }
 
 // GetDB returns the underlying *sql.DB connection for migrations
 func (s *SQLite) GetDB() *sql.DB {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.db
 }
 

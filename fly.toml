@@ -34,11 +34,12 @@ primary_region = 'sjc'
   processes = ['app']
 
   [[http_service.checks]]
-    interval = '30s'
+    interval = '15s'
     timeout = '10s'
-    grace_period = '30s'
+    grace_period = '90s'
     method = 'GET'
     path = '/api/v1/health'
+    protocol = 'http'
 
 [[vm]]
   cpu_kind = 'shared'
