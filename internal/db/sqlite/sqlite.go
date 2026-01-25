@@ -161,6 +161,50 @@ func (s *SQLite) GetDB() *sql.DB {
 	return s.db
 }
 
+// ensureConnection ensures the database connection is alive, reconnecting if necessary
+func (s *SQLite) ensureConnection(ctx context.Context) (*sql.DB, error) {
+	s.mu.RLock()
+	db := s.db
+	s.mu.RUnlock()
+	
+	if db == nil {
+		// Try to reconnect if not connected
+		s.mu.Lock()
+		if s.db == nil {
+			if err := s.connectInternal(ctx); err != nil {
+				s.mu.Unlock()
+				return nil, fmt.Errorf("database not connected and reconnect failed: %w", err)
+			}
+		}
+		db = s.db
+		s.mu.Unlock()
+		return db, nil
+	}
+	
+	// Test the connection with a quick ping
+	if err := db.PingContext(ctx); err != nil {
+		// Connection is dead, try to reconnect
+		if strings.Contains(err.Error(), "database is closed") {
+			s.mu.Lock()
+			// Close old connection and reconnect
+			if s.db != nil {
+				s.db.Close()
+				s.db = nil
+			}
+			if reconnectErr := s.connectInternal(ctx); reconnectErr != nil {
+				s.mu.Unlock()
+				return nil, fmt.Errorf("database connection closed and reconnect failed: %w (original error: %v)", reconnectErr, err)
+			}
+			db = s.db
+			s.mu.Unlock()
+			return db, nil
+		}
+		return nil, fmt.Errorf("database ping failed: %w", err)
+	}
+	
+	return db, nil
+}
+
 func mapToJSON(m map[string]string) string {
 	if len(m) == 0 {
 		return "{}"
@@ -255,6 +299,12 @@ func (s *SQLite) CreateLLM(ctx context.Context, llm *models.LLMConfig) error {
 
 // GetLLM retrieves an LLM configuration by ID
 func (s *SQLite) GetLLM(ctx context.Context, id string) (*models.LLMConfig, error) {
+	// Ensure connection is alive before querying
+	db, err := s.ensureConnection(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
 	query := `
 		SELECT id, name, provider, model, api_key, base_url, config, enabled, created_at, updated_at
 		FROM llms WHERE id = ?`
@@ -262,7 +312,7 @@ func (s *SQLite) GetLLM(ctx context.Context, id string) (*models.LLMConfig, erro
 	var llm models.LLMConfig
 	var configJSON string
 
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	err = db.QueryRowContext(ctx, query, id).Scan(
 		&llm.ID,
 		&llm.Name,
 		&llm.Provider,
@@ -275,11 +325,41 @@ func (s *SQLite) GetLLM(ctx context.Context, id string) (*models.LLMConfig, erro
 		&llm.UpdatedAt,
 	)
 
+	// If query fails with "database is closed", try to reconnect and retry once
+	if err != nil && strings.Contains(err.Error(), "database is closed") {
+		s.mu.Lock()
+		// Close old connection and reconnect
+		if s.db != nil {
+			s.db.Close()
+			s.db = nil
+		}
+		if reconnectErr := s.connectInternal(ctx); reconnectErr != nil {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("database connection closed and reconnect failed: %w (original error: %v)", reconnectErr, err)
+		}
+		db = s.db
+		s.mu.Unlock()
+		
+		// Retry the query
+		err = db.QueryRowContext(ctx, query, id).Scan(
+			&llm.ID,
+			&llm.Name,
+			&llm.Provider,
+			&llm.Model,
+			&llm.APIKey,
+			&llm.BaseURL,
+			&configJSON,
+			&llm.Enabled,
+			&llm.CreatedAt,
+			&llm.UpdatedAt,
+		)
+	}
+
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("LLM not found: %s", id)
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get LLM: %w", err)
 	}
 
 	llm.Config = jsonToMap(configJSON)
@@ -342,6 +422,12 @@ func (s *SQLite) GetLLMsByIDs(ctx context.Context, ids []string) ([]*models.LLMC
 
 // ListLLMs lists all LLM configurations, optionally filtered by enabled status
 func (s *SQLite) ListLLMs(ctx context.Context, enabled *bool) ([]*models.LLMConfig, error) {
+	// Ensure connection is alive before querying
+	db, err := s.ensureConnection(ctx)
+	if err != nil {
+		return nil, err
+	}
+	
 	query := `
 		SELECT id, name, provider, model, api_key, base_url, config, enabled, created_at, updated_at
 		FROM llms`
@@ -354,9 +440,28 @@ func (s *SQLite) ListLLMs(ctx context.Context, enabled *bool) ([]*models.LLMConf
 
 	query += " ORDER BY created_at DESC"
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
+	// If query fails with "database is closed", try to reconnect and retry once
+	if err != nil && strings.Contains(err.Error(), "database is closed") {
+		s.mu.Lock()
+		// Close old connection and reconnect
+		if s.db != nil {
+			s.db.Close()
+			s.db = nil
+		}
+		if reconnectErr := s.connectInternal(ctx); reconnectErr != nil {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("database connection closed and reconnect failed: %w (original error: %v)", reconnectErr, err)
+		}
+		db = s.db
+		s.mu.Unlock()
+		
+		// Retry the query
+		rows, err = db.QueryContext(ctx, query, args...)
+	}
+	
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list LLMs: %w", err)
 	}
 	defer rows.Close()
 

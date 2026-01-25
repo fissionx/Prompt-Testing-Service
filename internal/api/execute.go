@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 
 	"github.com/fissionx/gego/internal/llm"
 	// "github.com/fissionx/gego/internal/llm/anthropic"
@@ -69,10 +70,34 @@ func (s *Server) execute(c *gin.Context) {
 		return
 	}
 
+	// Validate that API key is present (required for most providers)
+	if llmConfig.APIKey == "" && llmConfig.Provider != "ollama" {
+		errorMsg := fmt.Sprintf("API key is missing for LLM '%s' (ID: %s, Provider: %s). This may indicate a database connection issue preventing the API key from being retrieved.", 
+			llmConfig.Name, llmConfig.ID, llmConfig.Provider)
+		if s.logger != nil {
+			s.logger.Error("LLM API key is empty", 
+				zap.String("llm_id", llmConfig.ID),
+				zap.String("llm_name", llmConfig.Name),
+				zap.String("provider", llmConfig.Provider))
+		}
+		s.errorResponse(c, http.StatusBadRequest, errorMsg)
+		return
+	}
+
 	// Create the LLM provider with the specific API key from config
 	var provider llm.Provider
 	switch llmConfig.Provider {
 	case "openai":
+		if llmConfig.APIKey == "" {
+			errorMsg := fmt.Sprintf("OpenAI API key is required but not set in LLM configuration (LLM ID: %s). Please check if the database connection is working and the API key is stored correctly.", llmConfig.ID)
+			if s.logger != nil {
+				s.logger.Error("OpenAI API key is empty", 
+					zap.String("llm_id", llmConfig.ID),
+					zap.String("llm_name", llmConfig.Name))
+			}
+			s.errorResponse(c, http.StatusBadRequest, errorMsg)
+			return
+		}
 		provider = openai.New(llmConfig.APIKey, llmConfig.BaseURL)
 	// case "anthropic":
 	// 	provider = anthropic.New(llmConfig.APIKey, llmConfig.BaseURL)
