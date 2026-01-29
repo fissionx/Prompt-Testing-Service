@@ -17,6 +17,7 @@ import (
 	"github.com/fissionx/gego/internal/llm"
 	"github.com/fissionx/gego/internal/logger"
 	"github.com/fissionx/gego/internal/models"
+	"github.com/fissionx/gego/internal/shared"
 )
 
 // Retry configuration constants
@@ -262,6 +263,7 @@ func (s *SchedulerService) registerSchedule(_ context.Context, schedule *models.
 
 // executeSchedule executes a schedule
 func (s *SchedulerService) executeSchedule(ctx context.Context, schedule *models.Schedule) error {
+	runStartTime := time.Now()
 	logger.Info("Executing schedule: %s", schedule.ID)
 	logger.Info("Schedule has %d prompts and %d LLMs", len(schedule.PromptIDs), len(schedule.LLMIDs))
 
@@ -346,8 +348,113 @@ func (s *SchedulerService) executeSchedule(ctx context.Context, schedule *models
 		logger.Error("Failed to update schedule last run: %v", err)
 	}
 
+	// Update analytics: generate new opportunities from this run (without duplicates, in background)
+	go s.generateOpportunitiesForScheduleRun(context.Background(), schedule, &runStartTime, &now)
+
 	logger.Info("Completed schedule: %s", schedule.ID)
 	return nil
+}
+
+// generateOpportunitiesForScheduleRun lists responses created by this schedule run and generates
+// opportunities for each (with LLM-based deduplication). Runs in background so schedule completion is not blocked.
+func (s *SchedulerService) generateOpportunitiesForScheduleRun(ctx context.Context, schedule *models.Schedule, startTime, endTime *time.Time) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("generateOpportunitiesForScheduleRun panic: %v", r)
+		}
+	}()
+
+	filter := shared.ResponseFilter{
+		ScheduleID: schedule.ID,
+		StartTime:  startTime,
+		EndTime:   endTime,
+		Limit:     500,
+	}
+	responses, err := s.db.ListResponses(ctx, filter)
+	if err != nil {
+		logger.Error("Failed to list responses for schedule %s: %v", schedule.ID, err)
+		return
+	}
+	if len(responses) == 0 {
+		return
+	}
+
+	opportunityService := NewOpportunityService(s.db, s.llmRegistry)
+	for _, resp := range responses {
+		if resp.Error != "" {
+			continue
+		}
+		searchAnswer := resp.SearchAnswer
+		if searchAnswer == "" {
+			searchAnswer = resp.ResponseText
+		}
+		if searchAnswer == "" {
+			continue
+		}
+
+		prompt, err := s.db.GetPrompt(ctx, resp.PromptID)
+		if err != nil || prompt == nil {
+			logger.Warning("Prompt not found for response %s: %v", resp.ID, err)
+			continue
+		}
+		brand := prompt.Brand
+		if brand == "" {
+			brand = resp.Brand
+		}
+		if brand == "" {
+			continue
+		}
+
+		orgID := prompt.OrgID
+		if orgID == "" {
+			orgID = schedule.OrgID
+		}
+		brandID := prompt.BrandID
+		if brandID == "" {
+			brandID = schedule.BrandID
+		}
+
+		llmConfig, err := s.db.GetLLM(ctx, resp.LLMID)
+		if err != nil || llmConfig == nil {
+			logger.Warning("LLM not found for response %s: %v", resp.ID, err)
+			continue
+		}
+		provider, ok := s.llmRegistry.Get(llmConfig.Provider)
+		if !ok {
+			logger.Warning("Provider not found for response %s: %s", resp.ID, llmConfig.Provider)
+			continue
+		}
+
+		var competitors []string
+		if brandCompetitors, err := s.db.GetBrandCompetitors(ctx, brandID); err == nil && brandCompetitors != nil {
+			competitors = brandCompetitors.Competitors
+		}
+
+		sourcesInfo := ""
+		if len(resp.GroundingSources) > 0 {
+			sourcesInfo = "\n\nGROUNDING SOURCES (URLs cited by the AI):\n" + strings.Join(resp.GroundingSources, "\n")
+		}
+
+		_, _, err = opportunityService.AnalyzeAndGenerateOpportunities(
+			ctx,
+			orgID,
+			brandID,
+			brand,
+			resp.PromptID,
+			resp.ID,
+			resp.PromptText,
+			searchAnswer,
+			sourcesInfo,
+			competitors,
+			provider,
+			llmConfig.ID,
+			llmConfig.Model,
+		)
+		if err != nil {
+			logger.Warning("Opportunity generation failed for response %s: %v", resp.ID, err)
+		}
+	}
+	logger.Info("Opportunity generation completed for schedule %s (%d responses)", schedule.ID, len(responses))
 }
 
 // executePromptWithRetry executes a prompt with retry mechanism
@@ -450,6 +557,7 @@ func (s *SchedulerService) executePromptWithLLM(ctx context.Context, scheduleID 
 			ID:          uuid.New().String(),
 			BrandID:     prompt.BrandID,
 			OrgID:       prompt.OrgID,
+			Brand:       prompt.Brand,
 			PromptID:    prompt.ID,
 			PromptText:  prompt.Template,
 			LLMID:       llmConfig.ID,
@@ -471,6 +579,7 @@ func (s *SchedulerService) executePromptWithLLM(ctx context.Context, scheduleID 
 		ID:           uuid.New().String(),
 		BrandID:      prompt.BrandID,
 		OrgID:        prompt.OrgID,
+		Brand:        prompt.Brand,
 		PromptID:     prompt.ID,
 		PromptText:   prompt.Template,
 		LLMID:        llmConfig.ID,
@@ -485,6 +594,55 @@ func (s *SchedulerService) executePromptWithLLM(ctx context.Context, scheduleID 
 		Error:        resp.Error,
 		CreatedAt:    time.Now(),
 	}
+
+	// Provider metadata (grounding, search answer)
+	if len(resp.GroundingSources) > 0 {
+		response.GroundingSources = resp.GroundingSources
+		response.GroundingDomains = ExtractDomainsFromSources(resp.GroundingSources)
+	}
+	response.WebSearchQueries = resp.WebSearchQueries
+	if resp.SearchAnswer != "" {
+		response.SearchAnswer = resp.SearchAnswer
+	}
+
+	// Parse GEO analysis from response so overview/latest responses show correct metrics
+	brand := prompt.Brand
+	if brand != "" {
+		geoAnalysis := parseGEOAnalysis(resp.Text)
+		if geoAnalysis != nil {
+			geo := geoAnalysis.GEOAnalysis
+			response.VisibilityScore = geo.VisibilityScore
+			response.BrandMentioned = geo.BrandMentioned
+			response.InGroundingSources = geo.InGroundingSources
+			response.Sentiment = geo.Sentiment
+			response.CompetitorsMention = geo.Competitors
+			if geoAnalysis.SearchAnswer != "" {
+				response.SearchAnswer = geoAnalysis.SearchAnswer
+			}
+			if geo.BrandMentioned {
+				searchAnswer := response.SearchAnswer
+				if searchAnswer == "" {
+					searchAnswer = resp.Text
+				}
+				response.BrandPosition, response.TotalBrandsListed = ExtractBrandPosition(searchAnswer, brand)
+			}
+		} else {
+			// Fallback: basic brand mention from text
+			if strings.Contains(strings.ToLower(resp.Text), strings.ToLower(brand)) {
+				response.BrandMentioned = true
+			}
+		}
+	}
+	if response.SearchAnswer == "" {
+		response.SearchAnswer = resp.Text
+	}
+
+	// Time-series fields (for analytics)
+	now := time.Now()
+	response.Week = now.Format("2006-W02")
+	response.Month = now.Format("2006-01")
+	quarter := (int(now.Month())-1)/3 + 1
+	response.Quarter = fmt.Sprintf("%d-Q%d", now.Year(), quarter)
 
 	return s.db.CreateResponse(ctx, response)
 }
