@@ -106,16 +106,17 @@ func NewServer(database db.Database, llmRegistry *llm.Registry, corsOrigin strin
 		dbDuration := dbTotalTime
 		status := c.Writer.Status()
 
-		// Log single summary line with API time and database time
-		// Use the internal logger package (not config.Logger) for request logging
-		applogger.GetLogger().Info(
-			"[REQUEST] method=%s path=%s status=%d api_time_ms=%.2f db_time_ms=%.2f",
-			method,
-			path,
-			status,
+		// Log request summary (stdout so Fly.io captures it). Use Warning for 4xx/5xx so they stand out in logs.
+		logger := applogger.GetLogger()
+		line := fmt.Sprintf("[REQUEST] method=%s path=%s status=%d api_time_ms=%.2f db_time_ms=%.2f",
+			method, path, status,
 			float64(apiDuration.Nanoseconds())/1e6,
-			float64(dbDuration.Nanoseconds())/1e6,
-		)
+			float64(dbDuration.Nanoseconds())/1e6)
+		if status >= 400 {
+			logger.Warning("%s", line)
+		} else {
+			logger.Info("%s", line)
+		}
 	})
 
 	scheduledCampaignManager := services.NewScheduledCampaignManager(database, llmRegistry)
@@ -323,6 +324,21 @@ func (s *Server) successResponse(c *gin.Context, data interface{}) {
 }
 
 func (s *Server) errorResponse(c *gin.Context, status int, message string) {
+	// Log to stdout so Fly.io (and any aggregator) captures 4xx/5xx with context
+	method := c.Request.Method
+	path := c.Request.URL.Path
+	clientIP := c.ClientIP()
+	if status >= 500 {
+		applogger.GetLogger().Error(
+			"[ERROR_RESPONSE] method=%s path=%s status=%d message=%q client_ip=%s",
+			method, path, status, message, clientIP,
+		)
+	} else {
+		applogger.GetLogger().Warning(
+			"[ERROR_RESPONSE] method=%s path=%s status=%d message=%q client_ip=%s",
+			method, path, status, message, clientIP,
+		)
+	}
 	c.JSON(status, models.APIResponse{
 		Success: false,
 		Error:   message,
