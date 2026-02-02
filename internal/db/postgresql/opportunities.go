@@ -667,13 +667,16 @@ func (p *PostgreSQL) CreateAction(ctx context.Context, action *models.Action) er
 	}
 
 	resourcesJSON := sliceToJSON(action.Resources)
+	assetsJSON := marshalActionAssets(action.Assets)
+	successCriteriaJSON := sliceToJSON(action.SuccessCriteria)
 
 	query := `
 		INSERT INTO actions (
 			id, org_id, opportunity_id, brand_id, title, description, steps,
-			estimated_effort, resources, status, assignee, created_at, updated_at
+			estimated_effort, resources, status, assignee, created_at, updated_at,
+			action_type, execution_mode, summary, priority, effort, expected_impact, assets, success_criteria
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 	`
 
 	_, err = p.db.ExecContext(ctx, query,
@@ -690,6 +693,14 @@ func (p *PostgreSQL) CreateAction(ctx context.Context, action *models.Action) er
 		action.Assignee,
 		action.CreatedAt,
 		action.UpdatedAt,
+		string(action.ActionType),
+		string(action.ExecutionMode),
+		action.Summary,
+		action.Priority,
+		action.Effort,
+		action.ExpectedImpact,
+		assetsJSON,
+		successCriteriaJSON,
 	)
 
 	trackLatency(ctx, "CreateAction", "actions", start, err)
@@ -701,13 +712,16 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 	start := time.Now()
 	query := `
 		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, assignee, created_at, updated_at
+		       estimated_effort, resources, status, assignee, created_at, updated_at,
+		       COALESCE(action_type, ''), COALESCE(execution_mode, ''), COALESCE(summary, ''),
+		       COALESCE(priority, ''), COALESCE(effort, ''), COALESCE(expected_impact, ''),
+		       COALESCE(assets::text, '[]'), COALESCE(success_criteria::text, '[]')
 		FROM actions WHERE id = $1
 	`
 
 	var action models.Action
-	var stepsJSON, resourcesJSON string
-	var statusStr string
+	var stepsJSON, resourcesJSON, assetsJSON, successCriteriaJSON string
+	var statusStr, actionTypeStr, executionModeStr string
 	var assignee sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, id).Scan(
@@ -724,6 +738,14 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 		&assignee,
 		&action.CreatedAt,
 		&action.UpdatedAt,
+		&actionTypeStr,
+		&executionModeStr,
+		&action.Summary,
+		&action.Priority,
+		&action.Effort,
+		&action.ExpectedImpact,
+		&assetsJSON,
+		&successCriteriaJSON,
 	)
 
 	if err == sql.ErrNoRows {
@@ -736,7 +758,11 @@ func (p *PostgreSQL) GetAction(ctx context.Context, id string) (*models.Action, 
 	}
 
 	action.Status = models.ActionStatus(statusStr)
+	action.ActionType = models.ActionType(actionTypeStr)
+	action.ExecutionMode = models.ExecutionMode(executionModeStr)
 	action.Resources = jsonToSlice(resourcesJSON)
+	action.SuccessCriteria = jsonToSlice(successCriteriaJSON)
+	action.Assets = unmarshalActionAssets(assetsJSON)
 	if assignee.Valid {
 		action.Assignee = assignee.String
 	}
@@ -758,13 +784,16 @@ func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID
 	start := time.Now()
 	query := `
 		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, assignee, created_at, updated_at
+		       estimated_effort, resources, status, assignee, created_at, updated_at,
+		       COALESCE(action_type, ''), COALESCE(execution_mode, ''), COALESCE(summary, ''),
+		       COALESCE(priority, ''), COALESCE(effort, ''), COALESCE(expected_impact, ''),
+		       COALESCE(assets::text, '[]'), COALESCE(success_criteria::text, '[]')
 		FROM actions WHERE opportunity_id = $1
 	`
 
 	var action models.Action
-	var stepsJSON, resourcesJSON string
-	var statusStr string
+	var stepsJSON, resourcesJSON, assetsJSON, successCriteriaJSON string
+	var statusStr, actionTypeStr, executionModeStr string
 	var assignee sql.NullString
 
 	err := p.db.QueryRowContext(ctx, query, opportunityID).Scan(
@@ -781,6 +810,14 @@ func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID
 		&assignee,
 		&action.CreatedAt,
 		&action.UpdatedAt,
+		&actionTypeStr,
+		&executionModeStr,
+		&action.Summary,
+		&action.Priority,
+		&action.Effort,
+		&action.ExpectedImpact,
+		&assetsJSON,
+		&successCriteriaJSON,
 	)
 
 	if err == sql.ErrNoRows {
@@ -793,7 +830,11 @@ func (p *PostgreSQL) GetActionByOpportunityID(ctx context.Context, opportunityID
 	}
 
 	action.Status = models.ActionStatus(statusStr)
+	action.ActionType = models.ActionType(actionTypeStr)
+	action.ExecutionMode = models.ExecutionMode(executionModeStr)
 	action.Resources = jsonToSlice(resourcesJSON)
+	action.SuccessCriteria = jsonToSlice(successCriteriaJSON)
+	action.Assets = unmarshalActionAssets(assetsJSON)
 	if assignee.Valid {
 		action.Assignee = assignee.String
 	}
@@ -815,7 +856,10 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 
 	query := `
 		SELECT id, org_id, opportunity_id, brand_id, title, description, steps,
-		       estimated_effort, resources, status, assignee, created_at, updated_at
+		       estimated_effort, resources, status, assignee, created_at, updated_at,
+		       COALESCE(action_type, ''), COALESCE(execution_mode, ''), COALESCE(summary, ''),
+		       COALESCE(priority, ''), COALESCE(effort, ''), COALESCE(expected_impact, ''),
+		       COALESCE(assets::text, '[]'), COALESCE(success_criteria::text, '[]')
 		FROM actions WHERE 1=1
 	`
 	args := []interface{}{}
@@ -863,8 +907,8 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 	var actions []*models.Action
 	for rows.Next() {
 		var action models.Action
-		var stepsJSON, resourcesJSON string
-		var statusStr string
+		var stepsJSON, resourcesJSON, assetsJSON, successCriteriaJSON string
+		var statusStr, actionTypeStr, executionModeStr string
 		var assignee sql.NullString
 
 		err := rows.Scan(
@@ -881,6 +925,14 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 			&assignee,
 			&action.CreatedAt,
 			&action.UpdatedAt,
+			&actionTypeStr,
+			&executionModeStr,
+			&action.Summary,
+			&action.Priority,
+			&action.Effort,
+			&action.ExpectedImpact,
+			&assetsJSON,
+			&successCriteriaJSON,
 		)
 		if err != nil {
 			trackLatency(ctx, "ListActions", "actions", start, err)
@@ -888,7 +940,11 @@ func (p *PostgreSQL) ListActions(ctx context.Context, filter models.ActionFilter
 		}
 
 		action.Status = models.ActionStatus(statusStr)
+		action.ActionType = models.ActionType(actionTypeStr)
+		action.ExecutionMode = models.ExecutionMode(executionModeStr)
 		action.Resources = jsonToSlice(resourcesJSON)
+		action.SuccessCriteria = jsonToSlice(successCriteriaJSON)
+		action.Assets = unmarshalActionAssets(assetsJSON)
 		if assignee.Valid {
 			action.Assignee = assignee.String
 		}
@@ -955,12 +1011,16 @@ func (p *PostgreSQL) UpdateAction(ctx context.Context, action *models.Action) er
 	}
 
 	resourcesJSON := sliceToJSON(action.Resources)
+	assetsJSON := marshalActionAssets(action.Assets)
+	successCriteriaJSON := sliceToJSON(action.SuccessCriteria)
 
 	query := `
 		UPDATE actions 
 		SET org_id = $1, opportunity_id = $2, brand_id = $3, title = $4, description = $5,
-		    steps = $6, estimated_effort = $7, resources = $8, status = $9, assignee = $10, updated_at = $11
-		WHERE id = $12
+		    steps = $6, estimated_effort = $7, resources = $8, status = $9, assignee = $10, updated_at = $11,
+		    action_type = $12, execution_mode = $13, summary = $14, priority = $15, effort = $16,
+		    expected_impact = $17, assets = $18, success_criteria = $19
+		WHERE id = $20
 	`
 
 	result, err := p.db.ExecContext(ctx, query,
@@ -975,6 +1035,14 @@ func (p *PostgreSQL) UpdateAction(ctx context.Context, action *models.Action) er
 		string(action.Status),
 		action.Assignee,
 		action.UpdatedAt,
+		string(action.ActionType),
+		string(action.ExecutionMode),
+		action.Summary,
+		action.Priority,
+		action.Effort,
+		action.ExpectedImpact,
+		assetsJSON,
+		successCriteriaJSON,
 		action.ID,
 	)
 
@@ -1178,6 +1246,30 @@ func (p *PostgreSQL) DeleteOpportunityEmbeddingsByBrand(ctx context.Context, bra
 	_, err := p.db.ExecContext(ctx, query, brandID)
 	trackLatency(ctx, "DeleteOpportunityEmbeddingsByBrand", "opportunity_embeddings", start, err)
 	return err
+}
+
+// marshalActionAssets marshals action assets to JSON for storage; returns "[]" if nil or empty.
+func marshalActionAssets(assets []models.ActionAsset) string {
+	if len(assets) == 0 {
+		return "[]"
+	}
+	data, err := json.Marshal(assets)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
+}
+
+// unmarshalActionAssets parses JSON into action assets; returns nil if empty or invalid.
+func unmarshalActionAssets(jsonStr string) []models.ActionAsset {
+	if jsonStr == "" || jsonStr == "[]" || jsonStr == "null" {
+		return nil
+	}
+	var out []models.ActionAsset
+	if err := json.Unmarshal([]byte(jsonStr), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 // Helper function to convert string slice to PostgreSQL array format

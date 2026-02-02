@@ -336,73 +336,79 @@ func (s *OpportunityService) generateContentHash(oppType, title, promptID string
 	return hex.EncodeToString(hash[:16]) // Use first 16 bytes (32 hex chars)
 }
 
-// ConvertToAction generates a detailed action plan for an opportunity
-// Uses the LLM stored in the opportunity (from when it was analyzed) for action generation
+// ConvertToAction captures an opportunity for conversion and returns immediately.
+// The action is created with status "preparing"; LLM preparation runs in the background.
+// Clients can poll GET /actions or GET /opportunities/:id/actions to see status "preparing" → "ready" (or "failed").
 func (s *OpportunityService) ConvertToAction(
 	ctx context.Context,
 	opportunityID string,
 	additionalContext string,
 ) (*models.Action, error) {
-	// Get the opportunity
 	opportunity, err := s.db.GetOpportunity(ctx, opportunityID)
 	if err != nil {
 		return nil, fmt.Errorf("opportunity not found: %w", err)
 	}
 
-	// Check if action already exists
 	existingAction, err := s.db.GetActionByOpportunityID(ctx, opportunityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for existing action: %w", err)
 	}
 	if existingAction != nil {
-		return existingAction, nil // Return existing action
+		return existingAction, nil
 	}
 
-	// Get brand name for context
-	brandName := opportunity.BrandID // Default to ID if name not available
-
-	// Get LLM provider from stored LLM ID (use the same LLM that analyzed this opportunity)
-	var provider llm.Provider
-	var model string
-
-	if opportunity.LLMID != "" {
-		// Use the stored LLM ID
-		llmConfig, err := s.db.GetLLM(ctx, opportunity.LLMID)
-		if err != nil || llmConfig == nil || !llmConfig.Enabled {
-			fmt.Printf("⚠️ Stored LLM ID %s not found or disabled, falling back to best available\n", opportunity.LLMID)
-			provider, model, err = s.getBestLLM(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("no LLM available: %w", err)
-			}
-		} else {
-			provider, _ = s.llmRegistry.Get(llmConfig.Provider)
-			if provider == nil {
-				fmt.Printf("⚠️ Provider %s not found, falling back to best available\n", llmConfig.Provider)
-				provider, model, err = s.getBestLLM(ctx)
-				if err != nil {
-					return nil, fmt.Errorf("no LLM available: %w", err)
-				}
-			} else {
-				model = llmConfig.Model
-				fmt.Printf("✅ Using stored LLM: provider=%s, model=%s (ID: %s)\n", llmConfig.Provider, model, opportunity.LLMID)
-			}
-		}
-	} else {
-		// No stored LLM ID, fall back to brand's schedule or best available
-		fmt.Printf("⚠️ No LLM ID stored in opportunity, falling back to brand schedule or best available\n")
-		provider, model, err = s.getLLMForBrand(ctx, opportunity.BrandID)
-		if err != nil {
-			provider, model, err = s.getBestLLM(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("no LLM available: %w", err)
-			}
-		}
+	// Create action with "preparing" status and persist immediately
+	actionID := uuid.New().String()
+	action := &models.Action{
+		ID:            actionID,
+		OrgID:         opportunity.OrgID,
+		OpportunityID: opportunityID,
+		BrandID:       opportunity.BrandID,
+		Title:         opportunity.Title, // Placeholder until LLM fills in
+		Description:   opportunity.Description,
+		Status:        models.ActionStatusPreparing,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
-	fmt.Printf("✅ Using LLM model: %s for action generation\n", model)
+	if err := s.db.CreateAction(ctx, action); err != nil {
+		return nil, fmt.Errorf("failed to create action: %w", err)
+	}
 
-	// Generate action plan prompt
+	// Link opportunity to action and mark in progress
+	opportunity.ActionID = action.ID
+	opportunity.Status = models.OpportunityStatusInProgress
+	opportunity.UpdatedAt = time.Now()
+	if err := s.db.UpdateOpportunity(ctx, opportunity); err != nil {
+		return action, nil // Action created; opportunity update best-effort
+	}
+
+	// Run LLM preparation in background (use detached context so it outlives the request)
+	go s.prepareActionInBackground(context.Background(), opportunityID, action.ID, additionalContext)
+
+	return action, nil
+}
+
+// prepareActionInBackground resolves LLM, generates the action plan, and updates the action to "ready" or "failed".
+func (s *OpportunityService) prepareActionInBackground(
+	ctx context.Context,
+	opportunityID string,
+	actionID string,
+	additionalContext string,
+) {
+	opportunity, err := s.db.GetOpportunity(ctx, opportunityID)
+	if err != nil {
+		s.markActionFailed(ctx, actionID, "opportunity not found: "+err.Error())
+		return
+	}
+
+	provider, model, err := s.resolveLLMForOpportunity(ctx, opportunity)
+	if err != nil {
+		s.markActionFailed(ctx, actionID, "no LLM available: "+err.Error())
+		return
+	}
+
 	prompt := utils.ActionGenerationPrompt(
-		brandName,
+		opportunity.BrandID,
 		opportunity.Title,
 		opportunity.Description,
 		string(opportunity.Type),
@@ -410,42 +416,27 @@ func (s *OpportunityService) ConvertToAction(
 		additionalContext,
 	)
 
-	// Call LLM
 	response, err := provider.Generate(ctx, prompt, llm.Config{
 		Model:       model,
 		Temperature: 0.4,
 		MaxTokens:   2048,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("LLM action generation failed: %w", err)
+		s.markActionFailed(ctx, actionID, "LLM generation failed: "+err.Error())
+		return
 	}
 
-	// Create action with "preparing" status first
-	actionID := uuid.New().String()
-	action := &models.Action{
-		ID:            actionID,
-		OrgID:         opportunity.OrgID,
-		OpportunityID: opportunityID,
-		BrandID:       opportunity.BrandID,
-		Status:        models.ActionStatusPreparing,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
-
-	// Save action with preparing status
-	if err := s.db.CreateAction(ctx, action); err != nil {
-		return nil, fmt.Errorf("failed to create action: %w", err)
-	}
-
-	// Parse the response
 	actionPlan, err := s.parseActionPlan(response.Text)
 	if err != nil {
-		// If parsing fails, update action with error status or keep as preparing
-		// For now, we'll leave it as preparing and let the user retry
-		return action, fmt.Errorf("failed to parse action plan: %w", err)
+		s.markActionFailed(ctx, actionID, "failed to parse action plan: "+err.Error())
+		return
 	}
 
-	// Determine action type and execution mode
+	action, err := s.db.GetAction(ctx, actionID)
+	if err != nil || action == nil {
+		return
+	}
+
 	actionType := models.ActionTypeOther
 	if actionPlan.ActionType != "" {
 		switch strings.ToUpper(actionPlan.ActionType) {
@@ -476,18 +467,14 @@ func (s *OpportunityService) ConvertToAction(
 		}
 	}
 
-	// Use summary if available, otherwise use description
 	summary := actionPlan.Summary
 	if summary == "" {
 		summary = actionPlan.Description
 	}
-
-	// Determine priority, effort, expected_impact
 	priority := "medium"
 	if actionPlan.Priority != "" {
 		priority = strings.ToLower(actionPlan.Priority)
 	}
-
 	effort := actionPlan.Effort
 	if effort == "" {
 		effort = actionPlan.EstimatedEffort
@@ -495,42 +482,61 @@ func (s *OpportunityService) ConvertToAction(
 	if effort == "" {
 		effort = "medium"
 	}
-
 	expectedImpact := "medium"
 	if actionPlan.ExpectedImpact != "" {
 		expectedImpact = strings.ToLower(actionPlan.ExpectedImpact)
 	}
 
-	// Update action with full details
 	action.ActionType = actionType
 	action.ExecutionMode = executionMode
 	action.Title = actionPlan.Title
 	action.Summary = summary
-	action.Description = actionPlan.Description // Keep for backward compatibility
+	action.Description = actionPlan.Description
 	action.Priority = priority
 	action.Effort = effort
 	action.ExpectedImpact = expectedImpact
 	action.Assets = convertLLMAssets(actionPlan.Assets)
 	action.Steps = convertLLMSteps(actionPlan.Steps)
 	action.SuccessCriteria = actionPlan.SuccessCriteria
-	action.EstimatedEffort = actionPlan.EstimatedEffort // Keep for backward compatibility
+	action.EstimatedEffort = actionPlan.EstimatedEffort
 	action.Resources = actionPlan.Resources
-	action.Status = models.ActionStatusReady // Mark as ready after successful generation
+	action.Status = models.ActionStatusReady
 	action.UpdatedAt = time.Now()
 
 	if err := s.db.UpdateAction(ctx, action); err != nil {
-		return nil, fmt.Errorf("failed to update action: %w", err)
+		s.markActionFailed(ctx, actionID, "failed to save action: "+err.Error())
+		return
 	}
+}
 
-	// Update opportunity with action ID and status
-	opportunity.ActionID = action.ID
-	opportunity.Status = models.OpportunityStatusInProgress
-	opportunity.UpdatedAt = time.Now()
-	if err := s.db.UpdateOpportunity(ctx, opportunity); err != nil {
-		return nil, fmt.Errorf("failed to update opportunity: %w", err)
+// resolveLLMForOpportunity returns provider and model for the opportunity (stored LLM or fallback).
+func (s *OpportunityService) resolveLLMForOpportunity(ctx context.Context, opportunity *models.Opportunity) (llm.Provider, string, error) {
+	if opportunity.LLMID != "" {
+		llmConfig, err := s.db.GetLLM(ctx, opportunity.LLMID)
+		if err == nil && llmConfig != nil && llmConfig.Enabled {
+			provider, _ := s.llmRegistry.Get(llmConfig.Provider)
+			if provider != nil {
+				return provider, llmConfig.Model, nil
+			}
+		}
 	}
+	provider, model, err := s.getLLMForBrand(ctx, opportunity.BrandID)
+	if err == nil {
+		return provider, model, nil
+	}
+	return s.getBestLLM(ctx)
+}
 
-	return action, nil
+// markActionFailed sets action status to "failed" and Summary to the error message.
+func (s *OpportunityService) markActionFailed(ctx context.Context, actionID string, errMsg string) {
+	action, err := s.db.GetAction(ctx, actionID)
+	if err != nil || action == nil {
+		return
+	}
+	action.Status = models.ActionStatusFailed
+	action.Summary = "Preparation failed: " + errMsg
+	action.UpdatedAt = time.Now()
+	_ = s.db.UpdateAction(ctx, action)
 }
 
 // BatchConvertToActions converts multiple opportunities to actions in a single batch operation
@@ -599,7 +605,7 @@ func (s *OpportunityService) BatchConvertToActions(
 		TotalCount:   len(opportunityIDs),
 		SuccessCount: successCount,
 		FailureCount: failureCount,
-		Message:      fmt.Sprintf("Batch conversion completed: %d succeeded, %d failed", successCount, failureCount),
+		Message:      fmt.Sprintf("Actions have been captured: %d accepted (preparing in background), %d failed. Check status via GET /actions.", successCount, failureCount),
 	}
 
 	return response, nil

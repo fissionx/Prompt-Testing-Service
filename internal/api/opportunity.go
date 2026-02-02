@@ -219,7 +219,7 @@ func (s *Server) convertOpportunityToAction(c *gin.Context) {
 		return
 	}
 
-	// ConvertToAction now uses the LLM ID stored in the opportunity
+	// ConvertToAction returns immediately; preparation runs in the background (status "preparing" → "ready")
 	action, err := opportunityService.ConvertToAction(c.Request.Context(), opportunityID, req.AdditionalContext)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to convert opportunity to action: "+err.Error())
@@ -229,7 +229,7 @@ func (s *Server) convertOpportunityToAction(c *gin.Context) {
 	response := models.ConvertToActionResponse{
 		OpportunityID: opportunityID,
 		Action:        action,
-		Message:       "Action plan generated successfully",
+		Message:       "Actions have been captured. Check status via GET /actions (preparing → ready).",
 	}
 
 	s.successResponse(c, response)

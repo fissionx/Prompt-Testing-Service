@@ -87,7 +87,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 	} else {
 		logger.Info("Loaded %d enabled schedule(s) from database:", len(schedules))
 		for i, schedule := range schedules {
-			logger.Info("  %d. ID: %s, Name: %s, BrandID: %s, Cron: %s", 
+			logger.Info("  %d. ID: %s, Name: %s, BrandID: %s, Cron: %s",
 				i+1, schedule.ID, schedule.Name, schedule.BrandID, schedule.CronExpr)
 		}
 	}
@@ -367,8 +367,8 @@ func (s *SchedulerService) generateOpportunitiesForScheduleRun(ctx context.Conte
 	filter := shared.ResponseFilter{
 		ScheduleID: schedule.ID,
 		StartTime:  startTime,
-		EndTime:   endTime,
-		Limit:     500,
+		EndTime:    endTime,
+		Limit:      500,
 	}
 	responses, err := s.db.ListResponses(ctx, filter)
 	if err != nil {

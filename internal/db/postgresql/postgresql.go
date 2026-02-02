@@ -123,6 +123,16 @@ func (p *PostgreSQL) migrateOpportunitiesTable(ctx context.Context) error {
 		// Assignee for actions
 		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS assignee TEXT",
 
+		// Action classification and LLM-generated fields (for convert opportunity → action)
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS action_type TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS execution_mode TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS summary TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS priority TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS effort TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS expected_impact TEXT",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS assets JSONB DEFAULT '[]'::jsonb",
+		"ALTER TABLE actions ADD COLUMN IF NOT EXISTS success_criteria JSONB DEFAULT '[]'::jsonb",
+
 		// Indexes for org_id
 		"CREATE INDEX IF NOT EXISTS idx_opportunities_org_id ON opportunities(org_id)",
 		"CREATE INDEX IF NOT EXISTS idx_actions_org_id ON actions(org_id)",
