@@ -440,6 +440,7 @@ func (s *SchedulerService) generateOpportunitiesForScheduleRun(ctx context.Conte
 			orgID,
 			brandID,
 			brand,
+			"", // brandLanguage: scheduler has no brand info; default English
 			resp.PromptID,
 			resp.ID,
 			resp.PromptText,

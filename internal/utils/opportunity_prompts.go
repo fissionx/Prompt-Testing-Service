@@ -13,16 +13,16 @@ type ExistingOpportunity struct {
 }
 
 // GEOAnalysisWithOpportunitiesPrompt generates a prompt for analyzing search responses
-// and identifying improvement opportunities in a single LLM call
-// Now includes existing opportunities for LLM-based deduplication
+// and identifying improvement opportunities in a single LLM call.
 func GEOAnalysisWithOpportunitiesPrompt(brand, searchQuery, searchAnswer, sourcesInfo string, competitors []string) string {
-	return GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo, competitors, nil)
+	return GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo, competitors, nil, "")
 }
 
 // GEOAnalysisWithOpportunitiesPromptWithDedup generates a prompt that includes existing opportunities
-// for LLM-based deduplication - the LLM will only generate NEW unique opportunities
-func GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo string, competitors []string, existingOpportunities []ExistingOpportunity) string {
+// for LLM-based deduplication. brandLanguage is the brand's language for output (use ResolveBrandLanguage); default English if empty.
+func GEOAnalysisWithOpportunitiesPromptWithDedup(brand, searchQuery, searchAnswer, sourcesInfo string, competitors []string, existingOpportunities []ExistingOpportunity, brandLanguage string) string {
 	escapedSearchAnswer := escapeJSONString(searchAnswer)
+	lang := ResolveBrandLanguage(brandLanguage)
 
 	competitorsInfo := ""
 	if len(competitors) > 0 {
@@ -55,7 +55,9 @@ IMPORTANT DEDUPLICATION RULES:
 `, strings.Join(oppsList, "\n"))
 	}
 
-	return fmt.Sprintf(`Analyze the following search response for brand visibility, sentiment, competitors, and identify actionable improvement opportunities.
+	languageInstruction := fmt.Sprintf("\n\nOUTPUT LANGUAGE: Write all of the following in %s: insights, actions, opportunity titles, descriptions, current_state, and source_evidence. If not specified, use English.", lang)
+
+	return fmt.Sprintf(`Analyze the following search response for brand visibility, sentiment, competitors, and identify actionable improvement opportunities.%s
 
 BRAND TO ANALYZE: %s
 
@@ -158,7 +160,7 @@ Rules:
 - actions: 3-5 specific actionable recommendations (brief)
 - opportunities: array of 1-5 specific improvement opportunities
 
-RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, existingOppsSection, brand, escapedSearchAnswer)
+RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, languageInstruction, brand, searchQuery, searchAnswer, sourcesInfo, competitorsInfo, existingOppsSection, brand, escapedSearchAnswer)
 }
 
 const ActionGenerationPromptTemplateExpriment2 = `You are an expert in Generative Engine Optimization (GEO) the emerging discipline of optimizing content to be referenced and recommended by large language models (LLMs) like ChatGPT, Claude, Gemini, and Perplexity.`
@@ -193,8 +195,9 @@ Please rewrite the content with the following enhancements:
 
 Please output only the optimized version. Do **not** explain your changes. Write it as if it’s a standalone, publish-ready piece designed to be cited by LLMs when generating responses`
 
-// ActionGenerationPrompt generates a prompt for creating a detailed action plan from an opportunity
-func ActionGenerationPrompt(brand, opportunityTitle, opportunityDescription, opportunityType string, metadata map[string]interface{}, additionalContext string) string {
+// ActionGenerationPrompt generates a prompt for creating a detailed action plan from an opportunity.
+// brandLanguage is the brand's language for output (use ResolveBrandLanguage); default English if empty.
+func ActionGenerationPrompt(brand, opportunityTitle, opportunityDescription, opportunityType string, metadata map[string]interface{}, additionalContext string, brandLanguage string) string {
 	metadataStr := ""
 	if len(metadata) > 0 {
 		var parts []string
@@ -209,10 +212,13 @@ func ActionGenerationPrompt(brand, opportunityTitle, opportunityDescription, opp
 		additionalStr = fmt.Sprintf("\n\nADDITIONAL CONTEXT FROM USER:\n%s", additionalContext)
 	}
 
+	lang := ResolveBrandLanguage(brandLanguage)
+	languageInstruction := fmt.Sprintf("\n\nOUTPUT LANGUAGE: Write the entire action plan in %s (title, summary, assets, steps, success_criteria). If not specified, use English.", lang)
+
 	// Add type-specific guidance
 	typeGuidance := getTypeSpecificGuidance(opportunityType)
 
-	return fmt.Sprintf(`Create a detailed, actionable plan to address the following opportunity for brand visibility improvement.
+	return fmt.Sprintf(`Create a detailed, actionable plan to address the following opportunity for brand visibility improvement.%s
 
 BRAND: %s
 
@@ -470,7 +476,7 @@ SUCCESS CRITERIA EXAMPLES:
 - For Reddit: ["Post is approved by moderators", "Receives comments or upvotes", "AI engines cite Reddit thread"]
 - For SEO: ["Page passes technical SEO audit", "Structured data validates", "Page appears in search results within 2 weeks"]
 
-RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, opportunityType, opportunityTitle, opportunityDescription, metadataStr, additionalStr, typeGuidance)
+RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, languageInstruction, brand, opportunityType, opportunityTitle, opportunityDescription, metadataStr, additionalStr, typeGuidance)
 }
 
 // getTypeSpecificGuidance returns specific guidance based on opportunity type

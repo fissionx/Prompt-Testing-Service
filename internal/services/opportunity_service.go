@@ -51,13 +51,14 @@ type OpportunityGEOAnalysis struct {
 	CompetitorInfo     string   `json:"competitor_info"`
 }
 
-// AnalyzeAndGenerateOpportunities performs GEO analysis and generates opportunities in a single LLM call
-// Uses the same LLM provider that was used for executing the prompt
+// AnalyzeAndGenerateOpportunities performs GEO analysis and generates opportunities in a single LLM call.
+// brandLanguage is the brand's language for output (use utils.ResolveBrandLanguage); default English if empty.
 func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 	ctx context.Context,
 	orgID string,
 	brandID string,
 	brandName string,
+	brandLanguage string,
 	promptID string,
 	responseID string,
 	searchQuery string,
@@ -82,7 +83,7 @@ func (s *OpportunityService) AnalyzeAndGenerateOpportunities(
 
 	// Generate the combined prompt WITH existing opportunities for deduplication
 	prompt := utils.GEOAnalysisWithOpportunitiesPromptWithDedup(
-		brandName, searchQuery, searchAnswer, sourcesInfo, competitors, existingOpps,
+		brandName, searchQuery, searchAnswer, sourcesInfo, competitors, existingOpps, brandLanguage,
 	)
 
 	// Call LLM
@@ -337,12 +338,12 @@ func (s *OpportunityService) generateContentHash(oppType, title, promptID string
 }
 
 // ConvertToAction captures an opportunity for conversion and returns immediately.
-// The action is created with status "preparing"; LLM preparation runs in the background.
-// Clients can poll GET /actions or GET /opportunities/:id/actions to see status "preparing" → "ready" (or "failed").
+// brandLanguage is the brand's language for the action plan (use utils.ResolveBrandLanguage); default English if empty.
 func (s *OpportunityService) ConvertToAction(
 	ctx context.Context,
 	opportunityID string,
 	additionalContext string,
+	brandLanguage string,
 ) (*models.Action, error) {
 	opportunity, err := s.db.GetOpportunity(ctx, opportunityID)
 	if err != nil {
@@ -383,7 +384,7 @@ func (s *OpportunityService) ConvertToAction(
 	}
 
 	// Run LLM preparation in background (use detached context so it outlives the request)
-	go s.prepareActionInBackground(context.Background(), opportunityID, action.ID, additionalContext)
+	go s.prepareActionInBackground(context.Background(), opportunityID, action.ID, additionalContext, brandLanguage)
 
 	return action, nil
 }
@@ -394,6 +395,7 @@ func (s *OpportunityService) prepareActionInBackground(
 	opportunityID string,
 	actionID string,
 	additionalContext string,
+	brandLanguage string,
 ) {
 	opportunity, err := s.db.GetOpportunity(ctx, opportunityID)
 	if err != nil {
@@ -414,6 +416,7 @@ func (s *OpportunityService) prepareActionInBackground(
 		string(opportunity.Type),
 		opportunity.Metadata,
 		additionalContext,
+		brandLanguage,
 	)
 
 	response, err := provider.Generate(ctx, prompt, llm.Config{
@@ -540,13 +543,13 @@ func (s *OpportunityService) markActionFailed(ctx context.Context, actionID stri
 }
 
 // BatchConvertToActions converts multiple opportunities to actions in a single batch operation
-// Uses the LLM stored in each opportunity for action generation
-// Returns results for each opportunity including successes and failures
+// brandLanguage is the brand's language for action plans (use utils.ResolveBrandLanguage); default English if empty.
 func (s *OpportunityService) BatchConvertToActions(
 	ctx context.Context,
 	brandID string,
 	opportunityIDs []string,
 	additionalContext string,
+	brandLanguage string,
 ) (*models.BatchConvertToActionResponse, error) {
 	results := make([]models.BatchConvertResult, 0, len(opportunityIDs))
 	successCount := 0
@@ -585,7 +588,7 @@ func (s *OpportunityService) BatchConvertToActions(
 		}
 
 		// Convert the opportunity to action (uses stored LLM ID)
-		action, err := s.ConvertToAction(ctx, oppID, additionalContext)
+		action, err := s.ConvertToAction(ctx, oppID, additionalContext, brandLanguage)
 		if err != nil {
 			result.Success = false
 			result.Error = err.Error()

@@ -34,7 +34,8 @@ func NewBulkExecutionService(database db.Database, registry *llm.Registry) *Bulk
 }
 
 // ExecuteCampaign executes all prompts across all LLMs for a GEO campaign
-func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brandID, orgID, brand string, promptIDs, llmIDs []string, temperature float64, totalRuns int) (*models.GEOCampaign, error) {
+// brandLanguage is the brand's language for opportunity output (use utils.ResolveBrandLanguage); default English if empty.
+func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName, brandID, orgID, brand, brandLanguage string, promptIDs, llmIDs []string, temperature float64, totalRuns int) (*models.GEOCampaign, error) {
 	if temperature == 0 {
 		temperature = 0.7
 	}
@@ -65,13 +66,13 @@ func (s *BulkExecutionService) ExecuteCampaign(ctx context.Context, campaignName
 	}
 
 	// Start execution in background
-	go s.executeInBackground(context.Background(), campaign, temperature, totalRuns)
+	go s.executeInBackground(context.Background(), campaign, temperature, totalRuns, brandLanguage)
 
 	return campaign, nil
 }
 
 // executeInBackground runs the campaign execution asynchronously
-func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign *models.GEOCampaign, temperature float64, totalRuns int) {
+func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign *models.GEOCampaign, temperature float64, totalRuns int, brandLanguage string) {
 	log.Printf("========== STARTING CAMPAIGN: %s ==========", campaign.Name)
 	log.Printf("Brand: %s, Prompts: %d, LLMs: %d, Runs per prompt: %d, Total Runs: %d",
 		campaign.Brand, len(campaign.PromptIDs), len(campaign.LLMIDs), totalRuns, campaign.TotalRuns)
@@ -115,7 +116,7 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 					defer func() { <-semaphore }()
 
 					// Execute single prompt-LLM pair
-					err := s.executeSingle(ctx, p, llm, campaign.BrandID, campaign.OrgID, campaign.Brand, temperature)
+					err := s.executeSingle(ctx, p, llm, campaign.BrandID, campaign.OrgID, campaign.Brand, temperature, brandLanguage)
 
 					mu.Lock()
 					completed++
@@ -149,7 +150,7 @@ func (s *BulkExecutionService) executeInBackground(ctx context.Context, campaign
 }
 
 // executeSingle executes a single prompt with a single LLM
-func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models.Prompt, llmConfig *models.LLMConfig, brandID string, orgID string, brand string, temperature float64) error {
+func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models.Prompt, llmConfig *models.LLMConfig, brandID string, orgID string, brand string, temperature float64, brandLanguage string) error {
 	// Create LLM provider
 	provider, ok := s.llmRegistry.Get(llmConfig.Provider)
 	if !ok || provider == nil {
@@ -279,16 +280,15 @@ func (s *BulkExecutionService) executeSingle(ctx context.Context, prompt *models
 	}
 
 	// Generate opportunities from the response (async, don't block execution)
-	// Pass the same LLM provider that was used for executing the prompt
 	if brand != "" && s.opportunityService != nil {
-		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources, provider, llmConfig.ID, llmConfig.Model)
+		go s.generateOpportunitiesAsync(context.Background(), prompt.OrgID, brandID, brand, brandLanguage, prompt.ID, responseModel.ID, prompt.Template, responseModel.SearchAnswer, responseModel.GroundingSources, provider, llmConfig.ID, llmConfig.Model)
 	}
 
 	return nil
 }
 
 // generateOpportunitiesAsync generates opportunities in the background using the same LLM that executed the prompt
-func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string, llmProvider llm.Provider, llmID, llmModel string) {
+func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, orgID, brandID, brandName, brandLanguage, promptID, responseID, searchQuery, searchAnswer string, groundingSources []string, llmProvider llm.Provider, llmID, llmModel string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Recovered from panic in generateOpportunitiesAsync: %v", r)
@@ -324,6 +324,7 @@ func (s *BulkExecutionService) generateOpportunitiesAsync(ctx context.Context, o
 		orgID,
 		brandID,
 		brandName,
+		brandLanguage,
 		promptID,
 		responseID,
 		searchQuery,

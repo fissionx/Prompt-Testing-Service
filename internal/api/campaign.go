@@ -90,12 +90,12 @@ func (s *Server) getBrandPrompts(c *gin.Context) {
 	// Parse forceRefresh parameter (default: false)
 	forceRefresh := c.Query("forceRefresh") == "true"
 
-	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, brandInfo.Domain, category, brandInfo.Domain, description, count, forceRefresh)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, brandInfo.Domain, category, brandInfo.Domain, description, brandInfo.Language, count, forceRefresh)
 }
 
 // getBrandPromptsResponse is a helper function that builds and returns the prompts response
-// This is used by both GET and POST/DELETE endpoints to ensure consistent response format
-func (s *Server) getBrandPromptsResponse(c *gin.Context, brandID, orgID, brand, website, category, domain, description string, count int, forceRefresh bool) {
+// language is the brand's language for prompt suggestions (use brandInfo.Language; default English if empty).
+func (s *Server) getBrandPromptsResponse(c *gin.Context, brandID, orgID, brand, website, category, domain, description, language string, count int, forceRefresh bool) {
 	ctx := c.Request.Context()
 
 	// Get active and suggested prompts
@@ -126,6 +126,7 @@ func (s *Server) getBrandPromptsResponse(c *gin.Context, brandID, orgID, brand, 
 			category,
 			domain,
 			description,
+			language,
 			count,
 			shouldForceRefresh, // Use cache if available, only force refresh when needed
 		)

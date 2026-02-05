@@ -219,8 +219,13 @@ func (s *Server) convertOpportunityToAction(c *gin.Context) {
 		return
 	}
 
+	// Get brand language for action plan output
+	brandLanguage := ""
+	if brand, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID); err == nil && brand != nil {
+		brandLanguage = brand.Language
+	}
 	// ConvertToAction returns immediately; preparation runs in the background (status "preparing" → "ready")
-	action, err := opportunityService.ConvertToAction(c.Request.Context(), opportunityID, req.AdditionalContext)
+	action, err := opportunityService.ConvertToAction(c.Request.Context(), opportunityID, req.AdditionalContext, brandLanguage)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Failed to convert opportunity to action: "+err.Error())
 		return
@@ -375,12 +380,18 @@ func (s *Server) batchConvertOpportunitiesToActions(c *gin.Context) {
 		return
 	}
 
+	// Get brand language for action plan output
+	brandLanguage := ""
+	if brandInfo, err := s.brandService.GetBrandInfo(c.Request.Context(), brandID); err == nil && brandInfo != nil {
+		brandLanguage = brandInfo.Language
+	}
 	opportunityService := services.NewOpportunityService(s.db, s.llmRegistry)
 	response, err := opportunityService.BatchConvertToActions(
 		c.Request.Context(),
 		brandID,
 		req.OpportunityIDs,
 		req.AdditionalContext,
+		brandLanguage,
 	)
 	if err != nil {
 		s.errorResponse(c, http.StatusInternalServerError, "Batch conversion failed: "+err.Error())

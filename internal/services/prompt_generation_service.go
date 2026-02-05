@@ -309,7 +309,7 @@ func (s *PromptGenerationService) generateNewPrompts(ctx context.Context, brand,
 	}
 
 	// Use shared function for prompt generation
-	return generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, count, "")
+	return generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, "", count, "")
 }
 
 // parsePromptType extracts prompt type from prefix (e.g., "WHAT|question" → "what", "question")

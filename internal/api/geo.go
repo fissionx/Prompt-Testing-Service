@@ -12,6 +12,7 @@ import (
 	"github.com/fissionx/gego/internal/models"
 	"github.com/fissionx/gego/internal/services"
 	"github.com/fissionx/gego/internal/shared"
+	"github.com/fissionx/gego/internal/utils"
 )
 
 // generatePrompts handles POST /api/v1/geo/prompts/generate
@@ -255,6 +256,7 @@ func (s *Server) createOneTimeCampaign(ctx context.Context, req *models.BulkExec
 		req.BrandID,
 		brandInfo.OrgID,
 		brandInfo.Name,
+		utils.ResolveBrandLanguage(brandInfo.Language),
 		req.PromptIDs,
 		req.LLMIDs,
 		req.Temperature,
@@ -631,7 +633,7 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 			}
 
 			// Return the updated prompts list in the same format as GET endpoint
-			s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
+			s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", brandInfo.Language, 20, false)
 			return
 		}
 
@@ -642,7 +644,7 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 		}
 
 		// Return the updated prompts list in the same format as GET endpoint
-		s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
+		s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", brandInfo.Language, 20, false)
 		return
 	}
 
@@ -653,7 +655,7 @@ func (s *Server) deletePromptsByIDs(c *gin.Context) {
 	}
 
 	// Return the updated prompts list in the same format as GET endpoint
-	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", 20, false)
+	s.getBrandPromptsResponse(c, brandID, brandInfo.OrgID, brandName, website, category, domain, "", brandInfo.Language, 20, false)
 }
 
 // cronToDescription converts a cron expression to human-readable text

@@ -134,7 +134,7 @@ func (s *BrandPromptService) GetPrompts(ctx context.Context, brandID string) (*m
 }
 
 // SuggestPrompts suggests prompts for a brand using LLM
-// Tries all enabled LLMs until one works and caches the results
+// language is the brand's language for generated prompts (use utils.ResolveBrandLanguage; default English if empty).
 func (s *BrandPromptService) SuggestPrompts(
 	ctx context.Context,
 	brand string,
@@ -144,6 +144,7 @@ func (s *BrandPromptService) SuggestPrompts(
 	category string,
 	domain string,
 	description string,
+	language string,
 	count int,
 	forceRefresh bool,
 ) (*models.SuggestPromptsResponse, error) {
@@ -223,7 +224,7 @@ func (s *BrandPromptService) SuggestPrompts(
 
 	// Use LLM to suggest prompts (first request or force refresh)
 	// Tries all enabled LLMs until one works
-	promptTemplates, llmDetails, err := s.suggestPromptsWithLLM(ctx, brand, website, category, domain, description, count)
+	promptTemplates, llmDetails, err := s.suggestPromptsWithLLM(ctx, brand, website, category, domain, description, language, count)
 	if err != nil {
 		return nil, fmt.Errorf("failed to suggest prompts: %w", err)
 	}
@@ -334,8 +335,6 @@ func (s *BrandPromptService) SuggestPrompts(
 }
 
 // suggestPromptsWithLLM uses LLM to suggest prompts based on brand info
-// Tries all enabled LLMs in the system until one works successfully
-// Returns results from the first working LLM along with LLM details
 func (s *BrandPromptService) suggestPromptsWithLLM(
 	ctx context.Context,
 	brand string,
@@ -343,6 +342,7 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 	category string,
 	domain string,
 	description string,
+	language string,
 	count int,
 ) ([]PromptGenerationResult, *models.LLMDetails, error) {
 	// Get all enabled LLMs from the database
@@ -367,7 +367,7 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 		}
 
 		// Try to get suggestions with this LLM
-		results, err := s.tryLLMForPromptSuggestions(ctx, provider, llmConfig, brand, website, category, domain, description, count)
+		results, err := s.tryLLMForPromptSuggestions(ctx, provider, llmConfig, brand, website, category, domain, description, language, count)
 		if err == nil && len(results) > 0 {
 			// Success! Return the results with LLM details
 			llmDetails := &models.LLMDetails{
@@ -393,7 +393,6 @@ func (s *BrandPromptService) suggestPromptsWithLLM(
 }
 
 // tryLLMForPromptSuggestions attempts to get prompt suggestions from a specific LLM
-// Uses the shared generatePromptsWithLLM function for consistency
 func (s *BrandPromptService) tryLLMForPromptSuggestions(
 	ctx context.Context,
 	provider llm.Provider,
@@ -403,6 +402,7 @@ func (s *BrandPromptService) tryLLMForPromptSuggestions(
 	category string,
 	domain string,
 	description string,
+	language string,
 	count int,
 ) ([]PromptGenerationResult, error) {
 	// Scrape website if provided to enrich context
@@ -426,7 +426,7 @@ func (s *BrandPromptService) tryLLMForPromptSuggestions(
 	}
 
 	// Use shared function for prompt generation
-	results, err := generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, count, "[BrandPromptService]")
+	results, err := generatePromptsWithLLM(ctx, provider, model, brand, websiteContent, category, description, language, count, "[BrandPromptService]")
 	if err != nil {
 		return nil, err
 	}

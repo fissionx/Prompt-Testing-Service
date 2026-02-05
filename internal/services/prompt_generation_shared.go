@@ -58,8 +58,7 @@ type PromptGenerationResult struct {
 }
 
 // generatePromptsWithLLM is a shared function for generating prompts using the new BrandPromptGenerationPrompt system
-// This consolidates the duplicate logic from PromptGenerationService and BrandPromptService
-// Returns full prompt data including intentType, keywords, and fanout queries
+// language is the brand's language for generated prompts (use utils.ResolveBrandLanguage; default English if empty).
 func generatePromptsWithLLM(
 	ctx context.Context,
 	provider llm.Provider,
@@ -68,6 +67,7 @@ func generatePromptsWithLLM(
 	websiteContent *WebsiteContent,
 	category string,
 	description string,
+	language string,
 	count int,
 	logPrefix string, // For logging context (e.g., "[BrandPromptService]" or "")
 ) ([]PromptGenerationResult, error) {
@@ -117,6 +117,7 @@ func generatePromptsWithLLM(
 		productServiceName, // productServiceName
 		"",                 // targetAudience (can be enhanced later)
 		"",                 // region (can be enhanced later)
+		language,           // language (brand's language for generated prompts)
 		count,              // count
 	)
 

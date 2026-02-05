@@ -5,6 +5,39 @@ import (
 	"strings"
 )
 
+// languageCodeToName maps common language codes (e.g. EN, SV, TA) to full language names for LLM prompts.
+// Covers ISO 639-1 two-letter codes and common variants; unknown codes are passed through as-is.
+var languageCodeToName = map[string]string{
+	"EN": "English", "SV": "Swedish", "TA": "Tamil", "ES": "Spanish", "FR": "French",
+	"DE": "German", "HI": "Hindi", "ZH": "Chinese", "JA": "Japanese", "KO": "Korean",
+	"AR": "Arabic", "PT": "Portuguese", "IT": "Italian", "NL": "Dutch", "PL": "Polish",
+	"TR": "Turkish", "VI": "Vietnamese", "TH": "Thai", "ID": "Indonesian", "MS": "Malay",
+	"RU": "Russian", "UK": "Ukrainian", "HE": "Hebrew", "BN": "Bengali", "TE": "Telugu",
+	"MR": "Marathi", "GU": "Gujarati", "KN": "Kannada", "ML": "Malayalam", "FA": "Persian",
+	"DA": "Danish", "NO": "Norwegian", "FI": "Finnish", "CS": "Czech", "HU": "Hungarian",
+	"RO": "Romanian", "EL": "Greek", "CA": "Catalan", "EU": "Basque", "SR": "Serbian",
+	"SK": "Slovak", "BG": "Bulgarian", "HR": "Croatian", "SL": "Slovenian", "ET": "Estonian",
+	"LV": "Latvian", "LT": "Lithuanian", "SW": "Swahili", "AF": "Afrikaans", "EN-US": "English (US)",
+	"EN-GB": "English (UK)", "PT-BR": "Portuguese (Brazil)", "ZH-CN": "Chinese (Simplified)",
+	"ZH-TW": "Chinese (Traditional)",
+}
+
+// ResolveBrandLanguage returns the brand language for prompts.
+// Accepts language codes (e.g. EN, SV, TA) or full names; maps known codes to full names for clear LLM instructions.
+// Defaults to "English" if empty or unknown.
+func ResolveBrandLanguage(language string) string {
+	s := strings.TrimSpace(language)
+	if s == "" {
+		return "English"
+	}
+	upper := strings.ToUpper(s)
+	if name, ok := languageCodeToName[upper]; ok {
+		return name
+	}
+	// Already a full name or unknown code: use as-is so LLM gets the intended language
+	return s
+}
+
 // BrandMetadataDerivationPrompt generates a prompt for deriving brand domain and category
 func BrandMetadataDerivationPrompt(brandContext string) string {
 	return fmt.Sprintf(`Analyze this brand based on the provided information and determine its industry domain and BROAD category.
@@ -219,8 +252,9 @@ RESPOND WITH ONLY THE JSON OBJECT, NO OTHER TEXT.`, brand, searchQuery, searchAn
 }
 
 // BrandPromptGenerationPrompt generates a comprehensive prompt for brand-based prompt generation
-// This uses the new structured format with unbranded discovery queries and branded comparison queries
-func BrandPromptGenerationPrompt(businessName, websiteContent, productServiceName, targetAudience, region string, count int) string {
+// This uses the new structured format with unbranded discovery queries and branded comparison queries.
+// language is the brand's language for generated prompts; use ResolveBrandLanguage(brandInfo.Language).
+func BrandPromptGenerationPrompt(businessName, websiteContent, productServiceName, targetAudience, region, language string, count int) string {
 	inputParts := []string{}
 
 	if businessName != "" {
@@ -252,6 +286,9 @@ func BrandPromptGenerationPrompt(businessName, websiteContent, productServiceNam
 		inputSection = "- No additional information provided"
 	}
 
+	lang := ResolveBrandLanguage(language)
+	languageInstruction := fmt.Sprintf("\n\nLANGUAGE: Generate ALL prompts (search queries) in %s. If the brand's primary audience uses another language, use that language for every prompt in the list.", lang)
+
 	return fmt.Sprintf(`You are an AI research assistant specializing in competitive analysis and search behavior.
 Your task is to analyze a business and generate realistic search queries that potential
 customers might use when discovering, evaluating, and comparing a product or service
@@ -259,7 +296,7 @@ using AI-powered search engines (such as ChatGPT, Gemini, Perplexity, or Copilot
 You must think like real users at different stages of the buyer journey and reflect
 authentic decision-making behavior, not marketing language.
 
-As perplexity and chatgpt adds year at the end of some prompts in the use question, please consider to use year in some prompts.
+As perplexity and chatgpt adds year at the end of some prompts in the use question, please consider to use year in some prompts.%s
 
 INPUT YOU WILL RECEIVE:
 %s
@@ -344,7 +381,7 @@ Example valid response (DO NOT COPY, JUST FOLLOW THE FORMAT):
   }
 ]
 
-START YOUR RESPONSE WITH [ AND END WITH ]. NO OTHER TEXT.`, inputSection)
+START YOUR RESPONSE WITH [ AND END WITH ]. NO OTHER TEXT.`, languageInstruction, inputSection)
 }
 
 // escapeJSONString escapes special characters for JSON string embedding
