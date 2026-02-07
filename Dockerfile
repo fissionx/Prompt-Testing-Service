@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Production Dockerfile for Gego - GEO Tracker
 # Optimized for production deployment with minimal image size
 
@@ -15,14 +16,17 @@ ENV GOTOOLCHAIN=auto
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies (cache mount speeds up repeat builds)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the application with optimizations
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o gego ./cmd/gego/main.go
+# Build the application with optimizations (cache mounts for go mod + build cache)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o gego ./cmd/gego/main.go
 
 # Stage 2: Minimal runtime
 FROM alpine:latest

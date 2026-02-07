@@ -12,9 +12,12 @@ LICENSE
 # Build artifacts
 build/
 gego
+main
 gego.db
+*.db
 *.log
 scheduler.log
+**/__debug_bin*
 
 # IDE and editor files
 .vscode/

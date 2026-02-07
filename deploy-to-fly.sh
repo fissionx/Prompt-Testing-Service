@@ -150,8 +150,8 @@ echo -e "${BLUE}  Deploying Application${NC}"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Deploy the app
-if flyctl deploy; then
+# Deploy the app (remote builder uses Fly's cache for faster builds)
+if flyctl deploy --remote-only; then
     echo ""
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}  ✓ Deployment Successful!${NC}"
