@@ -422,7 +422,7 @@ func (s *OpportunityService) prepareActionInBackground(
 	response, err := provider.Generate(ctx, prompt, llm.Config{
 		Model:       model,
 		Temperature: 0.4,
-		MaxTokens:   2048,
+		MaxTokens:   4096, // Action plans can include full content (blog drafts, checklists, etc.)
 	})
 	if err != nil {
 		s.markActionFailed(ctx, actionID, "LLM generation failed: "+err.Error())
@@ -686,10 +686,16 @@ func (s *OpportunityService) BatchSuppressOpportunities(
 	return response, nil
 }
 
-// parseActionPlan parses the LLM response into an action plan
+// parseActionPlan parses the LLM response into an action plan.
+// Uses brace matching (not LastIndex) to correctly extract the root JSON object,
+// avoiding "unexpected end of JSON input" when the response is truncated or contains
+// nested objects.
 func (s *OpportunityService) parseActionPlan(responseText string) (*models.LLMActionPlan, error) {
 	// Clean up the response
 	responseText = strings.TrimSpace(responseText)
+	if responseText == "" {
+		return nil, fmt.Errorf("empty LLM response")
+	}
 	responseText = strings.TrimPrefix(responseText, "```json")
 	responseText = strings.TrimPrefix(responseText, "```")
 	responseText = strings.TrimSuffix(responseText, "```")
@@ -701,9 +707,47 @@ func (s *OpportunityService) parseActionPlan(responseText string) (*models.LLMAc
 		return nil, fmt.Errorf("no JSON object found in response")
 	}
 
-	endIdx := strings.LastIndex(responseText, "}")
+	// Find matching closing brace (brace counting - same as parseGEOAnalysisWithOpportunities).
+	// Using LastIndex("}") is wrong: truncated responses can have inner "}" from nested
+	// objects, producing incomplete JSON and "unexpected end of JSON input".
+	braceCount := 0
+	endIdx := -1
+	inString := false
+	escapeNext := false
+
+	for i := startIdx; i < len(responseText); i++ {
+		char := responseText[i]
+
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+
+		if char == '\\' {
+			escapeNext = true
+			continue
+		}
+
+		if char == '"' {
+			inString = !inString
+			continue
+		}
+
+		if !inString {
+			if char == '{' {
+				braceCount++
+			} else if char == '}' {
+				braceCount--
+				if braceCount == 0 {
+					endIdx = i
+					break
+				}
+			}
+		}
+	}
+
 	if endIdx == -1 {
-		return nil, fmt.Errorf("malformed JSON in response")
+		return nil, fmt.Errorf("malformed or truncated JSON in response (missing closing brace)")
 	}
 
 	jsonStr := responseText[startIdx : endIdx+1]
